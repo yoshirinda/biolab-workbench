@@ -1,0 +1,39 @@
+"""
+BioLab Workbench Flask Application Factory
+"""
+from flask import Flask
+import config
+
+
+def create_app():
+    """Create and configure the Flask application."""
+    app = Flask(__name__)
+
+    # Load configuration
+    app.config['SECRET_KEY'] = config.SECRET_KEY
+    app.config['MAX_CONTENT_LENGTH'] = config.MAX_CONTENT_LENGTH
+    app.config['UPLOADS_DIR'] = config.UPLOADS_DIR
+    app.config['RESULTS_DIR'] = config.RESULTS_DIR
+
+    # Register blueprints
+    from app.routes.main import main_bp
+    from app.routes.sequence import sequence_bp
+    from app.routes.blast import blast_bp
+    from app.routes.phylo import phylo_bp
+    from app.routes.alignment import alignment_bp
+    from app.routes.uniprot import uniprot_bp
+    from app.routes.tree import tree_bp
+
+    app.register_blueprint(main_bp)
+    app.register_blueprint(sequence_bp, url_prefix='/sequence')
+    app.register_blueprint(blast_bp, url_prefix='/blast')
+    app.register_blueprint(phylo_bp, url_prefix='/phylo')
+    app.register_blueprint(alignment_bp, url_prefix='/alignment')
+    app.register_blueprint(uniprot_bp, url_prefix='/uniprot')
+    app.register_blueprint(tree_bp, url_prefix='/tree')
+
+    # Setup logging
+    from app.utils.logger import setup_logging
+    setup_logging(app)
+
+    return app

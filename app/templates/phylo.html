@@ -1,0 +1,358 @@
+{% extends "base.html" %}
+
+{% block title %}Phylogenetic Pipeline - BioLab Workbench{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h2 class="mb-4">
+        <i class="bi bi-diagram-3 text-info"></i>
+        Phylogenetic Pipeline
+    </h2>
+
+    <div class="row">
+        <!-- Pipeline Configuration -->
+        <div class="col-lg-5 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-gear"></i> Pipeline Configuration</h5>
+                </div>
+                <div class="card-body">
+                    <form id="pipelineForm">
+                        <div class="mb-3">
+                            <label for="inputFile" class="form-label">Input FASTA File:</label>
+                            <input type="file" class="form-control" id="inputFile" accept=".fasta,.fa,.fna,.faa" required>
+                        </div>
+
+                        <hr>
+                        <h6>Step 2: HMMer Search (Optional)</h6>
+                        <div class="mb-3">
+                            <label for="hmmFile" class="form-label">HMM Profile:</label>
+                            <select class="form-select" id="hmmFile">
+                                <option value="">None</option>
+                                {% for hmm in hmm_files %}
+                                <option value="{{ hmm }}">{{ hmm }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="cutGa" checked>
+                            <label class="form-check-label" for="cutGa">Use --cut_ga threshold</label>
+                        </div>
+
+                        <hr>
+                        <h6>Step 2.5: BLAST Filter (Optional)</h6>
+                        <div class="mb-3">
+                            <label for="goldListFile" class="form-label">Gold Standard List:</label>
+                            <select class="form-select" id="goldListFile">
+                                <option value="">None</option>
+                                {% for gold in gold_files %}
+                                <option value="{{ gold }}">{{ gold }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="row">
+                            <div class="col-6 mb-3">
+                                <label for="pident" class="form-label">Min Identity (%):</label>
+                                <input type="number" class="form-control" id="pident" value="30" min="0" max="100">
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label for="qcovs" class="form-label">Min Coverage (%):</label>
+                                <input type="number" class="form-control" id="qcovs" value="50" min="0" max="100">
+                            </div>
+                        </div>
+
+                        <hr>
+                        <h6>Step 2.8: Length Filter</h6>
+                        <div class="mb-3">
+                            <label for="minLength" class="form-label">Min Sequence Length:</label>
+                            <input type="number" class="form-control" id="minLength" value="50" min="1">
+                        </div>
+
+                        <hr>
+                        <h6>Step 3: MAFFT Alignment</h6>
+                        <div class="mb-3">
+                            <label for="maxiterate" class="form-label">Max Iterations:</label>
+                            <input type="number" class="form-control" id="maxiterate" value="1000" min="1">
+                        </div>
+
+                        <hr>
+                        <h6>Step 4: ClipKIT Trimming</h6>
+                        <div class="mb-3">
+                            <label for="clipkitMode" class="form-label">Trimming Mode:</label>
+                            <select class="form-select" id="clipkitMode">
+                                <option value="kpic-gappy">kpic-gappy (recommended)</option>
+                                <option value="gappy">gappy</option>
+                                <option value="kpic">kpic</option>
+                            </select>
+                        </div>
+
+                        <hr>
+                        <h6>Step 5: IQ-Tree</h6>
+                        <div class="row">
+                            <div class="col-6 mb-3">
+                                <label for="model" class="form-label">Model:</label>
+                                <input type="text" class="form-control" id="model" value="MFP">
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label for="bootstrap" class="form-label">Bootstrap:</label>
+                                <input type="number" class="form-control" id="bootstrap" value="1000" min="100">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-6 mb-3">
+                                <label for="threads" class="form-label">Threads:</label>
+                                <input type="number" class="form-control" id="threads" value="4" min="1">
+                            </div>
+                            <div class="col-6 mb-3">
+                                <div class="form-check mt-4">
+                                    <input class="form-check-input" type="checkbox" id="bnni" checked>
+                                    <label class="form-check-label" for="bnni">Use -bnni</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-info w-100" id="runFullBtn">
+                            <i class="bi bi-play-fill"></i> Run Full Pipeline
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pipeline Progress -->
+        <div class="col-lg-7 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-list-check"></i> Pipeline Progress</h5>
+                </div>
+                <div class="card-body">
+                    <div class="pipeline-steps">
+                        <div class="step" id="step1Status">
+                            <div class="step-icon"><i class="bi bi-file-earmark-text"></i></div>
+                            <div class="step-content">
+                                <h6>Step 1: Clean FASTA</h6>
+                                <p class="text-muted mb-0">Clean headers, keep only first ID</p>
+                                <span class="badge bg-secondary">Pending</span>
+                            </div>
+                        </div>
+
+                        <div class="step" id="step2Status">
+                            <div class="step-icon"><i class="bi bi-search"></i></div>
+                            <div class="step-content">
+                                <h6>Step 2: HMMer Search</h6>
+                                <p class="text-muted mb-0">Search with HMM profile</p>
+                                <span class="badge bg-secondary">Pending</span>
+                            </div>
+                        </div>
+
+                        <div class="step" id="step2_5Status">
+                            <div class="step-icon"><i class="bi bi-funnel"></i></div>
+                            <div class="step-content">
+                                <h6>Step 2.5: BLAST Filter</h6>
+                                <p class="text-muted mb-0">Filter with gold standard</p>
+                                <span class="badge bg-secondary">Pending</span>
+                            </div>
+                        </div>
+
+                        <div class="step" id="step2_7Status">
+                            <div class="step-icon"><i class="bi bi-bar-chart"></i></div>
+                            <div class="step-content">
+                                <h6>Step 2.7: Length Stats</h6>
+                                <p class="text-muted mb-0">Calculate sequence statistics</p>
+                                <span class="badge bg-secondary">Pending</span>
+                            </div>
+                        </div>
+
+                        <div class="step" id="step2_8Status">
+                            <div class="step-icon"><i class="bi bi-scissors"></i></div>
+                            <div class="step-content">
+                                <h6>Step 2.8: Length Filter</h6>
+                                <p class="text-muted mb-0">Remove short sequences</p>
+                                <span class="badge bg-secondary">Pending</span>
+                            </div>
+                        </div>
+
+                        <div class="step" id="step3Status">
+                            <div class="step-icon"><i class="bi bi-text-left"></i></div>
+                            <div class="step-content">
+                                <h6>Step 3: MAFFT Alignment</h6>
+                                <p class="text-muted mb-0">Multiple sequence alignment</p>
+                                <span class="badge bg-secondary">Pending</span>
+                            </div>
+                        </div>
+
+                        <div class="step" id="step4Status">
+                            <div class="step-icon"><i class="bi bi-crop"></i></div>
+                            <div class="step-content">
+                                <h6>Step 4: ClipKIT Trim</h6>
+                                <p class="text-muted mb-0">Trim alignment</p>
+                                <span class="badge bg-secondary">Pending</span>
+                            </div>
+                        </div>
+
+                        <div class="step" id="step5Status">
+                            <div class="step-icon"><i class="bi bi-tree"></i></div>
+                            <div class="step-content">
+                                <h6>Step 5: IQ-Tree</h6>
+                                <p class="text-muted mb-0">Build phylogenetic tree</p>
+                                <span class="badge bg-secondary">Pending</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="loadingArea" class="text-center d-none mt-4">
+                        <div class="spinner-border text-info" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Running pipeline...</p>
+                    </div>
+
+                    <div id="resultsArea" class="mt-4 d-none">
+                        <h6>Output Files:</h6>
+                        <div id="outputFiles"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.pipeline-steps {
+    position: relative;
+}
+.step {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+    background: #f8f9fa;
+}
+.step-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #e9ecef;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 1rem;
+    flex-shrink: 0;
+}
+.step-icon i {
+    font-size: 1.2rem;
+}
+.step-content {
+    flex-grow: 1;
+}
+.step-content h6 {
+    margin-bottom: 0.25rem;
+}
+.step.running .step-icon {
+    background: #ffc107;
+}
+.step.success .step-icon {
+    background: #198754;
+    color: white;
+}
+.step.failed .step-icon {
+    background: #dc3545;
+    color: white;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.getElementById('pipelineForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const formData = new FormData();
+        formData.append('file', document.getElementById('inputFile').files[0]);
+        formData.append('hmm_file', document.getElementById('hmmFile').value);
+        formData.append('gold_list_file', document.getElementById('goldListFile').value);
+        formData.append('cut_ga', document.getElementById('cutGa').checked);
+        formData.append('pident', document.getElementById('pident').value);
+        formData.append('qcovs', document.getElementById('qcovs').value);
+        formData.append('min_length', document.getElementById('minLength').value);
+        formData.append('maxiterate', document.getElementById('maxiterate').value);
+        formData.append('clipkit_mode', document.getElementById('clipkitMode').value);
+        formData.append('model', document.getElementById('model').value);
+        formData.append('bootstrap', document.getElementById('bootstrap').value);
+        formData.append('threads', document.getElementById('threads').value);
+        formData.append('bnni', document.getElementById('bnni').checked);
+
+        // Reset status
+        document.querySelectorAll('.step').forEach(step => {
+            step.classList.remove('running', 'success', 'failed');
+            step.querySelector('.badge').className = 'badge bg-secondary';
+            step.querySelector('.badge').textContent = 'Pending';
+        });
+
+        document.getElementById('loadingArea').classList.remove('d-none');
+        document.getElementById('resultsArea').classList.add('d-none');
+        document.getElementById('runFullBtn').disabled = true;
+
+        try {
+            const response = await fetch('/phylo/run-full', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            document.getElementById('loadingArea').classList.add('d-none');
+            document.getElementById('runFullBtn').disabled = false;
+
+            if (data.results && data.results.steps) {
+                updateStepStatuses(data.results.steps);
+
+                // Show output files
+                const outputDiv = document.getElementById('outputFiles');
+                outputDiv.innerHTML = '';
+
+                for (const [step, info] of Object.entries(data.results.steps)) {
+                    if (info.output) {
+                        const link = document.createElement('a');
+                        link.href = '/phylo/download/' + info.output;
+                        link.className = 'btn btn-sm btn-outline-primary me-2 mb-2';
+                        link.innerHTML = `<i class="bi bi-download"></i> ${step}`;
+                        outputDiv.appendChild(link);
+                    }
+                }
+
+                document.getElementById('resultsArea').classList.remove('d-none');
+            }
+
+            if (data.success) {
+                showAlert('success', 'Pipeline completed successfully!');
+            } else {
+                showAlert('danger', 'Pipeline failed at some step');
+            }
+        } catch (error) {
+            document.getElementById('loadingArea').classList.add('d-none');
+            document.getElementById('runFullBtn').disabled = false;
+            showAlert('danger', 'Pipeline error: ' + error.message);
+        }
+    });
+
+    function updateStepStatuses(steps) {
+        for (const [step, info] of Object.entries(steps)) {
+            const stepDiv = document.getElementById(step + 'Status');
+            if (!stepDiv) continue;
+
+            const badge = stepDiv.querySelector('.badge');
+
+            if (info.success) {
+                stepDiv.classList.add('success');
+                badge.className = 'badge bg-success';
+                badge.textContent = 'Success';
+            } else {
+                stepDiv.classList.add('failed');
+                badge.className = 'badge bg-danger';
+                badge.textContent = 'Failed';
+            }
+        }
+    }
+</script>
+{% endblock %}

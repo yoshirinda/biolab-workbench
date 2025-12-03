@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block title %}UniProt Search - BioLab Workbench{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h2 class="mb-4">
+        <i class="bi bi-cloud-download text-danger"></i>
+        UniProt Search
+    </h2>
+
+    <div class="row">
+        <!-- Search Form -->
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0"><i class="bi bi-search"></i> Search Parameters</h5>
+                </div>
+                <div class="card-body">
+                    <form id="uniprotForm">
+                        <div class="mb-3">
+                            <label for="query" class="form-label">Search Query:</label>
+                            <input type="text" class="form-control" id="query" required
+                                placeholder="e.g., kinase, P450, GPCR">
+                            <small class="form-text text-muted">Enter keywords to search UniProt</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="taxonomy" class="form-label">Taxonomy Filter:</label>
+                            <select class="form-select" id="taxonomy">
+                                <option value="">All organisms</option>
+                                {% for name, taxid in taxonomy_options.items() %}
+                                <option value="{{ taxid }}">{{ name }} ({{ taxid }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="dbType" class="form-label">Database:</label>
+                            <select class="form-select" id="dbType">
+                                <option value="all">All</option>
+                                <option value="reviewed">Reviewed (Swiss-Prot)</option>
+                                <option value="unreviewed">Unreviewed (TrEMBL)</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="limit" class="form-label">Max Results:</label>
+                            <input type="number" class="form-control" id="limit" value="500" min="1" max="5000">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="headerFormat" class="form-label">Header Format:</label>
+                            <select class="form-select" id="headerFormat">
+                                <option value="gene_species_id">Gene_Species_ID</option>
+                                <option value="standard">Standard UniProt</option>
+                            </select>
+                            <small class="form-text text-muted">Format for FASTA headers</small>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-danger" id="searchBtn">
+                                <i class="bi bi-search"></i> Search
+                            </button>
+                            <button type="button" class="btn btn-outline-danger" id="downloadBtn" disabled>
+                                <i class="bi bi-download"></i> Download Sequences
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results -->
+        <div class="col-lg-8 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-table"></i> Search Results</h5>
+                    <span id="resultCount" class="badge bg-secondary">0 entries</span>
+                </div>
+                <div class="card-body">
+                    <div id="loadingSpinner" class="text-center d-none">
+                        <div class="spinner-border text-danger" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Searching UniProt...</p>
+                    </div>
+
+                    <div id="resultsArea">
+                        <p class="text-muted text-center">Enter a search query to find sequences</p>
+                    </div>
+
+                    <div id="resultsTable" class="d-none">
+                        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                            <table class="table table-sm table-hover">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>Accession</th>
+                                        <th>Entry Name</th>
+                                        <th>Protein Name</th>
+                                        <th>Gene</th>
+                                        <th>Organism</th>
+                                        <th>Length</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="resultsTableBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let searchResults = [];
+
+    document.getElementById('uniprotForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        await performSearch();
+    });
+
+    async function performSearch() {
+        const query = document.getElementById('query').value;
+        const taxonomy = document.getElementById('taxonomy').value;
+        const dbType = document.getElementById('dbType').value;
+        const limit = document.getElementById('limit').value;
+
+        document.getElementById('loadingSpinner').classList.remove('d-none');
+        document.getElementById('resultsArea').classList.add('d-none');
+        document.getElementById('resultsTable').classList.add('d-none');
+        document.getElementById('searchBtn').disabled = true;
+
+        try {
+            const response = await fetch('/uniprot/search', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    query: query,
+                    taxonomy_id: taxonomy,
+                    database_type: dbType,
+                    limit: parseInt(limit)
+                })
+            });
+            const data = await response.json();
+
+            document.getElementById('loadingSpinner').classList.add('d-none');
+            document.getElementById('searchBtn').disabled = false;
+
+            if (data.success) {
+                searchResults = data.results;
+                displayResults(data.results);
+                document.getElementById('resultCount').textContent = `${data.count} entries`;
+                document.getElementById('downloadBtn').disabled = data.count === 0;
+            } else {
+                document.getElementById('resultsArea').classList.remove('d-none');
+                document.getElementById('resultsArea').innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            }
+        } catch (error) {
+            document.getElementById('loadingSpinner').classList.add('d-none');
+            document.getElementById('searchBtn').disabled = false;
+            showAlert('danger', 'Search failed: ' + error.message);
+        }
+    }
+
+    function displayResults(results) {
+        const tbody = document.getElementById('resultsTableBody');
+
+        if (results.length === 0) {
+            document.getElementById('resultsArea').classList.remove('d-none');
+            document.getElementById('resultsArea').innerHTML = '<p class="text-muted text-center">No results found</p>';
+            return;
+        }
+
+        document.getElementById('resultsTable').classList.remove('d-none');
+
+        tbody.innerHTML = results.map(entry => `
+            <tr>
+                <td><a href="https://www.uniprot.org/uniprotkb/${entry.accession}" target="_blank">${entry.accession}</a></td>
+                <td>${entry.entry_name}</td>
+                <td title="${entry.protein_name}">${entry.protein_name ? entry.protein_name.substring(0, 40) + '...' : ''}</td>
+                <td>${entry.gene_names}</td>
+                <td>${entry.organism}</td>
+                <td>${entry.sequence_length}</td>
+            </tr>
+        `).join('');
+    }
+
+    document.getElementById('downloadBtn').addEventListener('click', async function() {
+        const query = document.getElementById('query').value;
+        const taxonomy = document.getElementById('taxonomy').value;
+        const dbType = document.getElementById('dbType').value;
+        const limit = document.getElementById('limit').value;
+        const headerFormat = document.getElementById('headerFormat').value;
+
+        this.disabled = true;
+        this.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Downloading...';
+
+        try {
+            const response = await fetch('/uniprot/download', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    query: query,
+                    taxonomy_id: taxonomy,
+                    database_type: dbType,
+                    limit: parseInt(limit),
+                    header_format: headerFormat
+                })
+            });
+            const data = await response.json();
+
+            this.disabled = false;
+            this.innerHTML = '<i class="bi bi-download"></i> Download Sequences';
+
+            if (data.success && data.fasta_file) {
+                showAlert('success', `Downloaded ${data.count} sequences`);
+                window.open('/uniprot/download-file/' + data.fasta_file, '_blank');
+            } else {
+                showAlert('danger', data.error || 'Download failed');
+            }
+        } catch (error) {
+            this.disabled = false;
+            this.innerHTML = '<i class="bi bi-download"></i> Download Sequences';
+            showAlert('danger', 'Download failed: ' + error.message);
+        }
+    });
+</script>
+{% endblock %}
