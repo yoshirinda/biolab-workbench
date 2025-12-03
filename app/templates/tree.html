@@ -114,6 +114,14 @@
 
 {% block extra_js %}
 <script>
+    // Use Flask url_for to generate base URLs for JavaScript
+    const TREE_URLS = {
+        upload: '{{ url_for("tree.upload") }}',
+        visualize: '{{ url_for("tree.visualize") }}',
+        viewBase: '{{ url_for("tree.view", filepath="") }}',
+        downloadBase: '{{ url_for("tree.download", filepath="") }}'
+    };
+
     const defaultColors = {{ default_colors | tojson | safe if default_colors else '[]' }};
     let speciesColors = {};
     let treePath = null;
@@ -126,7 +134,7 @@
         formData.append('file', document.getElementById('treeFile').files[0]);
 
         try {
-            const response = await fetch('/tree/upload', {
+            const response = await fetch(TREE_URLS.upload, {
                 method: 'POST',
                 body: formData
             });
@@ -201,7 +209,7 @@
         document.getElementById('visualizeBtn').disabled = true;
 
         try {
-            const response = await fetch('/tree/visualize', {
+            const response = await fetch(TREE_URLS.visualize, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(data)
@@ -214,13 +222,13 @@
             if (result.success) {
                 // Display SVG
                 const img = document.createElement('img');
-                img.src = '/tree/view/' + result.output_file;
+                img.src = TREE_URLS.viewBase + result.output_file;
                 img.style.maxWidth = '100%';
                 document.getElementById('treeContainer').appendChild(img);
 
                 // Show download button
                 const btn = document.getElementById('downloadSvgBtn');
-                btn.href = '/tree/download/' + result.output_file;
+                btn.href = TREE_URLS.downloadBase + result.output_file;
                 btn.classList.remove('d-none');
 
                 showAlert('success', 'Tree visualization completed');

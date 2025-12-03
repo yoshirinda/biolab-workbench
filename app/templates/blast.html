@@ -169,6 +169,14 @@
 
 {% block extra_js %}
 <script>
+    // Use Flask url_for to generate base URLs for JavaScript
+    const BLAST_URLS = {
+        search: '{{ url_for("blast.search") }}',
+        createDb: '{{ url_for("blast.create_database") }}',
+        extract: '{{ url_for("blast.extract") }}',
+        downloadBase: '{{ url_for("blast.download", filepath="") }}'
+    };
+
     let currentResultDir = null;
     let currentDatabase = null;
     let blastHits = [];
@@ -206,7 +214,7 @@
         document.getElementById('resultsTable').classList.add('d-none');
 
         try {
-            const response = await fetch('/blast/search', {
+            const response = await fetch(BLAST_URLS.search, {
                 method: 'POST',
                 body: formData
             });
@@ -221,7 +229,7 @@
 
                 if (data.output_files && data.output_files.main) {
                     const btn = document.getElementById('downloadResultBtn');
-                    btn.href = '/blast/download/' + data.output_files.main;
+                    btn.href = BLAST_URLS.downloadBase + data.output_files.main;
                     btn.classList.remove('d-none');
                 }
 
@@ -272,7 +280,7 @@
         formData.append('db_type', document.getElementById('dbType').value);
 
         try {
-            const response = await fetch('/blast/create-database', {
+            const response = await fetch(BLAST_URLS.createDb, {
                 method: 'POST',
                 body: formData
             });
@@ -299,7 +307,7 @@
         }
 
         try {
-            const response = await fetch('/blast/extract', {
+            const response = await fetch(BLAST_URLS.extract, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
@@ -312,7 +320,7 @@
 
             if (data.success) {
                 showAlert('success', data.message);
-                window.open('/blast/download/' + data.output_file, '_blank');
+                window.open(BLAST_URLS.downloadBase + data.output_file, '_blank');
             } else {
                 showAlert('danger', data.error);
             }

@@ -25,25 +25,25 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item">
-                        <a class="nav-link" href="/"><i class="bi bi-house"></i> Home</a>
+                        <a class="nav-link" href="{{ url_for('main.index') }}"><i class="bi bi-house"></i> Home</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/sequence"><i class="bi bi-file-earmark-text"></i> Sequence</a>
+                        <a class="nav-link" href="{{ url_for('sequence.sequence_page') }}"><i class="bi bi-file-earmark-text"></i> Sequence</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/blast"><i class="bi bi-search"></i> BLAST</a>
+                        <a class="nav-link" href="{{ url_for('blast.blast_page') }}"><i class="bi bi-search"></i> BLAST</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/phylo"><i class="bi bi-diagram-3"></i> Phylo</a>
+                        <a class="nav-link" href="{{ url_for('phylo.phylo_page') }}"><i class="bi bi-diagram-3"></i> Phylo</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/alignment"><i class="bi bi-text-left"></i> Alignment</a>
+                        <a class="nav-link" href="{{ url_for('alignment.alignment_page') }}"><i class="bi bi-text-left"></i> Alignment</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/uniprot"><i class="bi bi-cloud-download"></i> UniProt</a>
+                        <a class="nav-link" href="{{ url_for('uniprot.uniprot_page') }}"><i class="bi bi-cloud-download"></i> UniProt</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/tree"><i class="bi bi-tree"></i> Tree</a>
+                        <a class="nav-link" href="{{ url_for('tree.tree_page') }}"><i class="bi bi-tree"></i> Tree</a>
                     </li>
                 </ul>
             </div>

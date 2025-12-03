@@ -155,6 +155,16 @@
 
 {% block extra_js %}
 <script>
+    // Use Flask url_for to generate base URLs for JavaScript
+    const SEQUENCE_URLS = {
+        import: '{{ url_for("sequence.import_sequences") }}',
+        translate: '{{ url_for("sequence.translate") }}',
+        reverseComplement: '{{ url_for("sequence.rev_comp") }}',
+        findOrfs: '{{ url_for("sequence.orfs") }}',
+        stats: '{{ url_for("sequence.stats") }}',
+        export: '{{ url_for("sequence.export") }}'
+    };
+
     let sequences = [];
     let selectedSequence = null;
 
@@ -182,7 +192,7 @@
         }
 
         try {
-            const response = await fetch('/sequence/import', {
+            const response = await fetch(SEQUENCE_URLS.import, {
                 method: 'POST',
                 body: formData
             });
@@ -263,7 +273,7 @@
 
         for (const seq of selected) {
             try {
-                const response = await fetch('/sequence/translate', {
+                const response = await fetch(SEQUENCE_URLS.translate, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({sequence: seq.sequence, frame: frame})
@@ -293,7 +303,7 @@
         const results = [];
         for (const seq of selected) {
             try {
-                const response = await fetch('/sequence/reverse-complement', {
+                const response = await fetch(SEQUENCE_URLS.reverseComplement, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({sequence: seq.sequence})
@@ -325,7 +335,7 @@
 
         for (const seq of selected) {
             try {
-                const response = await fetch('/sequence/find-orfs', {
+                const response = await fetch(SEQUENCE_URLS.findOrfs, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({sequence: seq.sequence, min_length: minLength})
@@ -361,7 +371,7 @@
         const results = [];
         for (const seq of selected) {
             try {
-                const response = await fetch('/sequence/stats', {
+                const response = await fetch(SEQUENCE_URLS.stats, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({sequence: seq.sequence})
@@ -405,7 +415,7 @@
         }
 
         try {
-            const response = await fetch('/sequence/export', {
+            const response = await fetch(SEQUENCE_URLS.export, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({sequences: toExport})

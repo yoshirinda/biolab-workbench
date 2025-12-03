@@ -265,6 +265,13 @@
 
 {% block extra_js %}
 <script>
+    // Use Flask url_for to generate base URLs for JavaScript
+    const PHYLO_URLS = {
+        runFull: '{{ url_for("phylo.run_full") }}',
+        runStepBase: '{{ url_for("phylo.run_step", step="") }}',
+        downloadBase: '{{ url_for("phylo.download", filepath="") }}'
+    };
+
     document.getElementById('pipelineForm').addEventListener('submit', async function(e) {
         e.preventDefault();
 
@@ -295,7 +302,7 @@
         document.getElementById('runFullBtn').disabled = true;
 
         try {
-            const response = await fetch('/phylo/run-full', {
+            const response = await fetch(PHYLO_URLS.runFull, {
                 method: 'POST',
                 body: formData
             });
@@ -314,7 +321,7 @@
                 for (const [step, info] of Object.entries(data.results.steps)) {
                     if (info.output) {
                         const link = document.createElement('a');
-                        link.href = '/phylo/download/' + info.output;
+                        link.href = PHYLO_URLS.downloadBase + info.output;
                         link.className = 'btn btn-sm btn-outline-primary me-2 mb-2';
                         link.innerHTML = `<i class="bi bi-download"></i> ${step}`;
                         outputDiv.appendChild(link);

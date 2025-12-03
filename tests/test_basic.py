@@ -170,6 +170,29 @@ class TestRoutes:
         assert 'href="/uniprot/"' in html
         assert 'href="/tree/"' in html
 
+    def test_navigation_links_use_url_for(self, client):
+        """Test that navigation bar uses url_for() for all links."""
+        response = client.get('/')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+
+        # Verify navigation uses url_for generated paths
+        # The base template should have proper url_for navigation
+        assert 'href="/"' in html  # Home link
+        assert 'href="/sequence/"' in html
+        assert 'href="/blast/"' in html
+        assert 'href="/phylo/"' in html
+        assert 'href="/alignment/"' in html
+        assert 'href="/uniprot/"' in html
+        assert 'href="/tree/"' in html
+
+    def test_proxy_fix_middleware_applied(self, client):
+        """Test that ProxyFix middleware is applied to the app."""
+        app = create_app()
+        # Check that ProxyFix is wrapping the WSGI app
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        assert isinstance(app.wsgi_app, ProxyFix)
+
 
 class TestSequenceAPI:
     """Tests for sequence API endpoints."""
