@@ -283,8 +283,8 @@
             const data = await response.json();
 
             if (data.success) {
-                // Add annotation field to each sequence
-                sequences = data.sequences.map(seq => ({...seq, annotation: ''}));
+                // Add annotation field to each sequence, preserving existing if present
+                sequences = data.sequences.map(seq => ({...seq, annotation: seq.annotation || ''}));
                 updateSequenceTable();
                 showAlert('success', `Imported ${sequences.length} sequences`);
             } else {
