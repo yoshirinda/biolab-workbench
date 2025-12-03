@@ -31,7 +31,7 @@
                     <p class="card-text text-muted">{{ module.description }}</p>
                 </div>
                 <div class="card-footer bg-transparent border-0">
-                    <a href="{{ module.url }}" class="btn btn-{{ module.color }} w-100">
+                    <a href="{{ url_for(module.endpoint) }}" class="btn btn-{{ module.color }} w-100">
                         Open Module <i class="bi bi-arrow-right"></i>
                     </a>
                 </div>
