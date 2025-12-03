@@ -9,10 +9,24 @@
         Phylogenetic Pipeline
     </h2>
 
+    <!-- Mode Selection -->
+    <div class="mb-4">
+        <div class="btn-group" role="group">
+            <input type="radio" class="btn-check" name="pipelineMode" id="modeFullPipeline" value="full" checked>
+            <label class="btn btn-outline-info" for="modeFullPipeline">
+                <i class="bi bi-play-fill"></i> Full Pipeline
+            </label>
+            <input type="radio" class="btn-check" name="pipelineMode" id="modeStepByStep" value="step">
+            <label class="btn btn-outline-info" for="modeStepByStep">
+                <i class="bi bi-list-ol"></i> Step-by-Step
+            </label>
+        </div>
+    </div>
+
     <div class="row">
         <!-- Pipeline Configuration -->
         <div class="col-lg-5 mb-4">
-            <div class="card shadow-sm">
+            <div class="card shadow-sm" id="fullPipelineCard">
                 <div class="card-header bg-info text-white">
                     <h5 class="mb-0"><i class="bi bi-gear"></i> Pipeline Configuration</h5>
                 </div>
@@ -117,6 +131,148 @@
                     </form>
                 </div>
             </div>
+
+            <!-- Step-by-Step Card (hidden by default) -->
+            <div class="card shadow-sm d-none" id="stepByStepCard">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-list-ol"></i> Step-by-Step Execution</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> Run individual pipeline steps. Upload input file for each step, or use output from previous step.
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="stepInputFile" class="form-label">Input File for Current Step:</label>
+                        <input type="file" class="form-control" id="stepInputFile" accept=".fasta,.fa,.fna,.faa,.aln">
+                    </div>
+
+                    <div class="accordion" id="stepsAccordion">
+                        <!-- Step 1 -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#step1Panel">
+                                    <i class="bi bi-file-earmark-text me-2"></i> Step 1: Clean FASTA
+                                </button>
+                            </h2>
+                            <div id="step1Panel" class="accordion-collapse collapse show">
+                                <div class="accordion-body">
+                                    <p class="text-muted">Clean FASTA headers - keep only first space-separated ID.</p>
+                                    <button class="btn btn-primary w-100" onclick="runSingleStep('step1')">
+                                        <i class="bi bi-play-fill"></i> Run Step 1
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step 2.8 -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#step2_8Panel">
+                                    <i class="bi bi-scissors me-2"></i> Step 2.8: Length Filter
+                                </button>
+                            </h2>
+                            <div id="step2_8Panel" class="accordion-collapse collapse">
+                                <div class="accordion-body">
+                                    <p class="text-muted">Remove sequences shorter than specified length.</p>
+                                    <div class="mb-3">
+                                        <label for="stepMinLength" class="form-label">Min Length:</label>
+                                        <input type="number" class="form-control" id="stepMinLength" value="50" min="1">
+                                    </div>
+                                    <button class="btn btn-primary w-100" onclick="runSingleStep('step2_8')">
+                                        <i class="bi bi-play-fill"></i> Run Step 2.8
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step 3 -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#step3Panel">
+                                    <i class="bi bi-text-left me-2"></i> Step 3: MAFFT Alignment
+                                </button>
+                            </h2>
+                            <div id="step3Panel" class="accordion-collapse collapse">
+                                <div class="accordion-body">
+                                    <p class="text-muted">Perform multiple sequence alignment with MAFFT.</p>
+                                    <div class="mb-3">
+                                        <label for="stepMaxiterate" class="form-label">Max Iterations:</label>
+                                        <input type="number" class="form-control" id="stepMaxiterate" value="1000" min="1">
+                                    </div>
+                                    <button class="btn btn-primary w-100" onclick="runSingleStep('step3')">
+                                        <i class="bi bi-play-fill"></i> Run Step 3
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step 4 -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#step4Panel">
+                                    <i class="bi bi-crop me-2"></i> Step 4: ClipKIT Trim
+                                </button>
+                            </h2>
+                            <div id="step4Panel" class="accordion-collapse collapse">
+                                <div class="accordion-body">
+                                    <p class="text-muted">Trim alignment with ClipKIT.</p>
+                                    <div class="mb-3">
+                                        <label for="stepClipkitMode" class="form-label">Mode:</label>
+                                        <select class="form-select" id="stepClipkitMode">
+                                            <option value="kpic-gappy">kpic-gappy</option>
+                                            <option value="gappy">gappy</option>
+                                            <option value="kpic">kpic</option>
+                                        </select>
+                                    </div>
+                                    <button class="btn btn-primary w-100" onclick="runSingleStep('step4')">
+                                        <i class="bi bi-play-fill"></i> Run Step 4
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step 5 -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#step5Panel">
+                                    <i class="bi bi-tree me-2"></i> Step 5: IQ-Tree
+                                </button>
+                            </h2>
+                            <div id="step5Panel" class="accordion-collapse collapse">
+                                <div class="accordion-body">
+                                    <p class="text-muted">Build phylogenetic tree with IQ-Tree.</p>
+                                    <div class="row">
+                                        <div class="col-6 mb-3">
+                                            <label for="stepModel" class="form-label">Model:</label>
+                                            <input type="text" class="form-control" id="stepModel" value="MFP">
+                                        </div>
+                                        <div class="col-6 mb-3">
+                                            <label for="stepBootstrap" class="form-label">Bootstrap:</label>
+                                            <input type="number" class="form-control" id="stepBootstrap" value="1000" min="100">
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-6 mb-3">
+                                            <label for="stepThreads" class="form-label">Threads:</label>
+                                            <input type="number" class="form-control" id="stepThreads" value="4" min="1">
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="form-check mt-4">
+                                                <input class="form-check-input" type="checkbox" id="stepBnni" checked>
+                                                <label class="form-check-label" for="stepBnni">Use -bnni</label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button class="btn btn-primary w-100" onclick="runSingleStep('step5')">
+                                        <i class="bi bi-play-fill"></i> Run Step 5
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Pipeline Progress -->
@@ -204,12 +360,23 @@
                         <div class="spinner-border text-info" role="status">
                             <span class="visually-hidden">Loading...</span>
                         </div>
-                        <p class="mt-2">Running pipeline...</p>
+                        <p class="mt-2" id="loadingMessage">Running pipeline...</p>
                     </div>
 
                     <div id="resultsArea" class="mt-4 d-none">
                         <h6>Output Files:</h6>
                         <div id="outputFiles"></div>
+                    </div>
+
+                    <!-- Step Result Details -->
+                    <div id="stepResultDetails" class="mt-4 d-none">
+                        <div class="alert alert-secondary">
+                            <h6 class="mb-2"><i class="bi bi-info-circle"></i> Step Result</h6>
+                            <p class="mb-1" id="stepResultMessage"></p>
+                            <a id="stepResultDownload" class="btn btn-sm btn-outline-primary d-none" download>
+                                <i class="bi bi-download"></i> Download Output
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -272,6 +439,17 @@
         downloadBase: '{{ url_for("phylo.download", filepath="") }}'
     };
 
+    let lastStepOutput = null;
+
+    // Mode switching
+    document.querySelectorAll('input[name="pipelineMode"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            const isFullMode = this.value === 'full';
+            document.getElementById('fullPipelineCard').classList.toggle('d-none', !isFullMode);
+            document.getElementById('stepByStepCard').classList.toggle('d-none', isFullMode);
+        });
+    });
+
     document.getElementById('pipelineForm').addEventListener('submit', async function(e) {
         e.preventDefault();
 
@@ -291,13 +469,10 @@
         formData.append('bnni', document.getElementById('bnni').checked);
 
         // Reset status
-        document.querySelectorAll('.step').forEach(step => {
-            step.classList.remove('running', 'success', 'failed');
-            step.querySelector('.badge').className = 'badge bg-secondary';
-            step.querySelector('.badge').textContent = 'Pending';
-        });
+        resetAllStepStatuses();
 
         document.getElementById('loadingArea').classList.remove('d-none');
+        document.getElementById('loadingMessage').textContent = 'Running full pipeline...';
         document.getElementById('resultsArea').classList.add('d-none');
         document.getElementById('runFullBtn').disabled = true;
 
@@ -342,6 +517,102 @@
             showAlert('danger', 'Pipeline error: ' + error.message);
         }
     });
+
+    async function runSingleStep(step) {
+        const file = document.getElementById('stepInputFile').files[0];
+        if (!file) {
+            showAlert('warning', 'Please select an input file for this step');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        // Add step-specific parameters
+        if (step === 'step2_8') {
+            formData.append('min_length', document.getElementById('stepMinLength').value);
+        } else if (step === 'step3') {
+            formData.append('maxiterate', document.getElementById('stepMaxiterate').value);
+        } else if (step === 'step4') {
+            formData.append('clipkit_mode', document.getElementById('stepClipkitMode').value);
+        } else if (step === 'step5') {
+            formData.append('model', document.getElementById('stepModel').value);
+            formData.append('bootstrap', document.getElementById('stepBootstrap').value);
+            formData.append('threads', document.getElementById('stepThreads').value);
+            formData.append('bnni', document.getElementById('stepBnni').checked);
+        }
+
+        // Update step status to running
+        const stepDiv = document.getElementById(step + 'Status');
+        if (stepDiv) {
+            stepDiv.classList.add('running');
+            stepDiv.querySelector('.badge').className = 'badge bg-warning';
+            stepDiv.querySelector('.badge').textContent = 'Running...';
+        }
+
+        document.getElementById('loadingArea').classList.remove('d-none');
+        document.getElementById('loadingMessage').textContent = `Running ${step}...`;
+        document.getElementById('stepResultDetails').classList.add('d-none');
+
+        try {
+            const response = await fetch(PHYLO_URLS.runStepBase + step, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            document.getElementById('loadingArea').classList.add('d-none');
+
+            if (data.success) {
+                stepDiv.classList.remove('running');
+                stepDiv.classList.add('success');
+                stepDiv.querySelector('.badge').className = 'badge bg-success';
+                stepDiv.querySelector('.badge').textContent = 'Success';
+
+                lastStepOutput = data.output;
+
+                // Show step result
+                document.getElementById('stepResultDetails').classList.remove('d-none');
+                document.getElementById('stepResultMessage').textContent = data.message || 'Step completed successfully';
+
+                if (data.output) {
+                    const downloadBtn = document.getElementById('stepResultDownload');
+                    downloadBtn.href = PHYLO_URLS.downloadBase + data.output;
+                    downloadBtn.classList.remove('d-none');
+                }
+
+                showAlert('success', `${step} completed successfully`);
+            } else {
+                stepDiv.classList.remove('running');
+                stepDiv.classList.add('failed');
+                stepDiv.querySelector('.badge').className = 'badge bg-danger';
+                stepDiv.querySelector('.badge').textContent = 'Failed';
+
+                document.getElementById('stepResultDetails').classList.remove('d-none');
+                document.getElementById('stepResultMessage').textContent = data.error || data.message || 'Step failed';
+                document.getElementById('stepResultDownload').classList.add('d-none');
+
+                showAlert('danger', data.error || `${step} failed`);
+            }
+        } catch (error) {
+            document.getElementById('loadingArea').classList.add('d-none');
+            if (stepDiv) {
+                stepDiv.classList.remove('running');
+                stepDiv.classList.add('failed');
+                stepDiv.querySelector('.badge').className = 'badge bg-danger';
+                stepDiv.querySelector('.badge').textContent = 'Error';
+            }
+            showAlert('danger', 'Step error: ' + error.message);
+        }
+    }
+
+    function resetAllStepStatuses() {
+        document.querySelectorAll('.step').forEach(step => {
+            step.classList.remove('running', 'success', 'failed');
+            step.querySelector('.badge').className = 'badge bg-secondary';
+            step.querySelector('.badge').textContent = 'Pending';
+        });
+    }
 
     function updateStepStatuses(steps) {
         for (const [step, info] of Object.entries(steps)) {
