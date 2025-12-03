@@ -99,9 +99,50 @@
         </div>
     </div>
 
+    <!-- Project Management Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-folder2"></i> Projects / Collections</h5>
+                    <button class="btn btn-sm btn-light" onclick="showCreateProjectModal()">
+                        <i class="bi bi-folder-plus"></i> New Project
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label for="projectSelect" class="form-label">Load from Project:</label>
+                            <div class="input-group">
+                                <select class="form-select" id="projectSelect">
+                                    <option value="">Select a project...</option>
+                                    {% for project in projects %}
+                                    <option value="{{ project.id }}">{{ project.name }} ({{ project.sequences|length if project.sequences else 0 }} seqs)</option>
+                                    {% endfor %}
+                                </select>
+                                <button class="btn btn-outline-primary" onclick="loadFromProject()">
+                                    <i class="bi bi-folder2-open"></i> Load
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Save Current Sequences:</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="saveProjectName" placeholder="Collection name...">
+                                <button class="btn btn-outline-success" onclick="saveToProject()">
+                                    <i class="bi bi-save"></i> Save
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Sequence List -->
     <div class="card shadow-sm mb-4">
-        <div class="card-header bg-light">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center">
             <h5 class="mb-0">
                 <i class="bi bi-list-ul"></i> Loaded Sequences
                 <span class="badge bg-primary" id="sequenceCount">0</span>
@@ -116,12 +157,13 @@
                             <th>ID</th>
                             <th>Type</th>
                             <th>Length</th>
+                            <th>Annotation</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody id="sequenceList">
                         <tr>
-                            <td colspan="5" class="text-center text-muted">No sequences loaded</td>
+                            <td colspan="6" class="text-center text-muted">No sequences loaded</td>
                         </tr>
                     </tbody>
                 </table>
@@ -129,14 +171,26 @@
         </div>
     </div>
 
-    <!-- Sequence Viewer -->
+    <!-- Sequence Viewer with Annotation -->
     <div class="card shadow-sm mb-4">
-        <div class="card-header bg-light">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center">
             <h5 class="mb-0"><i class="bi bi-eye"></i> Sequence Viewer</h5>
+            <span id="viewerSeqId" class="badge bg-secondary"></span>
         </div>
         <div class="card-body">
-            <div id="sequenceViewer" class="sequence-viewer font-monospace p-3 bg-light border rounded" style="max-height: 300px; overflow-y: auto;">
-                <span class="text-muted">Select a sequence to view</span>
+            <div class="row">
+                <div class="col-md-8">
+                    <div id="sequenceViewer" class="sequence-viewer font-monospace p-3 bg-light border rounded" style="max-height: 300px; overflow-y: auto;">
+                        <span class="text-muted">Select a sequence to view</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label for="annotationInput" class="form-label">Annotation / Notes:</label>
+                    <textarea class="form-control" id="annotationInput" rows="6" placeholder="Add notes or annotation for this sequence..."></textarea>
+                    <button class="btn btn-sm btn-outline-primary mt-2 w-100" onclick="saveAnnotation()" id="saveAnnotationBtn" disabled>
+                        <i class="bi bi-pencil"></i> Save Annotation
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -151,6 +205,32 @@
         </div>
     </div>
 </div>
+
+<!-- Create Project Modal -->
+<div class="modal fade" id="createProjectModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-folder-plus"></i> Create New Project</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="newProjectName" class="form-label">Project Name:</label>
+                    <input type="text" class="form-control" id="newProjectName" required>
+                </div>
+                <div class="mb-3">
+                    <label for="newProjectDesc" class="form-label">Description (optional):</label>
+                    <textarea class="form-control" id="newProjectDesc" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="createProject()">Create Project</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -162,11 +242,15 @@
         reverseComplement: '{{ url_for("sequence.rev_comp") }}',
         findOrfs: '{{ url_for("sequence.orfs") }}',
         stats: '{{ url_for("sequence.stats") }}',
-        export: '{{ url_for("sequence.export") }}'
+        export: '{{ url_for("sequence.export") }}',
+        projects: '{{ url_for("sequence.get_projects") }}',
+        saveCollection: '{{ url_for("sequence.save_seq_collection") }}',
+        loadCollectionBase: '{{ url_for("sequence.load_seq_collection", project_id="") }}'
     };
 
     let sequences = [];
     let selectedSequence = null;
+    let currentProjectId = null;
 
     document.querySelectorAll('input[name="source"]').forEach(radio => {
         radio.addEventListener('change', function() {
@@ -199,7 +283,8 @@
             const data = await response.json();
 
             if (data.success) {
-                sequences = data.sequences;
+                // Add annotation field to each sequence
+                sequences = data.sequences.map(seq => ({...seq, annotation: ''}));
                 updateSequenceTable();
                 showAlert('success', `Imported ${sequences.length} sequences`);
             } else {
@@ -215,7 +300,7 @@
         document.getElementById('sequenceCount').textContent = sequences.length;
 
         if (sequences.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No sequences loaded</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No sequences loaded</td></tr>';
             return;
         }
 
@@ -225,11 +310,12 @@
                 <td>${seq.id}</td>
                 <td><span class="badge bg-${seq.type === 'nucleotide' ? 'success' : 'info'}">${seq.type}</span></td>
                 <td>${seq.length}</td>
+                <td><span class="text-muted small">${(seq.annotation || '').substring(0, 30)}${seq.annotation && seq.annotation.length > 30 ? '...' : ''}</span></td>
                 <td>
-                    <button class="btn btn-sm btn-outline-primary" onclick="viewSequence(${idx})">
+                    <button class="btn btn-sm btn-outline-primary" onclick="viewSequence(${idx})" title="View">
                         <i class="bi bi-eye"></i>
                     </button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteSequence(${idx})">
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteSequence(${idx})" title="Delete">
                         <i class="bi bi-trash"></i>
                     </button>
                 </td>
@@ -242,23 +328,159 @@
         const seq = sequences[idx];
         const viewer = document.getElementById('sequenceViewer');
 
-        let html = `<strong>&gt;${seq.id}</strong>\n`;
+        let html = `<strong>&gt;${seq.id}</strong>`;
+        if (seq.description) {
+            html += ` ${seq.description}`;
+        }
+        html += '\n';
         const seqStr = seq.sequence;
         for (let i = 0; i < seqStr.length; i += 60) {
             html += seqStr.substring(i, i + 60) + '\n';
         }
         viewer.innerHTML = `<pre>${html}</pre>`;
+
+        // Update annotation field
+        document.getElementById('annotationInput').value = seq.annotation || '';
+        document.getElementById('saveAnnotationBtn').disabled = false;
+        document.getElementById('viewerSeqId').textContent = seq.id;
+    }
+
+    function saveAnnotation() {
+        if (selectedSequence === null) return;
+        const annotation = document.getElementById('annotationInput').value;
+        sequences[selectedSequence].annotation = annotation;
+        updateSequenceTable();
+        showAlert('success', 'Annotation saved');
     }
 
     function deleteSequence(idx) {
         sequences.splice(idx, 1);
+        selectedSequence = null;
         updateSequenceTable();
         document.getElementById('sequenceViewer').innerHTML = '<span class="text-muted">Select a sequence to view</span>';
+        document.getElementById('annotationInput').value = '';
+        document.getElementById('saveAnnotationBtn').disabled = true;
+        document.getElementById('viewerSeqId').textContent = '';
     }
 
     function getSelectedSequences() {
         const checkboxes = document.querySelectorAll('.seq-checkbox:checked');
         return Array.from(checkboxes).map(cb => sequences[parseInt(cb.dataset.index)]);
+    }
+
+    // Project Management Functions
+    function showCreateProjectModal() {
+        const modal = new bootstrap.Modal(document.getElementById('createProjectModal'));
+        modal.show();
+    }
+
+    async function createProject() {
+        const name = document.getElementById('newProjectName').value.trim();
+        const description = document.getElementById('newProjectDesc').value;
+
+        if (!name) {
+            showAlert('warning', 'Project name is required');
+            return;
+        }
+
+        try {
+            const response = await fetch(SEQUENCE_URLS.projects, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name, description})
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                showAlert('success', 'Project created successfully');
+                // Add to select dropdown
+                const select = document.getElementById('projectSelect');
+                const option = document.createElement('option');
+                option.value = data.project.id;
+                option.textContent = `${data.project.name} (0 seqs)`;
+                select.appendChild(option);
+                // Close modal
+                bootstrap.Modal.getInstance(document.getElementById('createProjectModal')).hide();
+                document.getElementById('newProjectName').value = '';
+                document.getElementById('newProjectDesc').value = '';
+            } else {
+                showAlert('danger', data.error || data.message);
+            }
+        } catch (error) {
+            showAlert('danger', 'Failed to create project: ' + error.message);
+        }
+    }
+
+    async function loadFromProject() {
+        const projectId = document.getElementById('projectSelect').value;
+        if (!projectId) {
+            showAlert('warning', 'Please select a project');
+            return;
+        }
+
+        try {
+            const response = await fetch(SEQUENCE_URLS.loadCollectionBase + projectId);
+            const data = await response.json();
+
+            if (data.success) {
+                sequences = data.sequences.map(seq => ({
+                    id: seq.id,
+                    description: seq.description || '',
+                    sequence: seq.sequence,
+                    length: seq.length || seq.sequence.length,
+                    type: seq.type || 'unknown',
+                    annotation: seq.annotation || ''
+                }));
+                currentProjectId = projectId;
+                updateSequenceTable();
+                showAlert('success', `Loaded ${sequences.length} sequences from project`);
+            } else {
+                showAlert('danger', data.error || data.message);
+            }
+        } catch (error) {
+            showAlert('danger', 'Failed to load project: ' + error.message);
+        }
+    }
+
+    async function saveToProject() {
+        const name = document.getElementById('saveProjectName').value.trim();
+        if (!name) {
+            showAlert('warning', 'Please enter a collection name');
+            return;
+        }
+
+        if (sequences.length === 0) {
+            showAlert('warning', 'No sequences to save');
+            return;
+        }
+
+        try {
+            const response = await fetch(SEQUENCE_URLS.saveCollection, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    name,
+                    sequences: sequences,
+                    description: `Saved collection with ${sequences.length} sequences`
+                })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                showAlert('success', `Saved ${sequences.length} sequences to "${name}"`);
+                document.getElementById('saveProjectName').value = '';
+                // Update project list
+                const select = document.getElementById('projectSelect');
+                const option = document.createElement('option');
+                option.value = data.project.id;
+                option.textContent = `${name} (${sequences.length} seqs)`;
+                select.appendChild(option);
+            } else {
+                showAlert('danger', data.error || data.message);
+            }
+        } catch (error) {
+            showAlert('danger', 'Failed to save collection: ' + error.message);
+        }
     }
 
     async function translateSequence() {

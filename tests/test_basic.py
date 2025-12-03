@@ -238,3 +238,43 @@ class TestSequenceAPI:
         assert data['success'] is True
         assert 'stats' in data
         assert data['stats']['length'] == 8
+
+
+class TestProjectManager:
+    """Tests for project management functionality."""
+
+    def test_list_projects(self, client):
+        """Test listing projects."""
+        response = client.get('/sequence/projects')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is True
+        assert 'projects' in data
+
+    def test_create_project_missing_name(self, client):
+        """Test creating project without name."""
+        response = client.post('/sequence/projects',
+                              json={},
+                              content_type='application/json')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is False
+        assert 'required' in data['error'].lower()
+
+    def test_save_collection_missing_name(self, client):
+        """Test saving collection without name."""
+        response = client.post('/sequence/collections/save',
+                              json={'sequences': [{'id': 'seq1', 'sequence': 'ATGC'}]},
+                              content_type='application/json')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is False
+
+    def test_save_collection_missing_sequences(self, client):
+        """Test saving collection without sequences."""
+        response = client.post('/sequence/collections/save',
+                              json={'name': 'test_collection'},
+                              content_type='application/json')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is False
