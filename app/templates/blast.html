@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+
+{% block title %}BLAST Search - BioLab Workbench{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h2 class="mb-4">
+        <i class="bi bi-search text-success"></i>
+        BLAST Search
+    </h2>
+
+    <div class="row">
+        <!-- Search Form -->
+        <div class="col-lg-5 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-search"></i> Run BLAST</h5>
+                </div>
+                <div class="card-body">
+                    <form id="blastForm">
+                        <div class="mb-3">
+                            <label class="form-label">Query Input:</label>
+                            <div class="btn-group w-100 mb-2" role="group">
+                                <input type="radio" class="btn-check" name="queryType" id="queryText" value="text" checked>
+                                <label class="btn btn-outline-success" for="queryText">Paste Sequence</label>
+                                <input type="radio" class="btn-check" name="queryType" id="queryFile" value="file">
+                                <label class="btn btn-outline-success" for="queryFile">Upload File</label>
+                            </div>
+                        </div>
+
+                        <div id="textQueryDiv" class="mb-3">
+                            <textarea class="form-control font-monospace" id="queryTextArea" rows="6"
+                                placeholder=">query1&#10;ATGCATGCATGC..."></textarea>
+                        </div>
+
+                        <div id="fileQueryDiv" class="mb-3 d-none">
+                            <input type="file" class="form-control" id="queryFileInput" accept=".fasta,.fa,.fna,.faa,.txt">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="database" class="form-label">Database:</label>
+                            <select class="form-select" id="database" required>
+                                <option value="">Select a database</option>
+                                {% for db in databases %}
+                                <option value="{{ db.path }}" data-type="{{ db.type }}">{{ db.name }} ({{ db.type }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="program" class="form-label">Program:</label>
+                            <select class="form-select" id="program">
+                                <option value="">Auto-detect</option>
+                                <option value="blastn">blastn (DNA vs DNA)</option>
+                                <option value="blastp">blastp (Protein vs Protein)</option>
+                                <option value="blastx">blastx (DNA vs Protein)</option>
+                                <option value="tblastn">tblastn (Protein vs DNA)</option>
+                            </select>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-6 mb-3">
+                                <label for="evalue" class="form-label">E-value:</label>
+                                <input type="text" class="form-control" id="evalue" value="1e-5">
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label for="maxHits" class="form-label">Max Hits:</label>
+                                <input type="number" class="form-control" id="maxHits" value="500" min="1">
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="outputFormat" class="form-label">Output Format:</label>
+                            <select class="form-select" id="outputFormat">
+                                <option value="tsv">Tabular (TSV)</option>
+                                <option value="detailed">Detailed Table</option>
+                                <option value="txt">Pairwise Alignment</option>
+                            </select>
+                        </div>
+
+                        <button type="submit" class="btn btn-success w-100" id="runBlastBtn">
+                            <i class="bi bi-play-fill"></i> Run BLAST
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Create Database -->
+            <div class="card shadow-sm mt-4">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0"><i class="bi bi-database-add"></i> Create Database</h5>
+                </div>
+                <div class="card-body">
+                    <form id="createDbForm">
+                        <div class="mb-3">
+                            <label for="dbFile" class="form-label">FASTA File:</label>
+                            <input type="file" class="form-control" id="dbFile" accept=".fasta,.fa,.fna,.faa">
+                        </div>
+                        <div class="mb-3">
+                            <label for="dbName" class="form-label">Database Name:</label>
+                            <input type="text" class="form-control" id="dbName" placeholder="my_database">
+                        </div>
+                        <div class="mb-3">
+                            <label for="dbType" class="form-label">Type:</label>
+                            <select class="form-select" id="dbType">
+                                <option value="auto">Auto-detect</option>
+                                <option value="nucl">Nucleotide</option>
+                                <option value="prot">Protein</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-secondary w-100">
+                            <i class="bi bi-plus-circle"></i> Create Database
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results -->
+        <div class="col-lg-7 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-table"></i> Results</h5>
+                </div>
+                <div class="card-body">
+                    <div id="loadingSpinner" class="text-center d-none">
+                        <div class="spinner-border text-success" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Running BLAST search...</p>
+                    </div>
+
+                    <div id="resultsArea">
+                        <p class="text-muted text-center">Results will appear here after running BLAST</p>
+                    </div>
+
+                    <div id="resultsTable" class="d-none">
+                        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                            <table class="table table-sm table-hover">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th><input type="checkbox" id="selectAllHits"></th>
+                                        <th>Query</th>
+                                        <th>Subject</th>
+                                        <th>Identity</th>
+                                        <th>E-value</th>
+                                        <th>Bit Score</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="hitsTableBody">
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="mt-3">
+                            <button class="btn btn-outline-primary" onclick="extractSelected()">
+                                <i class="bi bi-download"></i> Extract Selected Sequences
+                            </button>
+                            <a id="downloadResultBtn" class="btn btn-outline-secondary d-none" download>
+                                <i class="bi bi-file-earmark-arrow-down"></i> Download Results
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentResultDir = null;
+    let currentDatabase = null;
+    let blastHits = [];
+
+    document.querySelectorAll('input[name="queryType"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            document.getElementById('textQueryDiv').classList.toggle('d-none', this.value !== 'text');
+            document.getElementById('fileQueryDiv').classList.toggle('d-none', this.value !== 'file');
+        });
+    });
+
+    document.getElementById('blastForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const formData = new FormData();
+
+        const queryType = document.querySelector('input[name="queryType"]:checked').value;
+        if (queryType === 'text') {
+            formData.append('query_text', document.getElementById('queryTextArea').value);
+        } else {
+            const file = document.getElementById('queryFileInput').files[0];
+            if (file) formData.append('file', file);
+        }
+
+        formData.append('database', document.getElementById('database').value);
+        formData.append('program', document.getElementById('program').value);
+        formData.append('evalue', document.getElementById('evalue').value);
+        formData.append('max_hits', document.getElementById('maxHits').value);
+        formData.append('output_format', document.getElementById('outputFormat').value);
+
+        currentDatabase = document.getElementById('database').value;
+
+        document.getElementById('loadingSpinner').classList.remove('d-none');
+        document.getElementById('resultsArea').classList.add('d-none');
+        document.getElementById('resultsTable').classList.add('d-none');
+
+        try {
+            const response = await fetch('/blast/search', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            document.getElementById('loadingSpinner').classList.add('d-none');
+
+            if (data.success) {
+                currentResultDir = data.result_dir;
+                blastHits = data.hits;
+                displayHits(data.hits, data.total_hits);
+
+                if (data.output_files && data.output_files.main) {
+                    const btn = document.getElementById('downloadResultBtn');
+                    btn.href = '/blast/download/' + data.output_files.main;
+                    btn.classList.remove('d-none');
+                }
+
+                showAlert('success', `BLAST completed. ${data.total_hits} hits found.`);
+            } else {
+                document.getElementById('resultsArea').classList.remove('d-none');
+                document.getElementById('resultsArea').innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            }
+        } catch (error) {
+            document.getElementById('loadingSpinner').classList.add('d-none');
+            showAlert('danger', 'BLAST search failed: ' + error.message);
+        }
+    });
+
+    function displayHits(hits, total) {
+        const tbody = document.getElementById('hitsTableBody');
+
+        if (hits.length === 0) {
+            document.getElementById('resultsArea').classList.remove('d-none');
+            document.getElementById('resultsArea').innerHTML = '<p class="text-muted">No hits found</p>';
+            return;
+        }
+
+        document.getElementById('resultsTable').classList.remove('d-none');
+
+        tbody.innerHTML = hits.map((hit, idx) => `
+            <tr>
+                <td><input type="checkbox" class="hit-checkbox" data-index="${idx}" data-id="${hit.sseqid}"></td>
+                <td>${hit.qseqid}</td>
+                <td title="${hit.sseqid}">${hit.sseqid.substring(0, 30)}...</td>
+                <td>${parseFloat(hit.pident).toFixed(1)}%</td>
+                <td>${hit.evalue}</td>
+                <td>${parseFloat(hit.bitscore).toFixed(1)}</td>
+            </tr>
+        `).join('');
+
+        if (total > hits.length) {
+            tbody.innerHTML += `<tr><td colspan="6" class="text-center text-muted">Showing ${hits.length} of ${total} hits</td></tr>`;
+        }
+    }
+
+    document.getElementById('createDbForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const formData = new FormData();
+        formData.append('file', document.getElementById('dbFile').files[0]);
+        formData.append('db_name', document.getElementById('dbName').value);
+        formData.append('db_type', document.getElementById('dbType').value);
+
+        try {
+            const response = await fetch('/blast/create-database', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                showAlert('success', 'Database created successfully');
+                location.reload();
+            } else {
+                showAlert('danger', data.error);
+            }
+        } catch (error) {
+            showAlert('danger', 'Database creation failed: ' + error.message);
+        }
+    });
+
+    async function extractSelected() {
+        const checkboxes = document.querySelectorAll('.hit-checkbox:checked');
+        const hitIds = Array.from(checkboxes).map(cb => cb.dataset.id);
+
+        if (hitIds.length === 0) {
+            showAlert('warning', 'Please select at least one hit');
+            return;
+        }
+
+        try {
+            const response = await fetch('/blast/extract', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    database: currentDatabase,
+                    hit_ids: hitIds,
+                    result_dir: currentResultDir
+                })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                showAlert('success', data.message);
+                window.open('/blast/download/' + data.output_file, '_blank');
+            } else {
+                showAlert('danger', data.error);
+            }
+        } catch (error) {
+            showAlert('danger', 'Extraction failed: ' + error.message);
+        }
+    }
+
+    document.getElementById('selectAllHits').addEventListener('change', function() {
+        document.querySelectorAll('.hit-checkbox').forEach(cb => cb.checked = this.checked);
+    });
+</script>
+{% endblock %}

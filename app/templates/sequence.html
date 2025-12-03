@@ -1,0 +1,439 @@
+{% extends "base.html" %}
+
+{% block title %}Sequence Management - BioLab Workbench{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h2 class="mb-4">
+        <i class="bi bi-file-earmark-text text-primary"></i>
+        Sequence Management
+    </h2>
+
+    <div class="row">
+        <!-- Import Section -->
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-upload"></i> Import Sequences</h5>
+                </div>
+                <div class="card-body">
+                    <form id="importForm">
+                        <div class="mb-3">
+                            <label class="form-label">Import Source:</label>
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="source" id="sourceText" value="text" checked>
+                                <label class="btn btn-outline-primary" for="sourceText">
+                                    <i class="bi bi-textarea"></i> Paste Text
+                                </label>
+                                <input type="radio" class="btn-check" name="source" id="sourceFile" value="file">
+                                <label class="btn btn-outline-primary" for="sourceFile">
+                                    <i class="bi bi-file-earmark-arrow-up"></i> Upload File
+                                </label>
+                            </div>
+                        </div>
+
+                        <div id="textInputDiv" class="mb-3">
+                            <label for="sequenceText" class="form-label">FASTA Sequences:</label>
+                            <textarea class="form-control font-monospace" id="sequenceText" rows="8"
+                                placeholder=">seq1&#10;ATGCATGCATGC&#10;>seq2&#10;MKVLWAALLVTFLAGCQA"></textarea>
+                        </div>
+
+                        <div id="fileInputDiv" class="mb-3 d-none">
+                            <label for="sequenceFile" class="form-label">Upload FASTA File:</label>
+                            <input type="file" class="form-control" id="sequenceFile" accept=".fasta,.fa,.fna,.faa,.txt">
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-download"></i> Import Sequences
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tools Section -->
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-tools"></i> Sequence Tools</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-primary" onclick="translateSequence()">
+                            <i class="bi bi-translate"></i> Translate DNA to Protein
+                        </button>
+                        <button class="btn btn-outline-primary" onclick="reverseComplement()">
+                            <i class="bi bi-arrow-left-right"></i> Reverse Complement
+                        </button>
+                        <button class="btn btn-outline-primary" onclick="findORFs()">
+                            <i class="bi bi-search"></i> Find ORFs
+                        </button>
+                        <button class="btn btn-outline-primary" onclick="calculateStats()">
+                            <i class="bi bi-graph-up"></i> Calculate Statistics
+                        </button>
+                        <button class="btn btn-outline-primary" onclick="exportSequences()">
+                            <i class="bi bi-file-earmark-arrow-down"></i> Export FASTA
+                        </button>
+                    </div>
+
+                    <hr>
+
+                    <div class="mb-3">
+                        <label for="translationFrame" class="form-label">Translation Frame:</label>
+                        <select class="form-select" id="translationFrame">
+                            <option value="1">Frame +1</option>
+                            <option value="2">Frame +2</option>
+                            <option value="3">Frame +3</option>
+                            <option value="-1">Frame -1</option>
+                            <option value="-2">Frame -2</option>
+                            <option value="-3">Frame -3</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="orfMinLength" class="form-label">Min ORF Length (nt):</label>
+                        <input type="number" class="form-control" id="orfMinLength" value="100" min="30">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sequence List -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">
+                <i class="bi bi-list-ul"></i> Loaded Sequences
+                <span class="badge bg-primary" id="sequenceCount">0</span>
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="sequenceTable">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="selectAll"></th>
+                            <th>ID</th>
+                            <th>Type</th>
+                            <th>Length</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sequenceList">
+                        <tr>
+                            <td colspan="5" class="text-center text-muted">No sequences loaded</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sequence Viewer -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0"><i class="bi bi-eye"></i> Sequence Viewer</h5>
+        </div>
+        <div class="card-body">
+            <div id="sequenceViewer" class="sequence-viewer font-monospace p-3 bg-light border rounded" style="max-height: 300px; overflow-y: auto;">
+                <span class="text-muted">Select a sequence to view</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Section -->
+    <div class="card shadow-sm d-none" id="resultsCard">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0"><i class="bi bi-clipboard-data"></i> Results</h5>
+        </div>
+        <div class="card-body">
+            <div id="resultsContent"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let sequences = [];
+    let selectedSequence = null;
+
+    document.querySelectorAll('input[name="source"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            document.getElementById('textInputDiv').classList.toggle('d-none', this.value !== 'text');
+            document.getElementById('fileInputDiv').classList.toggle('d-none', this.value !== 'file');
+        });
+    });
+
+    document.getElementById('importForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const source = document.querySelector('input[name="source"]:checked').value;
+        const formData = new FormData();
+        formData.append('source', source);
+
+        if (source === 'text') {
+            formData.append('text', document.getElementById('sequenceText').value);
+        } else {
+            const file = document.getElementById('sequenceFile').files[0];
+            if (file) {
+                formData.append('file', file);
+            }
+        }
+
+        try {
+            const response = await fetch('/sequence/import', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                sequences = data.sequences;
+                updateSequenceTable();
+                showAlert('success', `Imported ${sequences.length} sequences`);
+            } else {
+                showAlert('danger', data.error);
+            }
+        } catch (error) {
+            showAlert('danger', 'Import failed: ' + error.message);
+        }
+    });
+
+    function updateSequenceTable() {
+        const tbody = document.getElementById('sequenceList');
+        document.getElementById('sequenceCount').textContent = sequences.length;
+
+        if (sequences.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No sequences loaded</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = sequences.map((seq, idx) => `
+            <tr>
+                <td><input type="checkbox" class="seq-checkbox" data-index="${idx}"></td>
+                <td>${seq.id}</td>
+                <td><span class="badge bg-${seq.type === 'nucleotide' ? 'success' : 'info'}">${seq.type}</span></td>
+                <td>${seq.length}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="viewSequence(${idx})">
+                        <i class="bi bi-eye"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteSequence(${idx})">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function viewSequence(idx) {
+        selectedSequence = idx;
+        const seq = sequences[idx];
+        const viewer = document.getElementById('sequenceViewer');
+
+        let html = `<strong>&gt;${seq.id}</strong>\n`;
+        const seqStr = seq.sequence;
+        for (let i = 0; i < seqStr.length; i += 60) {
+            html += seqStr.substring(i, i + 60) + '\n';
+        }
+        viewer.innerHTML = `<pre>${html}</pre>`;
+    }
+
+    function deleteSequence(idx) {
+        sequences.splice(idx, 1);
+        updateSequenceTable();
+        document.getElementById('sequenceViewer').innerHTML = '<span class="text-muted">Select a sequence to view</span>';
+    }
+
+    function getSelectedSequences() {
+        const checkboxes = document.querySelectorAll('.seq-checkbox:checked');
+        return Array.from(checkboxes).map(cb => sequences[parseInt(cb.dataset.index)]);
+    }
+
+    async function translateSequence() {
+        const selected = getSelectedSequences();
+        if (selected.length === 0) {
+            showAlert('warning', 'Please select at least one sequence');
+            return;
+        }
+
+        const frame = parseInt(document.getElementById('translationFrame').value);
+        const results = [];
+
+        for (const seq of selected) {
+            try {
+                const response = await fetch('/sequence/translate', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({sequence: seq.sequence, frame: frame})
+                });
+                const data = await response.json();
+                if (data.success) {
+                    results.push({id: seq.id, protein: data.protein, length: data.length});
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        showResults('Translation Results', results.map(r =>
+            `<div class="mb-2"><strong>${r.id}</strong> (${r.length} aa)<br>
+            <code class="text-break">${r.protein}</code></div>`
+        ).join(''));
+    }
+
+    async function reverseComplement() {
+        const selected = getSelectedSequences();
+        if (selected.length === 0) {
+            showAlert('warning', 'Please select at least one sequence');
+            return;
+        }
+
+        const results = [];
+        for (const seq of selected) {
+            try {
+                const response = await fetch('/sequence/reverse-complement', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({sequence: seq.sequence})
+                });
+                const data = await response.json();
+                if (data.success) {
+                    results.push({id: seq.id, rc: data.reverse_complement});
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        showResults('Reverse Complement Results', results.map(r =>
+            `<div class="mb-2"><strong>${r.id}</strong><br>
+            <code class="text-break">${r.rc}</code></div>`
+        ).join(''));
+    }
+
+    async function findORFs() {
+        const selected = getSelectedSequences();
+        if (selected.length === 0) {
+            showAlert('warning', 'Please select at least one sequence');
+            return;
+        }
+
+        const minLength = parseInt(document.getElementById('orfMinLength').value);
+        const results = [];
+
+        for (const seq of selected) {
+            try {
+                const response = await fetch('/sequence/find-orfs', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({sequence: seq.sequence, min_length: minLength})
+                });
+                const data = await response.json();
+                if (data.success) {
+                    results.push({id: seq.id, orfs: data.orfs});
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        let html = '';
+        for (const r of results) {
+            html += `<div class="mb-3"><strong>${r.id}</strong>: ${r.orfs.length} ORFs found<br>`;
+            html += '<table class="table table-sm"><thead><tr><th>Frame</th><th>Start</th><th>End</th><th>Length (aa)</th></tr></thead><tbody>';
+            for (const orf of r.orfs) {
+                html += `<tr><td>${orf.frame}</td><td>${orf.start}</td><td>${orf.end}</td><td>${orf.protein_length}</td></tr>`;
+            }
+            html += '</tbody></table></div>';
+        }
+        showResults('ORF Finder Results', html);
+    }
+
+    async function calculateStats() {
+        const selected = getSelectedSequences();
+        if (selected.length === 0) {
+            showAlert('warning', 'Please select at least one sequence');
+            return;
+        }
+
+        const results = [];
+        for (const seq of selected) {
+            try {
+                const response = await fetch('/sequence/stats', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({sequence: seq.sequence})
+                });
+                const data = await response.json();
+                if (data.success) {
+                    results.push({id: seq.id, stats: data.stats});
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        let html = '';
+        for (const r of results) {
+            html += `<div class="mb-3"><strong>${r.id}</strong><br>`;
+            html += '<ul>';
+            html += `<li>Type: ${r.stats.type}</li>`;
+            html += `<li>Length: ${r.stats.length}</li>`;
+            if (r.stats.gc_content !== undefined) {
+                html += `<li>GC Content: ${r.stats.gc_content.toFixed(2)}%</li>`;
+                html += `<li>A: ${r.stats.a_count}, T: ${r.stats.t_count}, G: ${r.stats.g_count}, C: ${r.stats.c_count}</li>`;
+            }
+            if (r.stats.molecular_weight !== undefined) {
+                html += `<li>Molecular Weight: ${r.stats.molecular_weight?.toFixed(2) || 'N/A'}</li>`;
+            }
+            html += '</ul></div>';
+        }
+        showResults('Sequence Statistics', html);
+    }
+
+    async function exportSequences() {
+        let toExport = getSelectedSequences();
+        if (toExport.length === 0) {
+            toExport = sequences;
+        }
+
+        if (toExport.length === 0) {
+            showAlert('warning', 'No sequences to export');
+            return;
+        }
+
+        try {
+            const response = await fetch('/sequence/export', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({sequences: toExport})
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                const blob = new Blob([data.fasta], {type: 'text/plain'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'sequences.fasta';
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+        } catch (error) {
+            showAlert('danger', 'Export failed: ' + error.message);
+        }
+    }
+
+    function showResults(title, content) {
+        const card = document.getElementById('resultsCard');
+        card.classList.remove('d-none');
+        document.getElementById('resultsContent').innerHTML = `<h6>${title}</h6>${content}`;
+    }
+
+    document.getElementById('selectAll').addEventListener('change', function() {
+        document.querySelectorAll('.seq-checkbox').forEach(cb => cb.checked = this.checked);
+    });
+</script>
+{% endblock %}

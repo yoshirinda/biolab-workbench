@@ -1,0 +1,4 @@
+Flask>=2.3.0
+biopython>=1.81
+requests>=2.31.0
+Werkzeug>=2.3.0

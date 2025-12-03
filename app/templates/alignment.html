@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+
+{% block title %}Sequence Alignment - BioLab Workbench{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h2 class="mb-4">
+        <i class="bi bi-text-left text-warning"></i>
+        Sequence Alignment
+    </h2>
+
+    <div class="row">
+        <!-- Alignment Form -->
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0"><i class="bi bi-gear"></i> Alignment Settings</h5>
+                </div>
+                <div class="card-body">
+                    <form id="alignmentForm">
+                        <div class="mb-3">
+                            <label class="form-label">Input Method:</label>
+                            <div class="btn-group w-100 mb-2" role="group">
+                                <input type="radio" class="btn-check" name="inputType" id="inputText" value="text" checked>
+                                <label class="btn btn-outline-warning" for="inputText">Paste</label>
+                                <input type="radio" class="btn-check" name="inputType" id="inputFile" value="file">
+                                <label class="btn btn-outline-warning" for="inputFile">Upload</label>
+                            </div>
+                        </div>
+
+                        <div id="textInputDiv" class="mb-3">
+                            <label for="sequenceText" class="form-label">FASTA Sequences:</label>
+                            <textarea class="form-control font-monospace" id="sequenceText" rows="10"
+                                placeholder=">seq1&#10;MKVLWAALLVTFLAGCQA...&#10;>seq2&#10;MKVLWAALLVTFLAGCQA..."></textarea>
+                        </div>
+
+                        <div id="fileInputDiv" class="mb-3 d-none">
+                            <label for="sequenceFile" class="form-label">Upload FASTA:</label>
+                            <input type="file" class="form-control" id="sequenceFile" accept=".fasta,.fa,.fna,.faa">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="alignTool" class="form-label">Alignment Tool:</label>
+                            <select class="form-select" id="alignTool">
+                                <option value="mafft" {% if available_tools.get('mafft') %}selected{% endif %}>
+                                    MAFFT {% if not available_tools.get('mafft') %}(not available){% endif %}
+                                </option>
+                                <option value="clustalw" {% if not available_tools.get('mafft') and available_tools.get('clustalw') %}selected{% endif %}>
+                                    ClustalW {% if not available_tools.get('clustalw') %}(not available){% endif %}
+                                </option>
+                                <option value="muscle" {% if not available_tools.get('mafft') and not available_tools.get('clustalw') and available_tools.get('muscle') %}selected{% endif %}>
+                                    MUSCLE {% if not available_tools.get('muscle') %}(not available){% endif %}
+                                </option>
+                            </select>
+                        </div>
+
+                        <div id="mafftOptions">
+                            <div class="mb-3">
+                                <label for="maxiterate" class="form-label">Max Iterations:</label>
+                                <input type="number" class="form-control" id="maxiterate" value="1000" min="1">
+                            </div>
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="autoMode">
+                                <label class="form-check-label" for="autoMode">Auto mode (--auto)</label>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-warning w-100" id="runAlignBtn">
+                            <i class="bi bi-play-fill"></i> Run Alignment
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results -->
+        <div class="col-lg-8 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-eye"></i> Alignment Result</h5>
+                    <div>
+                        <span id="alignInfo" class="text-muted me-3"></span>
+                        <a id="downloadAlignBtn" class="btn btn-sm btn-outline-primary d-none" download>
+                            <i class="bi bi-download"></i> Download
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="loadingSpinner" class="text-center d-none">
+                        <div class="spinner-border text-warning" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Running alignment...</p>
+                    </div>
+
+                    <div id="alignmentResult">
+                        <p class="text-muted text-center">Alignment result will appear here</p>
+                    </div>
+
+                    <div id="alignmentViewer" class="d-none" style="overflow-x: auto; max-height: 600px;">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Conservation Legend -->
+            <div class="card shadow-sm mt-4">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0">Conservation Legend</h6>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex gap-3">
+                        <span><span class="badge" style="background-color:#ff0000">&nbsp;&nbsp;</span> 90-100% conserved</span>
+                        <span><span class="badge" style="background-color:#ff6600">&nbsp;&nbsp;</span> 70-90% conserved</span>
+                        <span><span class="badge" style="background-color:#ffcc00">&nbsp;&nbsp;</span> 50-70% conserved</span>
+                        <span><span class="badge" style="background-color:#ffffff; border:1px solid #ccc">&nbsp;&nbsp;</span> <50% conserved</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.querySelectorAll('input[name="inputType"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            document.getElementById('textInputDiv').classList.toggle('d-none', this.value !== 'text');
+            document.getElementById('fileInputDiv').classList.toggle('d-none', this.value !== 'file');
+        });
+    });
+
+    document.getElementById('alignTool').addEventListener('change', function() {
+        document.getElementById('mafftOptions').style.display = this.value === 'mafft' ? 'block' : 'none';
+    });
+
+    document.getElementById('alignmentForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const formData = new FormData();
+
+        const inputType = document.querySelector('input[name="inputType"]:checked').value;
+        if (inputType === 'text') {
+            formData.append('sequences', document.getElementById('sequenceText').value);
+        } else {
+            const file = document.getElementById('sequenceFile').files[0];
+            if (file) formData.append('file', file);
+        }
+
+        formData.append('tool', document.getElementById('alignTool').value);
+        formData.append('maxiterate', document.getElementById('maxiterate').value);
+        formData.append('auto', document.getElementById('autoMode').checked);
+
+        document.getElementById('loadingSpinner').classList.remove('d-none');
+        document.getElementById('alignmentResult').classList.add('d-none');
+        document.getElementById('alignmentViewer').classList.add('d-none');
+        document.getElementById('runAlignBtn').disabled = true;
+
+        try {
+            const response = await fetch('/alignment/run', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            document.getElementById('loadingSpinner').classList.add('d-none');
+            document.getElementById('runAlignBtn').disabled = false;
+
+            if (data.success) {
+                document.getElementById('alignmentViewer').classList.remove('d-none');
+                document.getElementById('alignmentViewer').innerHTML = data.alignment_html;
+                document.getElementById('alignInfo').textContent = `${data.sequence_count} sequences, ${data.alignment_length} positions`;
+
+                if (data.output_file) {
+                    const btn = document.getElementById('downloadAlignBtn');
+                    btn.href = '/alignment/download/' + data.output_file;
+                    btn.classList.remove('d-none');
+                }
+
+                showAlert('success', 'Alignment completed');
+            } else {
+                document.getElementById('alignmentResult').classList.remove('d-none');
+                document.getElementById('alignmentResult').innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            }
+        } catch (error) {
+            document.getElementById('loadingSpinner').classList.add('d-none');
+            document.getElementById('runAlignBtn').disabled = false;
+            showAlert('danger', 'Alignment failed: ' + error.message);
+        }
+    });
+</script>
+{% endblock %}
