@@ -4,6 +4,8 @@ BLAST command wrapper for BioLab Workbench.
 import os
 import subprocess
 import json
+import shlex
+import re
 from datetime import datetime
 import config
 from app.utils.logger import get_tools_logger
@@ -13,12 +15,26 @@ from app.core.sequence_utils import detect_sequence_type
 logger = get_tools_logger()
 
 
+def sanitize_path(path):
+    """Sanitize file path to prevent command injection."""
+    if not path:
+        return path
+    # Remove any shell metacharacters
+    # Only allow alphanumeric, underscore, hyphen, dot, forward slash
+    if not re.match(r'^[\w\-./]+$', path):
+        raise ValueError(f"Invalid characters in path: {path}")
+    # Prevent directory traversal
+    if '..' in path:
+        raise ValueError(f"Directory traversal not allowed: {path}")
+    return path
+
+
 def run_conda_command(command, timeout=3600):
     """
     Run a command in the conda environment.
     Returns (success, stdout, stderr).
     """
-    full_command = f"conda run -n {config.CONDA_ENV} {command}"
+    full_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} {command}"
     logger.info(f"Running command: {full_command}")
 
     try:
@@ -83,6 +99,12 @@ def create_blast_database(input_file, db_name, db_type='auto', title=None):
     db_type: 'nucl', 'prot', or 'auto' (detect from sequence)
     Returns (success, message, db_path).
     """
+    try:
+        input_file = sanitize_path(input_file)
+        db_name = sanitize_path(db_name)
+    except ValueError as e:
+        return False, str(e), None
+
     if not os.path.exists(input_file):
         return False, f"Input file not found: {input_file}", None
 
@@ -100,10 +122,13 @@ def create_blast_database(input_file, db_name, db_type='auto', title=None):
     if title is None:
         title = db_name
 
+    # Sanitize title
+    title = re.sub(r'[^\w\s\-]', '', title)
+
     db_dir = os.path.dirname(input_file)
     db_path = os.path.join(db_dir, db_name)
 
-    command = f'makeblastdb -in "{input_file}" -dbtype {db_type} -out "{db_path}" -title "{title}"'
+    command = f'makeblastdb -in {shlex.quote(input_file)} -dbtype {shlex.quote(db_type)} -out {shlex.quote(db_path)} -title {shlex.quote(title)}'
 
     success, stdout, stderr = run_conda_command(command)
 
@@ -139,6 +164,12 @@ def run_blast(query_file, database, output_format='tsv', evalue=1e-5,
     output_format: 'tsv', 'txt', 'html', 'detailed'
     Returns (success, result_dir, output_files).
     """
+    try:
+        query_file = sanitize_path(query_file)
+        database = sanitize_path(database)
+    except ValueError as e:
+        return False, str(e), None
+
     if not os.path.exists(query_file):
         return False, f"Query file not found: {query_file}", None
 
@@ -163,6 +194,11 @@ def run_blast(query_file, database, output_format='tsv', evalue=1e-5,
     if program is None:
         program = select_blast_program(query_type, db_type)
 
+    # Validate program
+    valid_programs = ['blastn', 'blastp', 'blastx', 'tblastn', 'tblastx']
+    if program not in valid_programs:
+        return False, f"Invalid BLAST program: {program}", None
+
     # Create result directory
     result_dir = create_result_dir('blast', 'search')
 
@@ -181,9 +217,17 @@ def run_blast(query_file, database, output_format='tsv', evalue=1e-5,
     if num_threads is None:
         num_threads = config.DEFAULT_THREADS
 
+    # Validate numeric parameters
+    try:
+        evalue = float(evalue)
+        num_threads = int(num_threads)
+        max_hits = int(max_hits)
+    except (ValueError, TypeError):
+        return False, "Invalid numeric parameter", None
+
     command = (
-        f'{program} -query "{query_file}" -db "{database}" '
-        f'-out "{output_file}" -outfmt "{outfmt}" '
+        f'{program} -query {shlex.quote(query_file)} -db {shlex.quote(database)} '
+        f'-out {shlex.quote(output_file)} -outfmt {shlex.quote(outfmt)} '
         f'-evalue {evalue} -num_threads {num_threads} -max_target_seqs {max_hits}'
     )
 
@@ -219,12 +263,29 @@ def extract_sequences(database, hit_ids, output_file):
     if not hit_ids:
         return False, "No hit IDs provided"
 
+    try:
+        database = sanitize_path(database)
+        output_file = sanitize_path(output_file)
+    except ValueError as e:
+        return False, str(e)
+
+    # Sanitize hit IDs - only allow alphanumeric, underscore, hyphen, dot, pipe
+    sanitized_ids = []
+    for hit_id in hit_ids:
+        if re.match(r'^[\w\-.|]+$', hit_id):
+            sanitized_ids.append(hit_id)
+        else:
+            logger.warning(f"Skipping invalid hit ID: {hit_id}")
+
+    if not sanitized_ids:
+        return False, "No valid hit IDs after sanitization"
+
     # Write IDs to temp file
     id_file = output_file + '.ids'
     with open(id_file, 'w') as f:
-        f.write('\n'.join(hit_ids))
+        f.write('\n'.join(sanitized_ids))
 
-    command = f'blastdbcmd -db "{database}" -entry_batch "{id_file}" -out "{output_file}"'
+    command = f'blastdbcmd -db {shlex.quote(database)} -entry_batch {shlex.quote(id_file)} -out {shlex.quote(output_file)}'
 
     success, stdout, stderr = run_conda_command(command)
 
@@ -233,8 +294,8 @@ def extract_sequences(database, hit_ids, output_file):
         os.remove(id_file)
 
     if success:
-        logger.info(f"Extracted {len(hit_ids)} sequences to {output_file}")
-        return True, f"Extracted {len(hit_ids)} sequences"
+        logger.info(f"Extracted {len(sanitized_ids)} sequences to {output_file}")
+        return True, f"Extracted {len(sanitized_ids)} sequences"
     else:
         logger.error(f"Sequence extraction failed: {stderr}")
         return False, stderr

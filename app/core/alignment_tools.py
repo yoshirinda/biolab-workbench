@@ -3,7 +3,8 @@ Alignment tools wrapper for BioLab Workbench.
 """
 import os
 import subprocess
-import shutil
+import shlex
+import re
 from datetime import datetime
 import config
 from app.utils.logger import get_tools_logger
@@ -12,9 +13,22 @@ from app.utils.file_utils import create_result_dir, save_params
 logger = get_tools_logger()
 
 
+def sanitize_path(path):
+    """Sanitize file path to prevent command injection."""
+    if not path:
+        return path
+    # Only allow alphanumeric, underscore, hyphen, dot, forward slash
+    if not re.match(r'^[\w\-./]+$', path):
+        raise ValueError(f"Invalid characters in path: {path}")
+    # Prevent directory traversal
+    if '..' in path:
+        raise ValueError(f"Directory traversal not allowed: {path}")
+    return path
+
+
 def run_conda_command(command, timeout=3600):
     """Run a command in the conda environment."""
-    full_command = f"conda run -n {config.CONDA_ENV} {command}"
+    full_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} {command}"
     logger.info(f"Running command: {full_command}")
 
     try:
@@ -58,19 +72,29 @@ def run_mafft(input_file, output_file, options=None):
     Run MAFFT alignment.
     Returns (success, message).
     """
+    try:
+        input_file = sanitize_path(input_file)
+        output_file = sanitize_path(output_file)
+    except ValueError as e:
+        return False, str(e)
+
     if options is None:
         options = {}
 
     cmd_opts = []
     if options.get('maxiterate'):
-        cmd_opts.append(f"--maxiterate {options['maxiterate']}")
+        try:
+            maxiterate = int(options['maxiterate'])
+            cmd_opts.append(f"--maxiterate {maxiterate}")
+        except (ValueError, TypeError):
+            pass
     if options.get('auto'):
         cmd_opts.append('--auto')
 
     opts_str = ' '.join(cmd_opts)
-    command = f'mafft {opts_str} "{input_file}" > "{output_file}"'
+    command = f'mafft {opts_str} {shlex.quote(input_file)}'
 
-    full_command = f"conda run -n {config.CONDA_ENV} bash -c '{command}'"
+    full_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} {command} > {shlex.quote(output_file)}"
 
     try:
         result = subprocess.run(full_command, shell=True, capture_output=True, text=True, timeout=3600)
@@ -87,7 +111,13 @@ def run_clustalw(input_file, output_file, options=None):
     Run ClustalW alignment.
     Returns (success, message).
     """
-    command = f'clustalw -INFILE="{input_file}" -OUTFILE="{output_file}" -OUTPUT=FASTA'
+    try:
+        input_file = sanitize_path(input_file)
+        output_file = sanitize_path(output_file)
+    except ValueError as e:
+        return False, str(e)
+
+    command = f'clustalw -INFILE={shlex.quote(input_file)} -OUTFILE={shlex.quote(output_file)} -OUTPUT=FASTA'
 
     success, stdout, stderr = run_conda_command(command)
 
@@ -102,7 +132,13 @@ def run_muscle(input_file, output_file, options=None):
     Run MUSCLE alignment.
     Returns (success, message).
     """
-    command = f'muscle -in "{input_file}" -out "{output_file}"'
+    try:
+        input_file = sanitize_path(input_file)
+        output_file = sanitize_path(output_file)
+    except ValueError as e:
+        return False, str(e)
+
+    command = f'muscle -in {shlex.quote(input_file)} -out {shlex.quote(output_file)}'
 
     success, stdout, stderr = run_conda_command(command)
 

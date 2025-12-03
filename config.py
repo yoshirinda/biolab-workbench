@@ -3,9 +3,10 @@ BioLab Workbench Configuration
 All paths and settings are centralized here.
 """
 import os
+import secrets
 
-# 基础目录
-BASE_DIR = "/mnt/e/Kun/wsl/biolab"
+# 基础目录 - Can be overridden by environment variable
+BASE_DIR = os.environ.get('BIOLAB_BASE_DIR', "/mnt/e/Kun/wsl/biolab")
 
 # 子目录
 DATABASES_DIR = os.path.join(BASE_DIR, "databases")
@@ -18,13 +19,13 @@ RESULTS_DIR = os.path.join(BASE_DIR, "results")
 LOGS_DIR = os.path.join(BASE_DIR, "logs")
 
 # Conda 环境名
-CONDA_ENV = "bio"
+CONDA_ENV = os.environ.get('BIOLAB_CONDA_ENV', "bio")
 
 # 默认参数
-DEFAULT_THREADS = 4
+DEFAULT_THREADS = int(os.environ.get('BIOLAB_THREADS', 4))
 
-# Flask 配置
-SECRET_KEY = "biolab-workbench-secret-key"
+# Flask 配置 - Secret key from environment or generated randomly
+SECRET_KEY = os.environ.get('BIOLAB_SECRET_KEY', secrets.token_hex(32))
 MAX_CONTENT_LENGTH = 100 * 1024 * 1024  # 100MB
 
 # 确保目录存在 (skip in test environments or when path doesn't exist)

@@ -5,6 +5,8 @@ Based on blast-phylo_pipeline_gui.py
 import os
 import subprocess
 import json
+import shlex
+import re
 import statistics
 from datetime import datetime
 import config
@@ -15,9 +17,22 @@ from app.core.sequence_utils import clean_fasta_headers
 logger = get_tools_logger()
 
 
+def sanitize_path(path):
+    """Sanitize file path to prevent command injection."""
+    if not path:
+        return path
+    # Only allow alphanumeric, underscore, hyphen, dot, forward slash
+    if not re.match(r'^[\w\-./]+$', path):
+        raise ValueError(f"Invalid characters in path: {path}")
+    # Prevent directory traversal
+    if '..' in path:
+        raise ValueError(f"Directory traversal not allowed: {path}")
+    return path
+
+
 def run_conda_command(command, timeout=7200):
     """Run a command in the conda environment."""
-    full_command = f"conda run -n {config.CONDA_ENV} {command}"
+    full_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} {command}"
     logger.info(f"Running command: {full_command}")
 
     try:
@@ -71,6 +86,13 @@ def step2_hmmsearch(input_file, hmm_file, output_dir, cut_ga=True):
     """
     Step 2: Run HMMer search (hmmsearch).
     """
+    try:
+        input_file = sanitize_path(input_file)
+        hmm_file = sanitize_path(hmm_file)
+        output_dir = sanitize_path(output_dir)
+    except ValueError as e:
+        return False, None, str(e)
+
     output_file = os.path.join(output_dir, 'step2_hmmsearch.out')
     tblout_file = os.path.join(output_dir, 'step2_hmmsearch.tbl')
     domtblout_file = os.path.join(output_dir, 'step2_hmmsearch.domtbl')
@@ -79,10 +101,10 @@ def step2_hmmsearch(input_file, hmm_file, output_dir, cut_ga=True):
 
     command = (
         f'hmmsearch {cut_ga_opt} '
-        f'--tblout "{tblout_file}" '
-        f'--domtblout "{domtblout_file}" '
-        f'-o "{output_file}" '
-        f'"{hmm_file}" "{input_file}"'
+        f'--tblout {shlex.quote(tblout_file)} '
+        f'--domtblout {shlex.quote(domtblout_file)} '
+        f'-o {shlex.quote(output_file)} '
+        f'{shlex.quote(hmm_file)} {shlex.quote(input_file)}'
     )
 
     success, stdout, stderr = run_conda_command(command)
@@ -189,13 +211,20 @@ def step3_mafft(input_file, output_dir, maxiterate=1000):
     """
     Step 3: Run MAFFT multiple sequence alignment.
     """
+    try:
+        input_file = sanitize_path(input_file)
+        output_dir = sanitize_path(output_dir)
+        maxiterate = int(maxiterate)
+    except (ValueError, TypeError) as e:
+        return False, None, str(e)
+
     output_file = os.path.join(output_dir, 'step3_alignment.fasta')
     log_file = os.path.join(output_dir, 'step3_mafft.log')
 
-    command = f'mafft --maxiterate {maxiterate} "{input_file}" > "{output_file}" 2> "{log_file}"'
+    # Use shlex.quote for safe command construction
+    command = f'mafft --maxiterate {maxiterate} {shlex.quote(input_file)}'
 
-    # Need to use shell directly for redirection
-    full_command = f"conda run -n {config.CONDA_ENV} bash -c '{command}'"
+    full_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} {command} > {shlex.quote(output_file)} 2> {shlex.quote(log_file)}"
 
     try:
         result = subprocess.run(full_command, shell=True, capture_output=True, text=True, timeout=7200)
@@ -216,12 +245,23 @@ def step4_clipkit(input_file, output_dir, mode='kpic-gappy'):
     Step 4: Trim alignment with ClipKIT.
     mode: kpic-gappy, gappy, kpic
     """
+    try:
+        input_file = sanitize_path(input_file)
+        output_dir = sanitize_path(output_dir)
+    except ValueError as e:
+        return False, None, str(e)
+
+    # Validate mode
+    valid_modes = ['kpic-gappy', 'gappy', 'kpic']
+    if mode not in valid_modes:
+        return False, None, f"Invalid mode: {mode}"
+
     output_file = os.path.join(output_dir, 'step4_trimmed.fasta')
     log_file = os.path.join(output_dir, 'step4_clipkit.log')
 
-    command = f'clipkit "{input_file}" -o "{output_file}" -m {mode} -l 2> "{log_file}"'
+    command = f'clipkit {shlex.quote(input_file)} -o {shlex.quote(output_file)} -m {mode} -l'
 
-    full_command = f"conda run -n {config.CONDA_ENV} bash -c '{command}'"
+    full_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} {command} 2> {shlex.quote(log_file)}"
 
     try:
         result = subprocess.run(full_command, shell=True, capture_output=True, text=True, timeout=3600)
@@ -272,6 +312,19 @@ def step5_iqtree(input_file, output_dir, model='MFP', bootstrap=1000, threads=No
     """
     Step 5: Build phylogenetic tree with IQ-Tree.
     """
+    try:
+        input_file = sanitize_path(input_file)
+        output_dir = sanitize_path(output_dir)
+        bootstrap = int(bootstrap)
+        if threads is not None:
+            threads = int(threads)
+    except (ValueError, TypeError) as e:
+        return False, None, str(e)
+
+    # Validate model - only allow alphanumeric and common model chars
+    if not re.match(r'^[A-Za-z0-9+\-*]+$', model):
+        return False, None, f"Invalid model: {model}"
+
     prefix = os.path.join(output_dir, 'step5_tree')
     treefile = prefix + '.treefile'
 
@@ -280,7 +333,7 @@ def step5_iqtree(input_file, output_dir, model='MFP', bootstrap=1000, threads=No
 
     bnni_opt = '-bnni' if bnni else ''
 
-    command = f'iqtree -s "{input_file}" -pre "{prefix}" -m {model} -B {bootstrap} -T {threads} {bnni_opt}'
+    command = f'iqtree -s {shlex.quote(input_file)} -pre {shlex.quote(prefix)} -m {model} -B {bootstrap} -T {threads} {bnni_opt}'
 
     success, stdout, stderr = run_conda_command(command, timeout=14400)
 
