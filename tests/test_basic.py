@@ -530,3 +530,40 @@ class TestDownloadRoutes:
 
         response = client.get('/alignment/download/alignment.html')
         assert response.status_code == 200
+
+
+class TestAlignmentTools:
+    """Tests for alignment tools functionality."""
+
+    def test_export_alignment_html(self, tmpdir):
+        """Test export_alignment_html generates valid HTML."""
+        from app.core.alignment_tools import export_alignment_html
+
+        sequences = [
+            ("seq1", "MKVLWAALLVT"),
+            ("seq2", "MKVLWAALLVT"),
+            ("seq3", "MKVLWAALLIT"),
+        ]
+
+        output_file = str(tmpdir.join("test_alignment.html"))
+        success, message = export_alignment_html(sequences, output_file)
+
+        assert success is True
+        assert os.path.exists(output_file)
+
+        with open(output_file, 'r') as f:
+            content = f.read()
+            assert '<!DOCTYPE html>' in content
+            assert 'Alignment Visualization' in content
+            assert 'seq1' in content
+            assert 'consensus' in content.lower()
+
+    def test_export_alignment_html_empty(self, tmpdir):
+        """Test export_alignment_html handles empty sequences."""
+        from app.core.alignment_tools import export_alignment_html
+
+        output_file = str(tmpdir.join("empty_alignment.html"))
+        success, message = export_alignment_html([], output_file)
+
+        assert success is True
+        assert os.path.exists(output_file)
