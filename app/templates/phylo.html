@@ -41,14 +41,15 @@
                         <hr>
                         <h6>Step 2: HMMer Search (Optional)</h6>
                         <div class="mb-3">
-                            <label for="hmmFile" class="form-label">HMM Profile:</label>
-                            <select class="form-select" id="hmmFile">
-                                <option value="">None</option>
+                            <label for="hmmFiles" class="form-label">HMM Profile Files (可多选):</label>
+                            <select class="form-select" id="hmmFiles" multiple size="5">
                                 {% for hmm in hmm_files %}
                                 <option value="{{ hmm }}">{{ hmm }}</option>
                                 {% endfor %}
                             </select>
+                            <small class="text-muted">按住 Ctrl/Cmd 可多选，不选择则跳过此步骤</small>
                         </div>
+                        <div id="selectedHmmList" class="mb-2"></div>
                         <div class="form-check mb-3">
                             <input class="form-check-input" type="checkbox" id="cutGa" checked>
                             <label class="form-check-label" for="cutGa">Use --cut_ga threshold</label>
@@ -175,15 +176,15 @@
                             </h2>
                             <div id="step2Panel" class="accordion-collapse collapse">
                                 <div class="accordion-body">
-                                    <p class="text-muted">Search sequences using HMM profile.</p>
+                                    <p class="text-muted">Search sequences using HMM profile(s). Multiple HMM files can be selected.</p>
                                     <div class="mb-3">
-                                        <label for="stepHmmFile" class="form-label">HMM Profile:</label>
-                                        <select class="form-select" id="stepHmmFile">
-                                            <option value="">Select HMM file...</option>
+                                        <label for="stepHmmFiles" class="form-label">HMM Profile Files (可多选):</label>
+                                        <select class="form-select" id="stepHmmFiles" multiple size="4">
                                             {% for hmm in hmm_files %}
                                             <option value="{{ hmm }}">{{ hmm }}</option>
                                             {% endfor %}
                                         </select>
+                                        <small class="text-muted">按住 Ctrl/Cmd 可多选</small>
                                     </div>
                                     <div class="form-check mb-3">
                                         <input class="form-check-input" type="checkbox" id="stepCutGa" checked>
@@ -575,12 +576,32 @@
         });
     });
 
+    // Update selected HMM files display
+    function updateSelectedHmmDisplay() {
+        const hmmSelect = document.getElementById('hmmFiles');
+        const selectedHmm = Array.from(hmmSelect.selectedOptions).map(opt => opt.value);
+        const displayDiv = document.getElementById('selectedHmmList');
+        
+        if (selectedHmm.length > 0) {
+            displayDiv.innerHTML = '<small class="text-success"><i class="bi bi-check-circle"></i> 已选择 ' + selectedHmm.length + ' 个HMM文件: ' + selectedHmm.join(', ') + '</small>';
+        } else {
+            displayDiv.innerHTML = '';
+        }
+    }
+    
+    document.getElementById('hmmFiles').addEventListener('change', updateSelectedHmmDisplay);
+
     document.getElementById('pipelineForm').addEventListener('submit', async function(e) {
         e.preventDefault();
 
         const formData = new FormData();
         formData.append('file', document.getElementById('inputFile').files[0]);
-        formData.append('hmm_file', document.getElementById('hmmFile').value);
+        
+        // Get multiple HMM files
+        const hmmSelect = document.getElementById('hmmFiles');
+        const selectedHmm = Array.from(hmmSelect.selectedOptions).map(opt => opt.value);
+        selectedHmm.forEach(hmm => formData.append('hmm_files[]', hmm));
+        
         formData.append('gold_list_file', document.getElementById('goldListFile').value);
         formData.append('cut_ga', document.getElementById('cutGa').checked);
         formData.append('pident', document.getElementById('pident').value);
@@ -686,12 +707,13 @@
 
         // Add step-specific parameters
         if (step === 'step2') {
-            const hmmFile = document.getElementById('stepHmmFile').value;
-            if (!hmmFile) {
-                showAlert('warning', 'Please select an HMM profile');
+            const hmmSelect = document.getElementById('stepHmmFiles');
+            const selectedHmm = Array.from(hmmSelect.selectedOptions).map(opt => opt.value);
+            if (selectedHmm.length === 0) {
+                showAlert('warning', 'Please select at least one HMM profile');
                 return;
             }
-            formData.append('hmm_file', hmmFile);
+            selectedHmm.forEach(hmm => formData.append('hmm_files[]', hmm));
             formData.append('cut_ga', document.getElementById('stepCutGa').checked);
         } else if (step === 'step2_5') {
             const goldList = document.getElementById('stepGoldList').value;

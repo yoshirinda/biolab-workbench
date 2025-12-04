@@ -55,7 +55,7 @@ RESULTS_DIR = os.path.join(BASE_DIR, "results")
 LOGS_DIR = os.path.join(BASE_DIR, "logs")
 
 # Conda environment name
-CONDA_ENV = os. environ.get('CONDA_DEFAULT_ENV', 'bio')
+CONDA_ENV = os.environ.get('CONDA_DEFAULT_ENV') or os.environ.get('BIOLAB_CONDA_ENV') or 'bio'
 
 # 默认参数
 DEFAULT_THREADS = int(os.environ.get('BIOLAB_THREADS', 4))

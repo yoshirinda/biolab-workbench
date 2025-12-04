@@ -405,3 +405,76 @@ class TestBlastWrapper:
         assert databases[0]['name'] == 'test_db'
         assert databases[0]['type'] == 'nucleotide'
         assert databases[0]['path'] == os.path.join(temp_databases_dir, 'test_db')
+
+
+class TestPhyloPipeline:
+    """Tests for phylogenetic pipeline functions."""
+
+    def test_parse_hmmsearch_tblout(self, tmpdir):
+        """Test parsing hmmsearch tblout file."""
+        from app.core.phylo_pipeline import parse_hmmsearch_tblout
+
+        # Create a mock tblout file
+        tblout_content = """# target name              accession  query name
+seq1                       -          PF00001.1
+seq2                       -          PF00001.1
+seq3                       -          PF00001.1
+# [ok]
+"""
+        tblout_file = str(tmpdir.join('test.tbl'))
+        with open(tblout_file, 'w') as f:
+            f.write(tblout_content)
+
+        hits = parse_hmmsearch_tblout(tblout_file)
+        assert len(hits) == 3
+        assert 'seq1' in hits
+        assert 'seq2' in hits
+        assert 'seq3' in hits
+
+    def test_extract_sequences_by_ids(self, tmpdir):
+        """Test extracting sequences by IDs."""
+        from app.core.phylo_pipeline import extract_sequences_by_ids
+
+        # Create a test FASTA file
+        input_file = str(tmpdir.join('input.fasta'))
+        with open(input_file, 'w') as f:
+            f.write(">seq1\nATGCATGC\n>seq2\nGGGGGGGG\n>seq3\nCCCCCCCC\n")
+
+        output_file = str(tmpdir.join('output.fasta'))
+        ids = {'seq1', 'seq3'}
+
+        count = extract_sequences_by_ids(input_file, ids, output_file)
+
+        assert count == 2
+        assert os.path.exists(output_file)
+
+        with open(output_file, 'r') as f:
+            content = f.read()
+            assert '>seq1' in content
+            assert '>seq3' in content
+            assert '>seq2' not in content
+
+    def test_step2_hmmsearch_multiple_normalizes_input(self):
+        """Test that step2_hmmsearch_multiple normalizes single file to list."""
+        from app.core.phylo_pipeline import step2_hmmsearch_multiple
+
+        # Test with None
+        success, output, message, commands = step2_hmmsearch_multiple(
+            '/nonexistent/input.fasta', None, '/tmp', cut_ga=True
+        )
+        assert success is False
+        assert 'No HMM files' in message
+
+        # Test with empty list
+        success, output, message, commands = step2_hmmsearch_multiple(
+            '/nonexistent/input.fasta', [], '/tmp', cut_ga=True
+        )
+        assert success is False
+        assert 'No HMM files' in message
+
+    def test_conda_env_config(self):
+        """Test that CONDA_ENV configuration uses fallback correctly."""
+        import config
+        # CONDA_ENV should be set (either from environment or 'bio' default)
+        assert config.CONDA_ENV is not None
+        assert len(config.CONDA_ENV) > 0
