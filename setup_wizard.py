@@ -40,6 +40,8 @@ def save_config(base_dir):
 
 def copy_example_data(base_dir):
     """Copy example data to the data directory if available."""
+    import shutil
+    
     project_dir = os.path.dirname(os.path.abspath(__file__))
     examples_src = os.path.join(project_dir, 'data', 'examples')
     gold_lists_src = os.path.join(project_dir, 'data', 'references', 'gold_lists')
@@ -52,10 +54,7 @@ def copy_example_data(base_dir):
             src_file = os.path.join(examples_src, filename)
             dst_file = os.path.join(examples_dst, filename)
             if os.path.isfile(src_file) and not os.path.exists(dst_file):
-                with open(src_file, 'rb') as f:
-                    content = f.read()
-                with open(dst_file, 'wb') as f:
-                    f.write(content)
+                shutil.copy2(src_file, dst_file)
                 print(f"  Copied example: {filename}")
     
     # Copy gold lists
@@ -66,10 +65,7 @@ def copy_example_data(base_dir):
             src_file = os.path.join(gold_lists_src, filename)
             dst_file = os.path.join(gold_lists_dst, filename)
             if os.path.isfile(src_file) and not os.path.exists(dst_file):
-                with open(src_file, 'rb') as f:
-                    content = f.read()
-                with open(dst_file, 'wb') as f:
-                    f.write(content)
+                shutil.copy2(src_file, dst_file)
                 print(f"  Copied gold list: {filename}")
 
 

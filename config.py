@@ -54,8 +54,8 @@ UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
 RESULTS_DIR = os.path.join(BASE_DIR, "results")
 LOGS_DIR = os.path.join(BASE_DIR, "logs")
 
-# Conda 环境名
-CONDA_ENV = os.environ.get('BIOLAB_CONDA_ENV', "bio")
+# Conda environment name
+CONDA_ENV = os.environ.get('BIOLAB_CONDA_ENV', "biolab")
 
 # 默认参数
 DEFAULT_THREADS = int(os.environ.get('BIOLAB_THREADS', 4))

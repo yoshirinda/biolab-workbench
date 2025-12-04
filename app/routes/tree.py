@@ -153,7 +153,7 @@ def view(filepath):
             logger.warning(f"Attempted path traversal: {filepath}")
             return jsonify({'success': False, 'error': 'Access denied'}), 403
         
-        if os.path.exists(abs_path) and filepath.endswith('.svg'):
+        if os.path.exists(abs_path) and abs_path.endswith('.svg'):
             return send_file(abs_path, mimetype='image/svg+xml')
         else:
             return jsonify({'success': False, 'error': 'File not found'}), 404
