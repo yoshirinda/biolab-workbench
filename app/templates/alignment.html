@@ -60,7 +60,11 @@
                             <div class="alert alert-light border">
                                 <h6 class="mb-2"><i class="bi bi-sliders"></i> MAFFT Parameters</h6>
                                 <div class="mb-2">
-                                    <label for="mafftAlgorithm" class="form-label small">Algorithm:</label>
+                                    <label for="mafftAlgorithm" class="form-label small">
+                                        Algorithm:
+                                        <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip" 
+                                           title="L-INS-i: Most accurate for <200 sequences. G-INS-i: Global homology. E-INS-i: Sequences with multiple conserved domains."></i>
+                                    </label>
                                     <select class="form-select form-select-sm" id="mafftAlgorithm">
                                         <option value="auto">Auto (recommended)</option>
                                         <option value="linsi">L-INS-i (accurate, slow)</option>
@@ -70,21 +74,37 @@
                                     </select>
                                 </div>
                                 <div class="mb-2">
-                                    <label for="maxiterate" class="form-label small">Max Iterations:</label>
+                                    <label for="maxiterate" class="form-label small">
+                                        Max Iterations:
+                                        <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip" 
+                                           title="Higher values improve accuracy but take longer. 1000 is good for most cases. 0 = no iteration (fastest)."></i>
+                                    </label>
                                     <input type="number" class="form-control form-control-sm" id="maxiterate" value="1000" min="0" max="10000">
                                     <small class="text-muted">0 = no iteration (fastest)</small>
                                 </div>
                                 <div class="mb-2">
-                                    <label for="gapOpenPenalty" class="form-label small">Gap Open Penalty:</label>
+                                    <label for="gapOpenPenalty" class="form-label small">
+                                        Gap Open Penalty:
+                                        <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip" 
+                                           title="Cost of opening a gap. Higher values = fewer gaps. Default: 1.53"></i>
+                                    </label>
                                     <input type="number" class="form-control form-control-sm" id="gapOpenPenalty" value="1.53" step="0.01" min="0">
                                 </div>
                                 <div class="mb-2">
-                                    <label for="gapExtendPenalty" class="form-label small">Gap Extension Penalty:</label>
+                                    <label for="gapExtendPenalty" class="form-label small">
+                                        Gap Extension Penalty:
+                                        <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip" 
+                                           title="Cost of extending a gap. Higher values = shorter gaps. Default: 0.123"></i>
+                                    </label>
                                     <input type="number" class="form-control form-control-sm" id="gapExtendPenalty" value="0.123" step="0.001" min="0">
                                 </div>
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="autoMode">
-                                    <label class="form-check-label small" for="autoMode">Auto mode (--auto)</label>
+                                    <label class="form-check-label small" for="autoMode">
+                                        Auto mode (--auto)
+                                        <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip" 
+                                           title="Automatically selects appropriate strategy based on data size"></i>
+                                    </label>
                                 </div>
                             </div>
                         </div>
@@ -94,7 +114,11 @@
                             <div class="alert alert-light border">
                                 <h6 class="mb-2"><i class="bi bi-sliders"></i> ClustalW Parameters</h6>
                                 <div class="mb-2">
-                                    <label for="clustalwMatrix" class="form-label small">Scoring Matrix:</label>
+                                    <label for="clustalwMatrix" class="form-label small">
+                                        Scoring Matrix:
+                                        <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip" 
+                                           title="BLOSUM: Best for divergent sequences. PAM: Best for closely related sequences."></i>
+                                    </label>
                                     <select class="form-select form-select-sm" id="clustalwMatrix">
                                         <option value="BLOSUM">BLOSUM (default for proteins)</option>
                                         <option value="PAM">PAM</option>
@@ -103,11 +127,19 @@
                                     </select>
                                 </div>
                                 <div class="mb-2">
-                                    <label for="clustalwGapOpen" class="form-label small">Gap Open:</label>
+                                    <label for="clustalwGapOpen" class="form-label small">
+                                        Gap Open:
+                                        <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip" 
+                                           title="Penalty for opening a gap. Default: 10"></i>
+                                    </label>
                                     <input type="number" class="form-control form-control-sm" id="clustalwGapOpen" value="10" step="0.1" min="0">
                                 </div>
                                 <div class="mb-2">
-                                    <label for="clustalwGapExt" class="form-label small">Gap Extension:</label>
+                                    <label for="clustalwGapExt" class="form-label small">
+                                        Gap Extension:
+                                        <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip" 
+                                           title="Penalty for extending a gap. Default: 0.1"></i>
+                                    </label>
                                     <input type="number" class="form-control form-control-sm" id="clustalwGapExt" value="0.1" step="0.01" min="0">
                                 </div>
                                 <div class="mb-2">
@@ -126,18 +158,39 @@
                             <div class="alert alert-light border">
                                 <h6 class="mb-2"><i class="bi bi-sliders"></i> MUSCLE Parameters</h6>
                                 <div class="mb-2">
-                                    <label for="muscleMaxIters" class="form-label small">Max Iterations:</label>
+                                    <label for="muscleMaxIters" class="form-label small">
+                                        Max Iterations:
+                                        <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip" 
+                                           title="Number of refinement iterations. Default: 16. More iterations = better quality but slower."></i>
+                                    </label>
                                     <input type="number" class="form-control form-control-sm" id="muscleMaxIters" value="16" min="1" max="100">
                                 </div>
                                 <div class="form-check mb-2">
                                     <input class="form-check-input" type="checkbox" id="muscleDiags">
-                                    <label class="form-check-label small" for="muscleDiags">Use diagonal optimization</label>
+                                    <label class="form-check-label small" for="muscleDiags">
+                                        Use diagonal optimization
+                                        <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip" 
+                                           title="Find diagonals to speed up the distance matrix computation. Recommended for large datasets."></i>
+                                    </label>
                                 </div>
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="muscleQuiet" checked>
                                     <label class="form-check-label small" for="muscleQuiet">Quiet mode</label>
                                 </div>
                             </div>
+                        </div>
+
+                        <!-- Color Mode Option -->
+                        <div class="mb-3 mt-3">
+                            <label for="colorMode" class="form-label">
+                                Visualization Color Mode:
+                                <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip" 
+                                   title="Conservation: Color by sequence conservation. Chemistry: Color by amino acid properties (hydrophobic, polar, charged)."></i>
+                            </label>
+                            <select class="form-select" id="colorMode">
+                                <option value="conservation">Conservation (默认)</option>
+                                <option value="chemistry">Chemistry (氨基酸化学性质)</option>
+                            </select>
                         </div>
 
                         <button type="submit" class="btn btn-warning w-100 mt-3" id="runAlignBtn">
@@ -258,6 +311,9 @@
 
         const tool = document.getElementById('alignTool').value;
         formData.append('tool', tool);
+        
+        // Add color mode
+        formData.append('color_mode', document.getElementById('colorMode').value);
 
         // Add tool-specific parameters
         if (tool === 'mafft') {
