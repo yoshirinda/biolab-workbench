@@ -5,8 +5,44 @@ All paths and settings are centralized here.
 import os
 import secrets
 
-# 基础目录 - Can be overridden by environment variable
-BASE_DIR = os.environ.get('BIOLAB_BASE_DIR', "/mnt/e/Kun/wsl/biolab")
+
+def get_base_dir():
+    """
+    Automatically detect and configure the base directory.
+    
+    Priority:
+    1. BIOLAB_BASE_DIR environment variable
+    2. User config file (~/.biolab/config)
+    3. Project directory's biolab_data folder
+    """
+    # Priority 1: Environment variable
+    if os.environ.get('BIOLAB_BASE_DIR'):
+        return os.environ['BIOLAB_BASE_DIR']
+    
+    # Priority 2: User configuration file
+    user_config = os.path.expanduser('~/.biolab/config')
+    if os.path.exists(user_config):
+        try:
+            with open(user_config, 'r', encoding='utf-8') as f:
+                base_dir = f.read().strip()
+                if base_dir and os.path.isabs(base_dir):
+                    return base_dir
+        except (IOError, OSError):
+            pass
+    
+    # Priority 3: Default to biolab_data in project directory
+    project_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(project_dir, 'biolab_data')
+
+
+def is_first_run():
+    """Check if this is the first run of the application."""
+    user_config = os.path.expanduser('~/.biolab/config')
+    return not os.path.exists(user_config) and not os.environ.get('BIOLAB_BASE_DIR')
+
+
+# Base directory - automatically detected
+BASE_DIR = get_base_dir()
 
 # 子目录
 DATABASES_DIR = os.path.join(BASE_DIR, "databases")
@@ -18,8 +54,8 @@ UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
 RESULTS_DIR = os.path.join(BASE_DIR, "results")
 LOGS_DIR = os.path.join(BASE_DIR, "logs")
 
-# Conda 环境名
-CONDA_ENV = os.environ.get('BIOLAB_CONDA_ENV', "bio")
+# Conda environment name
+CONDA_ENV = os.environ.get('BIOLAB_CONDA_ENV', "biolab")
 
 # 默认参数
 DEFAULT_THREADS = int(os.environ.get('BIOLAB_THREADS', 4))

@@ -1,0 +1,19 @@
+name: biolab
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.11
+  - blast=2.17
+  - hmmer=3.4
+  - mafft=7.526
+  - iqtree=2.3
+  - clipkit=2.3
+  - pip
+  - pip:
+    - flask>=2.3.0
+    - biopython>=1.81
+    - requests>=2.31.0
+    - Werkzeug>=2.3.0
+    - ete3>=3.1.3
