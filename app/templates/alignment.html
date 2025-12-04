@@ -30,7 +30,7 @@
 
                         <div id="textInputDiv" class="mb-3">
                             <label for="sequenceText" class="form-label">FASTA Sequences:</label>
-                            <textarea class="form-control font-monospace" id="sequenceText" rows="10"
+                            <textarea class="form-control font-monospace" id="sequenceText" rows="8"
                                 placeholder=">seq1&#10;MKVLWAALLVTFLAGCQA...&#10;>seq2&#10;MKVLWAALLVTFLAGCQA..."></textarea>
                         </div>
 
@@ -54,18 +54,92 @@
                             </select>
                         </div>
 
-                        <div id="mafftOptions">
-                            <div class="mb-3">
-                                <label for="maxiterate" class="form-label">Max Iterations:</label>
-                                <input type="number" class="form-control" id="maxiterate" value="1000" min="1">
-                            </div>
-                            <div class="form-check mb-3">
-                                <input class="form-check-input" type="checkbox" id="autoMode">
-                                <label class="form-check-label" for="autoMode">Auto mode (--auto)</label>
+                        <!-- MAFFT Options -->
+                        <div id="mafftOptions" class="tool-options">
+                            <div class="alert alert-light border">
+                                <h6 class="mb-2"><i class="bi bi-sliders"></i> MAFFT Parameters</h6>
+                                <div class="mb-2">
+                                    <label for="mafftAlgorithm" class="form-label small">Algorithm:</label>
+                                    <select class="form-select form-select-sm" id="mafftAlgorithm">
+                                        <option value="auto">Auto (recommended)</option>
+                                        <option value="linsi">L-INS-i (accurate, slow)</option>
+                                        <option value="ginsi">G-INS-i (global)</option>
+                                        <option value="einsi">E-INS-i (domains)</option>
+                                        <option value="fftns">FFT-NS-2 (fast)</option>
+                                    </select>
+                                </div>
+                                <div class="mb-2">
+                                    <label for="maxiterate" class="form-label small">Max Iterations:</label>
+                                    <input type="number" class="form-control form-control-sm" id="maxiterate" value="1000" min="0" max="10000">
+                                    <small class="text-muted">0 = no iteration (fastest)</small>
+                                </div>
+                                <div class="mb-2">
+                                    <label for="gapOpenPenalty" class="form-label small">Gap Open Penalty:</label>
+                                    <input type="number" class="form-control form-control-sm" id="gapOpenPenalty" value="1.53" step="0.01" min="0">
+                                </div>
+                                <div class="mb-2">
+                                    <label for="gapExtendPenalty" class="form-label small">Gap Extension Penalty:</label>
+                                    <input type="number" class="form-control form-control-sm" id="gapExtendPenalty" value="0.123" step="0.001" min="0">
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="autoMode">
+                                    <label class="form-check-label small" for="autoMode">Auto mode (--auto)</label>
+                                </div>
                             </div>
                         </div>
 
-                        <button type="submit" class="btn btn-warning w-100" id="runAlignBtn">
+                        <!-- ClustalW Options -->
+                        <div id="clustalwOptions" class="tool-options d-none">
+                            <div class="alert alert-light border">
+                                <h6 class="mb-2"><i class="bi bi-sliders"></i> ClustalW Parameters</h6>
+                                <div class="mb-2">
+                                    <label for="clustalwMatrix" class="form-label small">Scoring Matrix:</label>
+                                    <select class="form-select form-select-sm" id="clustalwMatrix">
+                                        <option value="BLOSUM">BLOSUM (default for proteins)</option>
+                                        <option value="PAM">PAM</option>
+                                        <option value="GONNET">GONNET</option>
+                                        <option value="ID">Identity</option>
+                                    </select>
+                                </div>
+                                <div class="mb-2">
+                                    <label for="clustalwGapOpen" class="form-label small">Gap Open:</label>
+                                    <input type="number" class="form-control form-control-sm" id="clustalwGapOpen" value="10" step="0.1" min="0">
+                                </div>
+                                <div class="mb-2">
+                                    <label for="clustalwGapExt" class="form-label small">Gap Extension:</label>
+                                    <input type="number" class="form-control form-control-sm" id="clustalwGapExt" value="0.1" step="0.01" min="0">
+                                </div>
+                                <div class="mb-2">
+                                    <label for="clustalwOutput" class="form-label small">Output Format:</label>
+                                    <select class="form-select form-select-sm" id="clustalwOutput">
+                                        <option value="FASTA">FASTA</option>
+                                        <option value="CLUSTAL">CLUSTAL</option>
+                                        <option value="PHYLIP">PHYLIP</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- MUSCLE Options -->
+                        <div id="muscleOptions" class="tool-options d-none">
+                            <div class="alert alert-light border">
+                                <h6 class="mb-2"><i class="bi bi-sliders"></i> MUSCLE Parameters</h6>
+                                <div class="mb-2">
+                                    <label for="muscleMaxIters" class="form-label small">Max Iterations:</label>
+                                    <input type="number" class="form-control form-control-sm" id="muscleMaxIters" value="16" min="1" max="100">
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="muscleDiags">
+                                    <label class="form-check-label small" for="muscleDiags">Use diagonal optimization</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="muscleQuiet" checked>
+                                    <label class="form-check-label small" for="muscleQuiet">Quiet mode</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-warning w-100 mt-3" id="runAlignBtn">
                             <i class="bi bi-play-fill"></i> Run Alignment
                         </button>
                     </form>
@@ -80,9 +154,11 @@
                     <h5 class="mb-0"><i class="bi bi-eye"></i> Alignment Result</h5>
                     <div>
                         <span id="alignInfo" class="text-muted me-3"></span>
-                        <a id="downloadAlignBtn" class="btn btn-sm btn-outline-primary d-none" download>
-                            <i class="bi bi-download"></i> Download
-                        </a>
+                        <div class="btn-group btn-group-sm">
+                            <a id="downloadAlignBtn" class="btn btn-outline-primary d-none" download>
+                                <i class="bi bi-download"></i> FASTA
+                            </a>
+                        </div>
                     </div>
                 </div>
                 <div class="card-body">
@@ -105,14 +181,31 @@
             <!-- Conservation Legend -->
             <div class="card shadow-sm mt-4">
                 <div class="card-header bg-light">
-                    <h6 class="mb-0">Conservation Legend</h6>
+                    <h6 class="mb-0"><i class="bi bi-palette"></i> Conservation Legend</h6>
                 </div>
                 <div class="card-body">
-                    <div class="d-flex gap-3">
+                    <div class="d-flex flex-wrap gap-3">
                         <span><span class="badge" style="background-color:#ff0000">&nbsp;&nbsp;</span> 90-100% conserved</span>
                         <span><span class="badge" style="background-color:#ff6600">&nbsp;&nbsp;</span> 70-90% conserved</span>
                         <span><span class="badge" style="background-color:#ffcc00">&nbsp;&nbsp;</span> 50-70% conserved</span>
-                        <span><span class="badge" style="background-color:#ffffff; border:1px solid #ccc">&nbsp;&nbsp;</span> <50% conserved</span>
+                        <span><span class="badge" style="background-color:#ffffff; border:1px solid #ccc">&nbsp;&nbsp;</span> &lt;50% conserved</span>
+                    </div>
+                    <div class="mt-3">
+                        <small class="text-muted">
+                            <strong>Tip:</strong> Highly conserved positions often indicate functional or structural importance.
+                            Gaps are shown as dashes (-) and are not counted in conservation calculations.
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alignment Statistics -->
+            <div class="card shadow-sm mt-4 d-none" id="alignmentStatsCard">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0"><i class="bi bi-bar-chart"></i> Alignment Statistics</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row" id="alignmentStats">
                     </div>
                 </div>
             </div>
@@ -123,6 +216,12 @@
 
 {% block extra_js %}
 <script>
+    // Use Flask url_for to generate base URLs for JavaScript
+    const ALIGNMENT_URLS = {
+        run: '{{ url_for("alignment.run") }}',
+        downloadBase: '{{ url_for("alignment.download", filepath="") }}'
+    };
+
     document.querySelectorAll('input[name="inputType"]').forEach(radio => {
         radio.addEventListener('change', function() {
             document.getElementById('textInputDiv').classList.toggle('d-none', this.value !== 'text');
@@ -130,8 +229,14 @@
         });
     });
 
+    // Show/hide tool-specific options
     document.getElementById('alignTool').addEventListener('change', function() {
-        document.getElementById('mafftOptions').style.display = this.value === 'mafft' ? 'block' : 'none';
+        document.querySelectorAll('.tool-options').forEach(el => el.classList.add('d-none'));
+        const optionsId = this.value + 'Options';
+        const optionsEl = document.getElementById(optionsId);
+        if (optionsEl) {
+            optionsEl.classList.remove('d-none');
+        }
     });
 
     document.getElementById('alignmentForm').addEventListener('submit', async function(e) {
@@ -147,17 +252,35 @@
             if (file) formData.append('file', file);
         }
 
-        formData.append('tool', document.getElementById('alignTool').value);
-        formData.append('maxiterate', document.getElementById('maxiterate').value);
-        formData.append('auto', document.getElementById('autoMode').checked);
+        const tool = document.getElementById('alignTool').value;
+        formData.append('tool', tool);
+
+        // Add tool-specific parameters
+        if (tool === 'mafft') {
+            formData.append('maxiterate', document.getElementById('maxiterate').value);
+            formData.append('auto', document.getElementById('autoMode').checked);
+            formData.append('algorithm', document.getElementById('mafftAlgorithm').value);
+            formData.append('gapopen', document.getElementById('gapOpenPenalty').value);
+            formData.append('gapextend', document.getElementById('gapExtendPenalty').value);
+        } else if (tool === 'clustalw') {
+            formData.append('matrix', document.getElementById('clustalwMatrix').value);
+            formData.append('gapopen', document.getElementById('clustalwGapOpen').value);
+            formData.append('gapextend', document.getElementById('clustalwGapExt').value);
+            formData.append('output_format', document.getElementById('clustalwOutput').value);
+        } else if (tool === 'muscle') {
+            formData.append('maxiters', document.getElementById('muscleMaxIters').value);
+            formData.append('diags', document.getElementById('muscleDiags').checked);
+            formData.append('quiet', document.getElementById('muscleQuiet').checked);
+        }
 
         document.getElementById('loadingSpinner').classList.remove('d-none');
         document.getElementById('alignmentResult').classList.add('d-none');
         document.getElementById('alignmentViewer').classList.add('d-none');
+        document.getElementById('alignmentStatsCard').classList.add('d-none');
         document.getElementById('runAlignBtn').disabled = true;
 
         try {
-            const response = await fetch('/alignment/run', {
+            const response = await fetch(ALIGNMENT_URLS.run, {
                 method: 'POST',
                 body: formData
             });
@@ -173,9 +296,12 @@
 
                 if (data.output_file) {
                     const btn = document.getElementById('downloadAlignBtn');
-                    btn.href = '/alignment/download/' + data.output_file;
+                    btn.href = ALIGNMENT_URLS.downloadBase + data.output_file;
                     btn.classList.remove('d-none');
                 }
+
+                // Show alignment statistics
+                displayAlignmentStats(data);
 
                 showAlert('success', 'Alignment completed');
             } else {
@@ -188,5 +314,35 @@
             showAlert('danger', 'Alignment failed: ' + error.message);
         }
     });
+
+    function displayAlignmentStats(data) {
+        if (data.sequence_count && data.alignment_length) {
+            const statsCard = document.getElementById('alignmentStatsCard');
+            const statsDiv = document.getElementById('alignmentStats');
+
+            statsDiv.innerHTML = `
+                <div class="col-md-4">
+                    <div class="text-center p-3 bg-light rounded">
+                        <h4 class="text-primary">${data.sequence_count}</h4>
+                        <small class="text-muted">Sequences</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-center p-3 bg-light rounded">
+                        <h4 class="text-success">${data.alignment_length}</h4>
+                        <small class="text-muted">Alignment Positions</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-center p-3 bg-light rounded">
+                        <h4 class="text-info">${data.tool || 'N/A'}</h4>
+                        <small class="text-muted">Tool Used</small>
+                    </div>
+                </div>
+            `;
+
+            statsCard.classList.remove('d-none');
+        }
+    }
 </script>
 {% endblock %}

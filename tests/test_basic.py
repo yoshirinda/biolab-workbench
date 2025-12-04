@@ -170,6 +170,29 @@ class TestRoutes:
         assert 'href="/uniprot/"' in html
         assert 'href="/tree/"' in html
 
+    def test_navigation_links_use_url_for(self, client):
+        """Test that navigation bar uses url_for() for all links."""
+        response = client.get('/')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+
+        # Verify navigation uses url_for generated paths
+        # The base template should have proper url_for navigation
+        assert 'href="/"' in html  # Home link
+        assert 'href="/sequence/"' in html
+        assert 'href="/blast/"' in html
+        assert 'href="/phylo/"' in html
+        assert 'href="/alignment/"' in html
+        assert 'href="/uniprot/"' in html
+        assert 'href="/tree/"' in html
+
+    def test_proxy_fix_middleware_applied(self, client):
+        """Test that ProxyFix middleware is applied to the app."""
+        app = create_app()
+        # Check that ProxyFix is wrapping the WSGI app
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        assert isinstance(app.wsgi_app, ProxyFix)
+
 
 class TestSequenceAPI:
     """Tests for sequence API endpoints."""
@@ -215,3 +238,43 @@ class TestSequenceAPI:
         assert data['success'] is True
         assert 'stats' in data
         assert data['stats']['length'] == 8
+
+
+class TestProjectManager:
+    """Tests for project management functionality."""
+
+    def test_list_projects(self, client):
+        """Test listing projects."""
+        response = client.get('/sequence/projects')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is True
+        assert 'projects' in data
+
+    def test_create_project_missing_name(self, client):
+        """Test creating project without name."""
+        response = client.post('/sequence/projects',
+                              json={},
+                              content_type='application/json')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is False
+        assert 'required' in data['error'].lower()
+
+    def test_save_collection_missing_name(self, client):
+        """Test saving collection without name."""
+        response = client.post('/sequence/collections/save',
+                              json={'sequences': [{'id': 'seq1', 'sequence': 'ATGC'}]},
+                              content_type='application/json')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is False
+
+    def test_save_collection_missing_sequences(self, client):
+        """Test saving collection without sequences."""
+        response = client.post('/sequence/collections/save',
+                              json={'name': 'test_collection'},
+                              content_type='application/json')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is False

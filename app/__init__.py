@@ -2,12 +2,24 @@
 BioLab Workbench Flask Application Factory
 """
 from flask import Flask
+from werkzeug.middleware.proxy_fix import ProxyFix
 import config
 
 
 def create_app():
     """Create and configure the Flask application."""
     app = Flask(__name__)
+
+    # Handle reverse proxy headers for DevTunnel/port forwarding
+    # This fixes URL generation issues when running behind a reverse proxy
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app,
+        x_for=1,
+        x_proto=1,
+        x_host=1,
+        x_port=1,
+        x_prefix=1
+    )
 
     # Load configuration
     app.config['SECRET_KEY'] = config.SECRET_KEY
