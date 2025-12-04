@@ -165,22 +165,22 @@ def download():
         
         # Handle both absolute and relative paths
         if not os.path.isabs(filepath):
-            abs_path = os. path.join(config. RESULTS_DIR, filepath)
+            abs_path = os.path.join(config.RESULTS_DIR, filepath)
         else:
             abs_path = filepath
         
-        abs_path = os. path.abspath(abs_path)
+        abs_path = os.path.abspath(abs_path)
         
         # Security: Ensure the file is within allowed directories
-        results_dir = os.path.abspath(config. RESULTS_DIR)
-        uploads_dir = os. path.abspath(config.UPLOADS_DIR)
+        results_dir = os.path.abspath(config.RESULTS_DIR)
+        uploads_dir = os.path.abspath(config.UPLOADS_DIR)
         
-        if not (abs_path.startswith(results_dir) or abs_path. startswith(uploads_dir)):
+        if not (abs_path.startswith(results_dir) or abs_path.startswith(uploads_dir)):
             logger.warning(f"Attempted path traversal: {filepath}")
             return jsonify({'success': False, 'error': 'Access denied'}), 403
         
         if os.path.exists(abs_path):
-            filename = os.path. basename(abs_path)
+            filename = os.path.basename(abs_path)
             return send_file(
                 abs_path, 
                 as_attachment=True,
