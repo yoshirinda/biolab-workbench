@@ -642,7 +642,7 @@
                 for (const [step, info] of Object.entries(data.results.steps)) {
                     if (info.output) {
                         const link = document.createElement('a');
-                        link.href = PHYLO_URLS.downloadBase + info.output;
+                        link.href = PHYLO_URLS.downloadBase + encodeURIComponent(info.output);
                         link.className = 'btn btn-sm btn-outline-primary me-2 mb-2';
                         link.innerHTML = `<i class="bi bi-download"></i> ${step}`;
                         outputDiv.appendChild(link);
@@ -774,7 +774,7 @@
 
                 if (data.output) {
                     const downloadBtn = document.getElementById('stepResultDownload');
-                    downloadBtn.href = PHYLO_URLS.downloadBase + data.output;
+                    downloadBtn.href = PHYLO_URLS.downloadBase + encodeURIComponent(data.output);
                     downloadBtn.classList.remove('d-none');
                 }
 

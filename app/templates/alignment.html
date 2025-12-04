@@ -361,7 +361,7 @@
 
                 if (data.output_file) {
                     const btn = document.getElementById('downloadAlignBtn');
-                    btn.href = ALIGNMENT_URLS.downloadBase + data.output_file;
+                    btn.href = ALIGNMENT_URLS.downloadBase + encodeURIComponent(data.output_file);
                     btn.classList.remove('d-none');
                 }
 

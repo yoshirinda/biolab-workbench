@@ -478,3 +478,55 @@ seq3                       -          PF00001.1
         # CONDA_ENV should be set (either from environment or 'bio' default)
         assert config.CONDA_ENV is not None
         assert len(config.CONDA_ENV) > 0
+
+
+class TestDownloadRoutes:
+    """Tests for download route functionality."""
+
+    def test_blast_download_relative_path(self, client, tmpdir, monkeypatch):
+        """Test BLAST download route handles relative paths."""
+        import config
+
+        # Set up temporary results directory
+        temp_results_dir = str(tmpdir.mkdir("results"))
+        monkeypatch.setattr(config, 'RESULTS_DIR', temp_results_dir)
+
+        # Create a test file
+        test_file = os.path.join(temp_results_dir, "test_file.fasta")
+        with open(test_file, 'w') as f:
+            f.write(">seq1\nATGC\n")
+
+        # Test with relative path
+        response = client.get('/blast/download/test_file.fasta')
+        assert response.status_code == 200
+
+    def test_blast_download_denies_path_traversal(self, client, tmpdir, monkeypatch):
+        """Test BLAST download route blocks path traversal attempts."""
+        import config
+
+        temp_results_dir = str(tmpdir.mkdir("results"))
+        monkeypatch.setattr(config, 'RESULTS_DIR', temp_results_dir)
+
+        # Create a file outside results dir
+        outside_file = str(tmpdir.join("outside.txt"))
+        with open(outside_file, 'w') as f:
+            f.write("secret")
+
+        # Try to access it via path traversal
+        response = client.get('/blast/download/../outside.txt')
+        assert response.status_code == 403
+
+    def test_alignment_download_handles_html(self, client, tmpdir, monkeypatch):
+        """Test alignment download route handles HTML files."""
+        import config
+
+        temp_results_dir = str(tmpdir.mkdir("results"))
+        monkeypatch.setattr(config, 'RESULTS_DIR', temp_results_dir)
+
+        # Create a test HTML file
+        test_file = os.path.join(temp_results_dir, "alignment.html")
+        with open(test_file, 'w') as f:
+            f.write("<html><body>Test</body></html>")
+
+        response = client.get('/alignment/download/alignment.html')
+        assert response.status_code == 200

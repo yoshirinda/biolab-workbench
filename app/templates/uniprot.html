@@ -226,7 +226,7 @@
 
             if (data.success && data.fasta_file) {
                 showAlert('success', `Downloaded ${data.count} sequences`);
-                window.open(UNIPROT_URLS.downloadFileBase + data.fasta_file, '_blank');
+                window.open(UNIPROT_URLS.downloadFileBase + encodeURIComponent(data.fasta_file), '_blank');
             } else {
                 showAlert('danger', data.error || 'Download failed');
             }
