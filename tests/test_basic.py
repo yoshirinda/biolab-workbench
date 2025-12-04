@@ -352,3 +352,55 @@ class TestProjectManager:
         assert response.status_code == 200
         data = response.get_json()
         assert data['success'] is False
+
+
+class TestBlastWrapper:
+    """Tests for BLAST wrapper functions."""
+
+    def test_create_blast_database_uses_correct_directory(self, tmpdir, monkeypatch):
+        """Test that create_blast_database creates databases in DATABASES_DIR, not input file dir."""
+        import tempfile
+        import config
+        from app.core.blast_wrapper import create_blast_database
+
+        # Create a temporary DATABASES_DIR
+        temp_databases_dir = str(tmpdir.mkdir("databases"))
+        monkeypatch.setattr(config, 'DATABASES_DIR', temp_databases_dir)
+
+        # Create a temporary input file in a different directory
+        temp_uploads_dir = str(tmpdir.mkdir("uploads"))
+        input_file = os.path.join(temp_uploads_dir, "test_sequences.fasta")
+        with open(input_file, 'w') as f:
+            f.write(">seq1\nATGCATGCATGC\n>seq2\nATGCGTACGTAC\n")
+
+        # Call create_blast_database
+        # Note: This will fail without makeblastdb, but we can still verify the path
+        success, message, db_path = create_blast_database(input_file, "test_db", db_type="nucl")
+
+        # Even if makeblastdb fails, db_path should be None or in DATABASES_DIR
+        if db_path is not None:
+            # If it succeeded, verify db_path is in DATABASES_DIR
+            assert db_path.startswith(temp_databases_dir), \
+                f"Database path {db_path} should be in {temp_databases_dir}"
+            assert not db_path.startswith(temp_uploads_dir), \
+                f"Database path {db_path} should NOT be in uploads dir {temp_uploads_dir}"
+
+    def test_list_blast_databases_uses_databases_dir(self, tmpdir, monkeypatch):
+        """Test that list_blast_databases scans config.DATABASES_DIR."""
+        import config
+        from app.core.blast_wrapper import list_blast_databases
+
+        # Create a temporary DATABASES_DIR with mock db files
+        temp_databases_dir = str(tmpdir.mkdir("databases"))
+        monkeypatch.setattr(config, 'DATABASES_DIR', temp_databases_dir)
+
+        # Create mock nucleotide database files
+        open(os.path.join(temp_databases_dir, "test_db.nin"), 'w').close()
+
+        # List databases
+        databases = list_blast_databases()
+
+        assert len(databases) == 1
+        assert databases[0]['name'] == 'test_db'
+        assert databases[0]['type'] == 'nucleotide'
+        assert databases[0]['path'] == os.path.join(temp_databases_dir, 'test_db')

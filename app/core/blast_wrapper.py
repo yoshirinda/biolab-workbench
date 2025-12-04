@@ -125,8 +125,9 @@ def create_blast_database(input_file, db_name, db_type='auto', title=None):
     # Sanitize title
     title = re.sub(r'[^\w\s\-]', '', title)
 
-    db_dir = os.path.dirname(input_file)
-    db_path = os.path.join(db_dir, db_name)
+    # Create database in config.DATABASES_DIR instead of input file directory
+    # This ensures the database is found by list_blast_databases()
+    db_path = os.path.join(config.DATABASES_DIR, db_name)
 
     command = f'makeblastdb -in {shlex.quote(input_file)} -dbtype {shlex.quote(db_type)} -out {shlex.quote(db_path)} -title {shlex.quote(title)}'
 
