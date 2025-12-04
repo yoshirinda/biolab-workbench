@@ -178,7 +178,7 @@
         search: '{{ url_for("blast.search") }}',
         createDb: '{{ url_for("blast.create_database") }}',
         extract: '{{ url_for("blast.extract") }}',
-        downloadBase: '{{ url_for("blast.download", filepath="") }}'
+        downloadBase: '{{ url_for("blast.download") }}'
     };
 
     let currentResultDir = null;
@@ -238,7 +238,7 @@
 
                 if (data.output_files && data.output_files.main) {
                     const btn = document.getElementById('downloadResultBtn');
-                    btn.href = BLAST_URLS.downloadBase + encodeURIComponent(data.output_files.main);
+                    btn.href = BLAST_URLS. downloadBase + '? path=' + encodeURIComponent(data.output_files.main);
                     btn.classList.remove('d-none');
                 }
 
@@ -329,7 +329,7 @@
 
             if (data.success) {
                 showAlert('success', data.message);
-                window.open(BLAST_URLS.downloadBase + encodeURIComponent(data.output_file), '_blank');
+                window.open(BLAST_URLS.downloadBase + '?path=' + encodeURIComponent(data. output_file), '_blank');
             } else {
                 showAlert('danger', data.error);
             }
