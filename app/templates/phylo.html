@@ -145,7 +145,7 @@
 
                     <div class="mb-3">
                         <label for="stepInputFile" class="form-label">Input File for Current Step:</label>
-                        <input type="file" class="form-control" id="stepInputFile" accept=".fasta,.fa,.fna,.faa,.aln">
+                        <input type="file" class="form-control" id="stepInputFile" accept=".fasta,.fa,.fna,.faa,.aln,.tbl">
                     </div>
 
                     <div class="accordion" id="stepsAccordion">
@@ -166,7 +166,90 @@
                             </div>
                         </div>
 
-                        <!-- Step 2.8 -->
+                        <!-- Step 2: HMMer Search -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#step2Panel">
+                                    <i class="bi bi-search me-2"></i> Step 2: HMMer Search
+                                </button>
+                            </h2>
+                            <div id="step2Panel" class="accordion-collapse collapse">
+                                <div class="accordion-body">
+                                    <p class="text-muted">Search sequences using HMM profile.</p>
+                                    <div class="mb-3">
+                                        <label for="stepHmmFile" class="form-label">HMM Profile:</label>
+                                        <select class="form-select" id="stepHmmFile">
+                                            <option value="">Select HMM file...</option>
+                                            {% for hmm in hmm_files %}
+                                            <option value="{{ hmm }}">{{ hmm }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="form-check mb-3">
+                                        <input class="form-check-input" type="checkbox" id="stepCutGa" checked>
+                                        <label class="form-check-label" for="stepCutGa">Use --cut_ga threshold</label>
+                                    </div>
+                                    <button class="btn btn-primary w-100" onclick="runSingleStep('step2')">
+                                        <i class="bi bi-play-fill"></i> Run Step 2
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step 2.5: BLAST Filter -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#step2_5Panel">
+                                    <i class="bi bi-funnel me-2"></i> Step 2.5: BLAST Filter
+                                </button>
+                            </h2>
+                            <div id="step2_5Panel" class="accordion-collapse collapse">
+                                <div class="accordion-body">
+                                    <p class="text-muted">Filter sequences based on gold standard list.</p>
+                                    <div class="mb-3">
+                                        <label for="stepGoldList" class="form-label">Gold Standard List:</label>
+                                        <select class="form-select" id="stepGoldList">
+                                            <option value="">Select gold list file...</option>
+                                            {% for gold in gold_files %}
+                                            <option value="{{ gold }}">{{ gold }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-6 mb-3">
+                                            <label for="stepPident" class="form-label">Min Identity (%):</label>
+                                            <input type="number" class="form-control" id="stepPident" value="30" min="0" max="100">
+                                        </div>
+                                        <div class="col-6 mb-3">
+                                            <label for="stepQcovs" class="form-label">Min Coverage (%):</label>
+                                            <input type="number" class="form-control" id="stepQcovs" value="50" min="0" max="100">
+                                        </div>
+                                    </div>
+                                    <button class="btn btn-primary w-100" onclick="runSingleStep('step2_5')">
+                                        <i class="bi bi-play-fill"></i> Run Step 2.5
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step 2.7: Length Stats -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#step2_7Panel">
+                                    <i class="bi bi-bar-chart me-2"></i> Step 2.7: Length Statistics
+                                </button>
+                            </h2>
+                            <div id="step2_7Panel" class="accordion-collapse collapse">
+                                <div class="accordion-body">
+                                    <p class="text-muted">Analyze sequence length distribution (mean, median, min, max, stdev).</p>
+                                    <button class="btn btn-primary w-100" onclick="runSingleStep('step2_7')">
+                                        <i class="bi bi-play-fill"></i> Run Step 2.7
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step 2.8: Length Filter -->
                         <div class="accordion-item">
                             <h2 class="accordion-header">
                                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#step2_8Panel">
@@ -221,13 +304,34 @@
                                     <div class="mb-3">
                                         <label for="stepClipkitMode" class="form-label">Mode:</label>
                                         <select class="form-select" id="stepClipkitMode">
-                                            <option value="kpic-gappy">kpic-gappy</option>
+                                            <option value="kpic-gappy">kpic-gappy (recommended)</option>
                                             <option value="gappy">gappy</option>
                                             <option value="kpic">kpic</option>
                                         </select>
                                     </div>
                                     <button class="btn btn-primary w-100" onclick="runSingleStep('step4')">
                                         <i class="bi bi-play-fill"></i> Run Step 4
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step 4.5: Check Trimming Status -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#step4_5Panel">
+                                    <i class="bi bi-check2-circle me-2"></i> Step 4.5: Check Trimming
+                                </button>
+                            </h2>
+                            <div id="step4_5Panel" class="accordion-collapse collapse">
+                                <div class="accordion-body">
+                                    <p class="text-muted">Check ClipKIT trimming status - review sites kept/removed.</p>
+                                    <div class="mb-3">
+                                        <label for="stepClipkitLog" class="form-label">ClipKIT Log File:</label>
+                                        <input type="file" class="form-control" id="stepClipkitLog" accept=".log,.txt">
+                                    </div>
+                                    <button class="btn btn-primary w-100" onclick="runSingleStep('step4_5')">
+                                        <i class="bi bi-play-fill"></i> Run Step 4.5
                                     </button>
                                 </div>
                             </div>
@@ -246,22 +350,25 @@
                                     <div class="row">
                                         <div class="col-6 mb-3">
                                             <label for="stepModel" class="form-label">Model:</label>
-                                            <input type="text" class="form-control" id="stepModel" value="MFP">
+                                            <input type="text" class="form-control" id="stepModel" value="MFP" 
+                                                   title="MFP = ModelFinder Plus (auto-select best model)">
                                         </div>
                                         <div class="col-6 mb-3">
                                             <label for="stepBootstrap" class="form-label">Bootstrap:</label>
-                                            <input type="number" class="form-control" id="stepBootstrap" value="1000" min="100">
+                                            <input type="number" class="form-control" id="stepBootstrap" value="1000" min="100"
+                                                   title="Number of ultrafast bootstrap replicates">
                                         </div>
                                     </div>
                                     <div class="row">
                                         <div class="col-6 mb-3">
                                             <label for="stepThreads" class="form-label">Threads:</label>
-                                            <input type="number" class="form-control" id="stepThreads" value="4" min="1">
+                                            <input type="number" class="form-control" id="stepThreads" value="4" min="1"
+                                                   title="Number of CPU threads to use">
                                         </div>
                                         <div class="col-6">
                                             <div class="form-check mt-4">
                                                 <input class="form-check-input" type="checkbox" id="stepBnni" checked>
-                                                <label class="form-check-label" for="stepBnni">Use -bnni</label>
+                                                <label class="form-check-label" for="stepBnni" title="Use NNI to further optimize bootstrap trees">Use -bnni</label>
                                             </div>
                                         </div>
                                     </div>
@@ -343,6 +450,15 @@
                             <div class="step-content">
                                 <h6>Step 4: ClipKIT Trim</h6>
                                 <p class="text-muted mb-0">Trim alignment</p>
+                                <span class="badge bg-secondary">Pending</span>
+                            </div>
+                        </div>
+
+                        <div class="step" id="step4_5Status">
+                            <div class="step-icon"><i class="bi bi-check2-circle"></i></div>
+                            <div class="step-content">
+                                <h6>Step 4.5: Check Trimming</h6>
+                                <p class="text-muted mb-0">Review trimmed sites</p>
                                 <span class="badge bg-secondary">Pending</span>
                             </div>
                         </div>
@@ -551,8 +667,16 @@
     });
 
     async function runSingleStep(step) {
-        const file = document.getElementById('stepInputFile').files[0];
-        if (!file) {
+        let file = document.getElementById('stepInputFile').files[0];
+        
+        // For step4_5, use a different input file
+        if (step === 'step4_5') {
+            file = document.getElementById('stepClipkitLog').files[0];
+            if (!file) {
+                showAlert('warning', 'Please select a ClipKIT log file for this step');
+                return;
+            }
+        } else if (!file) {
             showAlert('warning', 'Please select an input file for this step');
             return;
         }
@@ -561,7 +685,24 @@
         formData.append('file', file);
 
         // Add step-specific parameters
-        if (step === 'step2_8') {
+        if (step === 'step2') {
+            const hmmFile = document.getElementById('stepHmmFile').value;
+            if (!hmmFile) {
+                showAlert('warning', 'Please select an HMM profile');
+                return;
+            }
+            formData.append('hmm_file', hmmFile);
+            formData.append('cut_ga', document.getElementById('stepCutGa').checked);
+        } else if (step === 'step2_5') {
+            const goldList = document.getElementById('stepGoldList').value;
+            if (!goldList) {
+                showAlert('warning', 'Please select a gold standard list');
+                return;
+            }
+            formData.append('gold_list_file', goldList);
+            formData.append('pident', document.getElementById('stepPident').value);
+            formData.append('qcovs', document.getElementById('stepQcovs').value);
+        } else if (step === 'step2_8') {
             formData.append('min_length', document.getElementById('stepMinLength').value);
         } else if (step === 'step3') {
             formData.append('maxiterate', document.getElementById('stepMaxiterate').value);
@@ -596,10 +737,12 @@
             document.getElementById('loadingArea').classList.add('d-none');
 
             if (data.success) {
-                stepDiv.classList.remove('running');
-                stepDiv.classList.add('success');
-                stepDiv.querySelector('.badge').className = 'badge bg-success';
-                stepDiv.querySelector('.badge').textContent = 'Success';
+                if (stepDiv) {
+                    stepDiv.classList.remove('running');
+                    stepDiv.classList.add('success');
+                    stepDiv.querySelector('.badge').className = 'badge bg-success';
+                    stepDiv.querySelector('.badge').textContent = 'Success';
+                }
 
                 lastStepOutput = data.output;
 

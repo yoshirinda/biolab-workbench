@@ -74,14 +74,24 @@ except (PermissionError, OSError):
     # Running in test environment or directory not accessible
     pass
 
-# 物种分类 (用于UniProt检索)
+# 物种分类 (用于UniProt检索) - 基于原脚本 uniprot_miner_v5.4.py
 TAXONOMY_OPTIONS = {
-    "Viridiplantae": 33090,
-    "Embryophyta": 3193,
-    "Tracheophyta": 58023,
-    "Spermatophyta": 58024,
-    "Angiospermae": 3398,
-    "Gymnospermae": 3312,
+    "All (不限制)": None,
+    "Viridiplantae (绿色植物)": 33090,
+    "Embryophyta (陆生植物)": 3193,
+    "Tracheophyta (维管植物)": 58023,
+    "Spermatophyta (种子植物)": 58024,
+    "Angiospermae (被子植物)": 3398,
+    "Gymnospermae (裸子植物)": 3312,
+    "Polypodiopsida (真蕨)": 241806,
+    "Lycopodiopsida (石松)": 3247,
+    "Bryophyta (苔藓)": 3208,
+    "Chlorophyta (绿藻)": 3041,
     "Arabidopsis thaliana": 3702,
-    "Oryza sativa": 4530,
+    "Oryza sativa (水稻)": 4530,
+    "Zea mays (玉米)": 4577,
+    "Glycine max (大豆)": 3847,
+    "Nicotiana tabacum (烟草)": 4097,
+    "Solanum lycopersicum (番茄)": 4081,
+    "Populus (杨属)": 3689,
 }

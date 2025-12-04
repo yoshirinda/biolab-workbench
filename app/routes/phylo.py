@@ -97,6 +97,8 @@ def run_step(step):
         output_dir = create_result_dir('phylo', step)
 
         command = None
+        output = None
+        message = None
 
         if step == 'step1':
             success, output, message = step1_clean_fasta(input_file, output_dir)
@@ -105,6 +107,8 @@ def run_step(step):
             hmm_file = request.form.get('hmm_file')
             if hmm_file:
                 hmm_file = os.path.join(config.HMM_PROFILES_DIR, hmm_file)
+            else:
+                return jsonify({'success': False, 'error': 'HMM profile is required for step 2'})
             cut_ga = request.form.get('cut_ga', 'true').lower() == 'true'
             success, output, message, command = step2_hmmsearch(input_file, hmm_file, output_dir, cut_ga)
 
@@ -112,12 +116,21 @@ def run_step(step):
             gold_file = request.form.get('gold_list_file')
             if gold_file:
                 gold_file = os.path.join(config.GOLD_LISTS_DIR, gold_file)
+            else:
+                return jsonify({'success': False, 'error': 'Gold standard list is required for step 2.5'})
             pident = float(request.form.get('pident', 30))
             qcovs = float(request.form.get('qcovs', 50))
             success, output, message = step2_5_blast_filter(input_file, gold_file, output_dir, pident, qcovs)
 
         elif step == 'step2_7':
             success, output, message = step2_7_length_stats(input_file, output_dir)
+            # For stats, return the stats object in a friendly format
+            if success and isinstance(message, dict):
+                stats = message
+                message = (f"Sequences: {stats['count']}, "
+                          f"Mean: {stats['mean']:.1f}, "
+                          f"Median: {stats['median']:.1f}, "
+                          f"Min: {stats['min']}, Max: {stats['max']}")
 
         elif step == 'step2_8':
             min_length = int(request.form.get('min_length', 50))
@@ -130,6 +143,17 @@ def run_step(step):
         elif step == 'step4':
             mode = request.form.get('clipkit_mode', 'kpic-gappy')
             success, output, message, command = step4_clipkit(input_file, output_dir, mode)
+
+        elif step == 'step4_5':
+            # Check ClipKIT trimming status
+            success, output, message = step4_5_check_sites(input_file)
+            if success and isinstance(output, dict):
+                # Format the output nicely
+                info = output
+                message = info.get('log_content', 'Log parsed successfully')[:500]
+                if len(info.get('log_content', '')) > 500:
+                    message += '...'
+                output = None  # No file to download
 
         elif step == 'step5':
             model = request.form.get('model', 'MFP')
@@ -158,6 +182,11 @@ def run_step(step):
 def download(filepath):
     """Download a result file."""
     try:
+        from urllib.parse import unquote
+        
+        # URL decode the filepath for port-forwarding scenarios
+        filepath = unquote(filepath)
+        
         # Security: Ensure the file is within allowed directories
         abs_path = os.path.abspath(filepath)
         results_dir = os.path.abspath(config.RESULTS_DIR)
@@ -170,8 +199,26 @@ def download(filepath):
             return jsonify({'success': False, 'error': 'Access denied'}), 403
         
         if os.path.exists(abs_path):
-            return send_file(abs_path, as_attachment=True)
+            # Determine MIME type based on file extension
+            filename = os.path.basename(abs_path)
+            mimetype = None
+            if filename.endswith('.fasta') or filename.endswith('.fa') or filename.endswith('.fna') or filename.endswith('.faa'):
+                mimetype = 'text/plain'
+            elif filename.endswith('.treefile') or filename.endswith('.nwk'):
+                mimetype = 'text/plain'
+            elif filename.endswith('.tsv') or filename.endswith('.txt') or filename.endswith('.log'):
+                mimetype = 'text/plain'
+            elif filename.endswith('.json'):
+                mimetype = 'application/json'
+            
+            return send_file(
+                abs_path, 
+                as_attachment=True,
+                download_name=filename,
+                mimetype=mimetype
+            )
         else:
             return jsonify({'success': False, 'error': 'File not found'}), 404
     except Exception as e:
+        logger.error(f"Download error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500

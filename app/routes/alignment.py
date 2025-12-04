@@ -6,7 +6,7 @@ from flask import Blueprint, render_template, request, jsonify, send_file
 import config
 from app.core.alignment_tools import (
     check_available_tools, run_alignment, parse_alignment,
-    calculate_conservation, generate_alignment_html
+    calculate_conservation, generate_alignment_html, export_alignment_html
 )
 from app.utils.file_utils import save_uploaded_file
 from app.utils.logger import get_app_logger
@@ -53,6 +53,7 @@ def run():
             return jsonify({'success': False, 'error': 'No sequences provided'})
 
         tool = request.form.get('tool', 'mafft')
+        color_mode = request.form.get('color_mode', 'conservation')
 
         # Get tool options
         options = {}
@@ -67,15 +68,21 @@ def run():
             # Parse alignment for visualization
             sequences = parse_alignment(output_file)
             conservation = calculate_conservation(sequences)
-            html_view = generate_alignment_html(sequences, conservation)
+            html_view = generate_alignment_html(sequences, conservation, color_mode)
+            
+            # Also export HTML visualization file
+            html_output = os.path.join(result_dir, 'alignment_visualization.html')
+            export_alignment_html(sequences, html_output, conservation, color_mode)
 
             return jsonify({
                 'success': True,
                 'result_dir': result_dir,
                 'output_file': output_file,
+                'html_file': html_output,
                 'alignment_html': html_view,
                 'sequence_count': len(sequences),
                 'alignment_length': len(sequences[0][1]) if sequences else 0,
+                'tool': tool,
                 'command': command
             })
         else:
@@ -90,6 +97,11 @@ def run():
 def download(filepath):
     """Download a result file."""
     try:
+        from urllib.parse import unquote
+        
+        # URL decode the filepath for port-forwarding scenarios
+        filepath = unquote(filepath)
+        
         # Security: Ensure the file is within allowed directories
         abs_path = os.path.abspath(filepath)
         results_dir = os.path.abspath(config.RESULTS_DIR)
@@ -102,8 +114,24 @@ def download(filepath):
             return jsonify({'success': False, 'error': 'Access denied'}), 403
         
         if os.path.exists(abs_path):
-            return send_file(abs_path, as_attachment=True)
+            # Determine MIME type based on file extension
+            filename = os.path.basename(abs_path)
+            mimetype = None
+            if filename.endswith('.fasta') or filename.endswith('.fa') or filename.endswith('.aln'):
+                mimetype = 'text/plain'
+            elif filename.endswith('.txt') or filename.endswith('.log'):
+                mimetype = 'text/plain'
+            elif filename.endswith('.json'):
+                mimetype = 'application/json'
+            
+            return send_file(
+                abs_path, 
+                as_attachment=True,
+                download_name=filename,
+                mimetype=mimetype
+            )
         else:
             return jsonify({'success': False, 'error': 'File not found'}), 404
     except Exception as e:
+        logger.error(f"Download error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
