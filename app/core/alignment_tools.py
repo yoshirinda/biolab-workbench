@@ -253,8 +253,28 @@ def calculate_conservation(sequences):
     return conservation
 
 
-# Display configuration
+# Display configuration constants
 MAX_SEQ_ID_DISPLAY_LENGTH = 25  # Maximum length for sequence ID display
+BLOCK_SIZE = 60  # Number of residues per alignment block
+SEQ_NAME_TRUNCATE_LENGTH = 22  # Maximum length for sequence name in exported HTML
+
+# Amino acid color scheme for visualization
+# Based on residue chemical properties
+AA_COLORS = {
+    # Hydrophobic - Yellow/Orange
+    'A': '#f0c000', 'V': '#f0c000', 'L': '#f0c000', 'I': '#f0c000', 
+    'M': '#f0c000', 'F': '#f0c000', 'W': '#f0c000', 'P': '#f0c000',
+    # Polar - Green
+    'S': '#00c000', 'T': '#00c000', 'N': '#00c000', 'Q': '#00c000',
+    # Negatively charged - Red
+    'D': '#c00000', 'E': '#c00000',
+    # Positively charged - Blue
+    'K': '#0000c0', 'R': '#0000c0', 'H': '#0080c0',
+    # Special - Cyan/Gray
+    'C': '#00c0c0', 'G': '#c0c0c0', 'Y': '#00c0c0',
+    # Gap
+    '-': '#e5e5e5',
+}
 
 
 def generate_alignment_html(sequences, conservation=None, color_mode='conservation'):
@@ -464,16 +484,8 @@ def export_alignment_html(sequences, output_file, conservation=None, color_mode=
         seqs = list(sequences_dict.values())
         seq_len = len(seqs[0]) if seqs else 0
         
-        # Amino acid colors - consistent with original script
-        colors = {
-            'A': '#f0c000', 'V': '#f0c000', 'L': '#f0c000', 'I': '#f0c000', 
-            'M': '#f0c000', 'F': '#f0c000', 'W': '#f0c000', 'P': '#f0c000',
-            'S': '#00c000', 'T': '#00c000', 'N': '#00c000', 'Q': '#00c000',
-            'D': '#c00000', 'E': '#c00000',
-            'K': '#0000c0', 'R': '#0000c0', 'H': '#0080c0',
-            'C': '#00c0c0', 'G': '#c0c0c0', 'Y': '#00c0c0',
-            '-': '#e5e5e5',
-        }
+        # Use module-level amino acid colors constant
+        colors = AA_COLORS
         
         def get_conservation(pos):
             """Calculate conservation at a position."""
@@ -600,10 +612,8 @@ def export_alignment_html(sequences, output_file, conservation=None, color_mode=
     <div class="alignment-container">
 '''
         
-        block_size = 60
-        
-        for start in range(0, seq_len, block_size):
-            end = min(start + block_size, seq_len)
+        for start in range(0, seq_len, BLOCK_SIZE):
+            end = min(start + BLOCK_SIZE, seq_len)
             
             # Position ruler
             ruler_html = '<div class="seq-row position-row"><span class="seq-name"></span><span class="seq-data">'
@@ -619,7 +629,7 @@ def export_alignment_html(sequences, output_file, conservation=None, color_mode=
             # Sequence rows
             for name, seq in zip(names, seqs):
                 segment = seq[start:end] if start < len(seq) else ''
-                display_name = name[:22] if len(name) > 22 else name
+                display_name = name[:SEQ_NAME_TRUNCATE_LENGTH] if len(name) > SEQ_NAME_TRUNCATE_LENGTH else name
                 
                 html += f'<div class="seq-row"><span class="seq-name" title="{name}">{display_name}</span><span class="seq-data">'
                 
