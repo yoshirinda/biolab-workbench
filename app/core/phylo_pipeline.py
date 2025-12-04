@@ -8,6 +8,7 @@ import json
 import shlex
 import re
 import statistics
+from collections import Counter
 from datetime import datetime
 import config
 from app.utils.logger import get_tools_logger
@@ -162,8 +163,6 @@ def step2_hmmsearch_multiple(input_file, hmm_files, output_dir, cut_ga=True):
     Returns:
         (success, output_fasta, message, commands_list)
     """
-    from collections import Counter
-    
     # Handle single file case
     if isinstance(hmm_files, str):
         hmm_files = [hmm_files]

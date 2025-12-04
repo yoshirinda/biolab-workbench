@@ -434,7 +434,6 @@ seq3                       -          PF00001.1
     def test_extract_sequences_by_ids(self, tmpdir):
         """Test extracting sequences by IDs."""
         from app.core.phylo_pipeline import extract_sequences_by_ids
-        from app.utils.file_utils import write_fasta_file
 
         # Create a test FASTA file
         input_file = str(tmpdir.join('input.fasta'))
