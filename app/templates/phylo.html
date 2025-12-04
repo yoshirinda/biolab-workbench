@@ -520,14 +520,20 @@
                     commandsDiv.innerHTML = data.results.commands.map(cmd => `
                         <div class="command-display mb-2">
                             <div class="command-header">
-                                <span class="command-label"><i class="bi bi-terminal"></i> ${cmd.name}</span>
-                                <button class="copy-btn" onclick="copyCommand(this, '${encodeURIComponent(cmd.command)}')">
+                                <span class="command-label"><i class="bi bi-terminal"></i> ${escapeHtml(cmd.name)}</span>
+                                <button class="copy-btn" data-command="${escapeHtml(cmd.command)}">
                                     <i class="bi bi-clipboard"></i> Copy
                                 </button>
                             </div>
                             <pre>${escapeHtml(cmd.command)}</pre>
                         </div>
                     `).join('');
+                    // Add click handlers for copy buttons
+                    commandsDiv.querySelectorAll('.copy-btn').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            copyCommandFromElement(this);
+                        });
+                    });
                     document.getElementById('commandsArea').classList.remove('d-none');
                 }
             }

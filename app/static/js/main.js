@@ -179,39 +179,112 @@ function displayCommand(containerId, command) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    container.innerHTML = `
-        <div class="command-display">
-            <div class="command-header">
-                <span class="command-label"><i class="bi bi-terminal"></i> Executed Command</span>
-                <button class="copy-btn" onclick="copyCommand(this, '${encodeURIComponent(command)}')">
-                    <i class="bi bi-clipboard"></i> Copy
-                </button>
-            </div>
-            <pre>${escapeHtml(command)}</pre>
-        </div>
-    `;
+    // Create elements safely to avoid XSS
+    const div = document.createElement('div');
+    div.className = 'command-display';
+
+    const header = document.createElement('div');
+    header.className = 'command-header';
+
+    const label = document.createElement('span');
+    label.className = 'command-label';
+    label.innerHTML = '<i class="bi bi-terminal"></i> Executed Command';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'copy-btn';
+    copyBtn.innerHTML = '<i class="bi bi-clipboard"></i> Copy';
+    copyBtn.dataset.command = command;
+    copyBtn.addEventListener('click', function() {
+        copyCommandFromElement(this);
+    });
+
+    header.appendChild(label);
+    header.appendChild(copyBtn);
+
+    const pre = document.createElement('pre');
+    pre.textContent = command;
+
+    div.appendChild(header);
+    div.appendChild(pre);
+
+    container.innerHTML = '';
+    container.appendChild(div);
     container.classList.remove('d-none');
 }
 
 /**
- * Copy command to clipboard
+ * Copy command from element's data attribute
+ * @param {HTMLElement} btn - The button element with data-command attribute
+ */
+function copyCommandFromElement(btn) {
+    const command = btn.dataset.command;
+    if (!command) return;
+
+    copyToClipboardWithFeedback(command, btn);
+}
+
+/**
+ * Copy text to clipboard with visual feedback
+ * @param {string} text - Text to copy
+ * @param {HTMLElement} btn - Button element for feedback
+ */
+function copyToClipboardWithFeedback(text, btn) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+            showCopySuccess(btn);
+        }).catch(err => {
+            console.error('Clipboard API failed:', err);
+            fallbackCopy(text, btn);
+        });
+    } else {
+        fallbackCopy(text, btn);
+    }
+}
+
+/**
+ * Fallback copy method for older browsers
+ * @param {string} text - Text to copy
+ * @param {HTMLElement} btn - Button element for feedback
+ */
+function fallbackCopy(text, btn) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+        document.execCommand('copy');
+        showCopySuccess(btn);
+    } catch (err) {
+        console.error('Fallback copy failed:', err);
+        showAlert('danger', 'Failed to copy command to clipboard');
+    }
+    document.body.removeChild(textarea);
+}
+
+/**
+ * Show copy success feedback on button
+ * @param {HTMLElement} btn - Button element
+ */
+function showCopySuccess(btn) {
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-check"></i> Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => {
+        btn.innerHTML = originalHtml;
+        btn.classList.remove('copied');
+    }, 2000);
+}
+
+/**
+ * Legacy copy command function (deprecated, kept for compatibility)
  * @param {HTMLElement} btn - The button element
  * @param {string} encodedCommand - URL-encoded command string
  */
 function copyCommand(btn, encodedCommand) {
     const command = decodeURIComponent(encodedCommand);
-    navigator.clipboard.writeText(command).then(() => {
-        const originalHtml = btn.innerHTML;
-        btn.innerHTML = '<i class="bi bi-check"></i> Copied!';
-        btn.classList.add('copied');
-        setTimeout(() => {
-            btn.innerHTML = originalHtml;
-            btn.classList.remove('copied');
-        }, 2000);
-    }).catch(err => {
-        console.error('Failed to copy:', err);
-        showAlert('danger', 'Failed to copy command to clipboard');
-    });
+    copyToClipboardWithFeedback(command, btn);
 }
 
 /**

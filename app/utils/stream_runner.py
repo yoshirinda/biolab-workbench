@@ -16,7 +16,7 @@ def run_command_with_stream(cmd, task_id):
     Run a command and stream output via Server-Sent Events.
     
     Args:
-        cmd: Command to execute (as string or list)
+        cmd: Command to execute (as list of arguments - required for security)
         task_id: Unique identifier for this task
     
     Returns:
@@ -24,17 +24,17 @@ def run_command_with_stream(cmd, task_id):
     """
     def generate():
         try:
-            # Wrap command with conda
-            if isinstance(cmd, list):
-                full_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} " + " ".join(shlex.quote(c) for c in cmd)
-            else:
-                full_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} {cmd}"
+            # Build command safely - cmd must be a list
+            if not isinstance(cmd, list):
+                raise ValueError("Command must be a list of arguments for security")
             
-            logger.info(f"Streaming command: {full_command}")
+            # Construct the full command with conda wrapper
+            full_cmd = ['conda', 'run', '-n', config.CONDA_ENV] + cmd
+            
+            logger.info(f"Streaming command: {' '.join(shlex.quote(c) for c in full_cmd)}")
             
             process = subprocess.Popen(
-                full_command,
-                shell=True,
+                full_cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
