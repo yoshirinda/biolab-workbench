@@ -251,6 +251,7 @@ def select_blast_program(query_type, db_type):
 def add_tsv_header(filepath, output_format):
     """
     Add a header row to TSV BLAST output files.
+    Uses a temporary file approach to handle large files efficiently.
     """
     if output_format not in ['tsv', 'detailed']:
         return  # Only add headers to TSV format files
@@ -266,19 +267,27 @@ def add_tsv_header(filepath, output_format):
     else:
         return
     
+    temp_file = filepath + '.tmp'
     try:
-        # Read existing content
-        with open(filepath, 'r', encoding='utf-8') as f:
-            content = f.read()
+        # Write header to temp file, then append original content (stream approach)
+        with open(temp_file, 'w', encoding='utf-8') as out_f:
+            out_f.write(header)
+            with open(filepath, 'r', encoding='utf-8') as in_f:
+                for line in in_f:
+                    out_f.write(line)
         
-        # Write header + content
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(header)
-            f.write(content)
+        # Replace original file with temp file
+        os.replace(temp_file, filepath)
         
         logger.info(f"Added TSV header to {filepath}")
     except Exception as e:
         logger.warning(f"Failed to add TSV header: {e}")
+        # Clean up temp file if it exists
+        if os.path.exists(temp_file):
+            try:
+                os.remove(temp_file)
+            except Exception:
+                pass
 
 
 def run_blast(query_file, database, output_format='tsv', evalue=1e-5,
@@ -413,16 +422,21 @@ def extract_sequences(database, hit_ids, output_file):
 
     # First try blastdbcmd
     id_file = output_file + '.ids'
-    with open(id_file, 'w') as f:
-        f.write('\n'.join(sanitized_ids))
+    stderr = ''
+    try:
+        with open(id_file, 'w') as f:
+            f.write('\n'.join(sanitized_ids))
 
-    command = f'blastdbcmd -db {shlex.quote(database)} -entry_batch {shlex.quote(id_file)} -out {shlex.quote(output_file)}'
+        command = f'blastdbcmd -db {shlex.quote(database)} -entry_batch {shlex.quote(id_file)} -out {shlex.quote(output_file)}'
 
-    success, stdout, stderr = run_conda_command(command)
-
-    # Clean up temp file
-    if os.path.exists(id_file):
-        os.remove(id_file)
+        success, stdout, stderr = run_conda_command(command)
+    finally:
+        # Clean up temp file
+        if os.path.exists(id_file):
+            try:
+                os.remove(id_file)
+            except Exception:
+                pass
 
     # Check if blastdbcmd succeeded and output file has content
     blastdbcmd_success = success and os.path.exists(output_file) and os.path.getsize(output_file) > 0
@@ -458,6 +472,9 @@ def parse_blast_tsv(filepath):
     hits = []
     headers = ['qseqid', 'sseqid', 'pident', 'length', 'mismatch', 'gapopen',
                'qstart', 'qend', 'sstart', 'send', 'evalue', 'bitscore']
+    
+    # Set of expected header field names for robust detection
+    header_fields = set(headers)
 
     if not os.path.exists(filepath):
         return hits
@@ -468,11 +485,16 @@ def parse_blast_tsv(filepath):
             if not line or line.startswith('#'):
                 continue
             
-            # Skip header row if present (first field is 'qseqid')
-            if line.startswith('qseqid'):
-                continue
-
             parts = line.split('\t')
+            
+            # Skip header row if present - check if all fields match expected headers
+            # This handles both standard and detailed format headers
+            if parts and parts[0] in header_fields:
+                # Check if this looks like a header row (first few fields match headers)
+                first_fields = set(parts[:min(len(parts), 6)])
+                if first_fields <= header_fields.union({'qlen', 'slen', 'qcovs', 'stitle'}):
+                    continue
+
             hit = {}
             for i, header in enumerate(headers):
                 if i < len(parts):
