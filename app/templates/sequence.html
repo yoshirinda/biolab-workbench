@@ -245,7 +245,7 @@
         export: '{{ url_for("sequence.export") }}',
         projects: '{{ url_for("sequence.get_projects") }}',
         saveCollection: '{{ url_for("sequence.save_seq_collection") }}',
-        loadCollectionBase: '{{ url_for("sequence.load_seq_collection", project_id="") }}'
+        loadCollectionBase: '/sequence/collections/'
     };
 
     let sequences = [];
@@ -419,7 +419,7 @@
         }
 
         try {
-            const response = await fetch(SEQUENCE_URLS.loadCollectionBase + projectId);
+            const response = await fetch(SEQUENCE_URLS.loadCollectionBase + projectId + '/load');
             const data = await response.json();
 
             if (data.success) {
