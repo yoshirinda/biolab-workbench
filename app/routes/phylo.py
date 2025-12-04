@@ -5,7 +5,7 @@ import os
 from flask import Blueprint, render_template, request, jsonify, send_file
 import config
 from app.core.phylo_pipeline import (
-    step1_clean_fasta, step2_hmmsearch, step2_5_blast_filter,
+    step1_clean_fasta, step2_hmmsearch, step2_hmmsearch_multiple, step2_5_blast_filter,
     step2_7_length_stats, step2_8_length_filter, step3_mafft,
     step4_clipkit, step4_5_check_sites, step5_iqtree,
     run_full_pipeline
@@ -45,10 +45,20 @@ def run_full():
 
         input_file = save_uploaded_file(file)
 
-        # Get optional HMM file
-        hmm_file = None
-        if request.form.get('hmm_file'):
-            hmm_file = os.path.join(config.HMM_PROFILES_DIR, request.form.get('hmm_file'))
+        # Get optional HMM files (support multiple)
+        hmm_files = []
+        hmm_files_raw = request.form.getlist('hmm_files[]')
+        if not hmm_files_raw:
+            # Fallback for single file (backward compatibility)
+            hmm_file_single = request.form.get('hmm_file')
+            if hmm_file_single:
+                hmm_files_raw = [hmm_file_single]
+        
+        for hmm_filename in hmm_files_raw:
+            if hmm_filename:
+                hmm_path = os.path.join(config.HMM_PROFILES_DIR, hmm_filename)
+                if os.path.exists(hmm_path):
+                    hmm_files.append(hmm_path)
 
         # Get optional gold list file
         gold_list_file = None
@@ -69,7 +79,7 @@ def run_full():
             'bnni': request.form.get('bnni', 'true').lower() == 'true',
         }
 
-        success, results = run_full_pipeline(input_file, hmm_file, gold_list_file, options)
+        success, results = run_full_pipeline(input_file, hmm_files, gold_list_file, options)
 
         return jsonify({
             'success': success,
@@ -97,6 +107,7 @@ def run_step(step):
         output_dir = create_result_dir('phylo', step)
 
         command = None
+        commands = None
         output = None
         message = None
 
@@ -104,13 +115,26 @@ def run_step(step):
             success, output, message = step1_clean_fasta(input_file, output_dir)
 
         elif step == 'step2':
-            hmm_file = request.form.get('hmm_file')
-            if hmm_file:
-                hmm_file = os.path.join(config.HMM_PROFILES_DIR, hmm_file)
-            else:
-                return jsonify({'success': False, 'error': 'HMM profile is required for step 2'})
+            # Support multiple HMM files
+            hmm_files = []
+            hmm_files_raw = request.form.getlist('hmm_files[]')
+            if not hmm_files_raw:
+                # Fallback for single file
+                hmm_file_single = request.form.get('hmm_file')
+                if hmm_file_single:
+                    hmm_files_raw = [hmm_file_single]
+            
+            for hmm_filename in hmm_files_raw:
+                if hmm_filename:
+                    hmm_path = os.path.join(config.HMM_PROFILES_DIR, hmm_filename)
+                    if os.path.exists(hmm_path):
+                        hmm_files.append(hmm_path)
+            
+            if not hmm_files:
+                return jsonify({'success': False, 'error': 'At least one HMM profile is required for step 2'})
+            
             cut_ga = request.form.get('cut_ga', 'true').lower() == 'true'
-            success, output, message, command = step2_hmmsearch(input_file, hmm_file, output_dir, cut_ga)
+            success, output, message, commands = step2_hmmsearch_multiple(input_file, hmm_files, output_dir, cut_ga)
 
         elif step == 'step2_5':
             gold_file = request.form.get('gold_list_file')
@@ -165,13 +189,20 @@ def run_step(step):
         else:
             return jsonify({'success': False, 'error': f'Unknown step: {step}'})
 
-        return jsonify({
+        # Build response - handle both single command and multiple commands
+        response_data = {
             'success': success,
             'output': output,
             'message': message,
-            'result_dir': output_dir,
-            'command': command
-        })
+            'result_dir': output_dir
+        }
+        
+        if commands:
+            response_data['commands'] = commands
+        elif command:
+            response_data['command'] = command
+        
+        return jsonify(response_data)
 
     except Exception as e:
         logger.error(f"Step {step} error: {str(e)}")

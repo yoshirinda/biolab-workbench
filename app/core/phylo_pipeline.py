@@ -136,6 +136,115 @@ def parse_hmmsearch_tblout(tblout_file):
     return hits
 
 
+def extract_sequences_by_ids(input_file, ids, output_file):
+    """Extract sequences from input file by ID set."""
+    sequences = read_fasta_file(input_file)
+    extracted = []
+    for header, seq in sequences:
+        seq_id = header.split()[0]
+        if seq_id in ids:
+            extracted.append((header, seq))
+    write_fasta_file(output_file, extracted)
+    return len(extracted)
+
+
+def step2_hmmsearch_multiple(input_file, hmm_files, output_dir, cut_ga=True):
+    """
+    Step 2: Run HMMer search with multiple HMM files.
+    Merge results and deduplicate.
+    
+    Args:
+        input_file: Input FASTA file path
+        hmm_files: List of HMM profile file paths
+        output_dir: Output directory path
+        cut_ga: Use --cut_ga threshold flag
+    
+    Returns:
+        (success, output_fasta, message, commands_list)
+    """
+    from collections import Counter
+    
+    # Handle single file case
+    if isinstance(hmm_files, str):
+        hmm_files = [hmm_files]
+    
+    if not hmm_files:
+        return False, None, "No HMM files provided", []
+    
+    try:
+        input_file = sanitize_path(input_file)
+        output_dir = sanitize_path(output_dir)
+        hmm_files = [sanitize_path(hf) for hf in hmm_files]
+    except ValueError as e:
+        return False, None, str(e), []
+    
+    all_tbl_files = []
+    all_commands = []
+    
+    logger.info(f"[STEP2] Processing {len(hmm_files)} HMM file(s)")
+    
+    # Run hmmsearch for each HMM file
+    for i, hmm_file in enumerate(hmm_files):
+        hmm_basename = os.path.basename(hmm_file)
+        logger.info(f"[STEP2] Processing HMM file {i+1}/{len(hmm_files)}: {hmm_basename}")
+        
+        tblout_file = os.path.join(output_dir, f'step2_hmmsearch_{i}_{hmm_basename}.tbl')
+        output_file = os.path.join(output_dir, f'step2_hmmsearch_{i}_{hmm_basename}.out')
+        domtblout_file = os.path.join(output_dir, f'step2_hmmsearch_{i}_{hmm_basename}.domtbl')
+        
+        cut_ga_opt = '--cut_ga' if cut_ga else ''
+        
+        command = (
+            f'hmmsearch {cut_ga_opt} '
+            f'--tblout {shlex.quote(tblout_file)} '
+            f'--domtblout {shlex.quote(domtblout_file)} '
+            f'-o {shlex.quote(output_file)} '
+            f'{shlex.quote(hmm_file)} {shlex.quote(input_file)}'
+        )
+        
+        full_command = f"conda run -n {config.CONDA_ENV} {command}"
+        all_commands.append(full_command)
+        
+        success, stdout, stderr = run_conda_command(command)
+        
+        if success:
+            all_tbl_files.append(tblout_file)
+            hits = parse_hmmsearch_tblout(tblout_file)
+            logger.info(f"[STEP2] HMM {hmm_basename}: Found {len(hits)} hits")
+        else:
+            logger.warning(f"[STEP2] HMM {hmm_basename} failed: {stderr}")
+    
+    if not all_tbl_files:
+        return False, None, "All HMM searches failed", all_commands
+    
+    # Merge all tblout results and deduplicate
+    all_hit_ids = []
+    for tbl_file in all_tbl_files:
+        hits = parse_hmmsearch_tblout(tbl_file)
+        all_hit_ids.extend(hits)
+    
+    # Use Counter for deduplication and statistics
+    id_counts = Counter(all_hit_ids)
+    unique_ids = set(id_counts.keys())
+    
+    total_hits = len(all_hit_ids)
+    unique_count = len(unique_ids)
+    duplicate_count = total_hits - unique_count
+    
+    logger.info(f"[STEP2] Found {total_hits} total hits, {unique_count} unique after deduplication")
+    logger.info(f"[STEP2] Removed {duplicate_count} duplicate hits")
+    
+    # Extract sequences with unique IDs
+    output_fasta = os.path.join(output_dir, 'step2_hmm_hits.fasta')
+    extracted_count = extract_sequences_by_ids(input_file, unique_ids, output_fasta)
+    
+    logger.info(f"[STEP2] Extracted {extracted_count} sequences to {output_fasta}")
+    
+    message = f"Found {unique_count} unique hits from {len(hmm_files)} HMM file(s) (removed {duplicate_count} duplicates)"
+    
+    return True, output_fasta, message, all_commands
+
+
 def step2_5_blast_filter(input_file, gold_list_file, output_dir,
                          pident_threshold=30, qcovs_threshold=50):
     """
@@ -361,19 +470,33 @@ def step5_iqtree(input_file, output_dir, model='MFP', bootstrap=1000, threads=No
         return False, None, stderr or "IQ-Tree failed", full_command
 
 
-def run_full_pipeline(input_file, hmm_file=None, gold_list_file=None, options=None):
+def run_full_pipeline(input_file, hmm_files=None, gold_list_file=None, options=None):
     """
     Run the complete phylogenetic pipeline.
+    
+    Args:
+        input_file: Input FASTA file path
+        hmm_files: Single HMM file path (string) or list of HMM file paths
+        gold_list_file: Gold standard list file path (optional)
+        options: Dictionary of pipeline options
     """
     if options is None:
         options = {}
 
     result_dir = create_result_dir('phylo', 'pipeline')
 
+    # Normalize hmm_files to a list
+    if hmm_files is None:
+        hmm_files_list = []
+    elif isinstance(hmm_files, str):
+        hmm_files_list = [hmm_files] if hmm_files else []
+    else:
+        hmm_files_list = [f for f in hmm_files if f]
+
     # Save parameters
     params = {
         'input_file': input_file,
-        'hmm_file': hmm_file,
+        'hmm_files': hmm_files_list,
         'gold_list_file': gold_list_file,
         'options': options,
         'timestamp': datetime.now().isoformat()
@@ -395,16 +518,24 @@ def run_full_pipeline(input_file, hmm_file=None, gold_list_file=None, options=No
         return False, results
     current_file = output
 
-    # Step 2: HMMer (optional)
-    if hmm_file and os.path.exists(hmm_file):
-        success, output, message, command = step2_hmmsearch(
-            current_file, hmm_file, result_dir,
+    # Step 2: HMMer (optional) - supports multiple HMM files
+    valid_hmm_files = [f for f in hmm_files_list if os.path.exists(f)]
+    if valid_hmm_files:
+        success, output, message, commands = step2_hmmsearch_multiple(
+            current_file, valid_hmm_files, result_dir,
             cut_ga=options.get('cut_ga', True)
         )
-        results['steps']['step2'] = {'success': success, 'output': output, 'message': message, 'command': command}
-        if command:
-            results['commands'].append({'step': 'step2', 'name': 'HMMer Search', 'command': command})
-        if not success:
+        results['steps']['step2'] = {'success': success, 'output': output, 'message': message}
+        if commands:
+            for i, cmd in enumerate(commands):
+                results['commands'].append({
+                    'step': f'step2_{i+1}',
+                    'name': f'HMMer Search ({i+1}/{len(commands)})',
+                    'command': cmd
+                })
+        if success:
+            current_file = output
+        else:
             return False, results
 
     # Step 2.5: BLAST filter (optional)
