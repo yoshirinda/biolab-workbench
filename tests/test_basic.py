@@ -359,7 +359,6 @@ class TestBlastWrapper:
 
     def test_create_blast_database_uses_correct_directory(self, tmpdir, monkeypatch):
         """Test that create_blast_database creates databases in DATABASES_DIR, not input file dir."""
-        import tempfile
         import config
         from app.core.blast_wrapper import create_blast_database
 
@@ -394,8 +393,10 @@ class TestBlastWrapper:
         temp_databases_dir = str(tmpdir.mkdir("databases"))
         monkeypatch.setattr(config, 'DATABASES_DIR', temp_databases_dir)
 
-        # Create mock nucleotide database files
-        open(os.path.join(temp_databases_dir, "test_db.nin"), 'w').close()
+        # Create mock nucleotide database files using context manager
+        db_file_path = os.path.join(temp_databases_dir, "test_db.nin")
+        with open(db_file_path, 'w'):
+            pass
 
         # List databases
         databases = list_blast_databases()

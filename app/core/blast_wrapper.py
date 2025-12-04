@@ -169,10 +169,10 @@ def run_blast(query_file, database, output_format='tsv', evalue=1e-5,
         query_file = sanitize_path(query_file)
         database = sanitize_path(database)
     except ValueError as e:
-        return False, str(e), None
+        return False, str(e), None, None
 
     if not os.path.exists(query_file):
-        return False, f"Query file not found: {query_file}", None
+        return False, f"Query file not found: {query_file}", None, None
 
     # Auto-detect query type
     with open(query_file, 'r') as f:
@@ -198,7 +198,7 @@ def run_blast(query_file, database, output_format='tsv', evalue=1e-5,
     # Validate program
     valid_programs = ['blastn', 'blastp', 'blastx', 'tblastn', 'tblastx']
     if program not in valid_programs:
-        return False, f"Invalid BLAST program: {program}", None
+        return False, f"Invalid BLAST program: {program}", None, None
 
     # Create result directory
     result_dir = create_result_dir('blast', 'search')
@@ -224,7 +224,7 @@ def run_blast(query_file, database, output_format='tsv', evalue=1e-5,
         num_threads = int(num_threads)
         max_hits = int(max_hits)
     except (ValueError, TypeError):
-        return False, "Invalid numeric parameter", None
+        return False, "Invalid numeric parameter", None, None
 
     command = (
         f'{program} -query {shlex.quote(query_file)} -db {shlex.quote(database)} '
