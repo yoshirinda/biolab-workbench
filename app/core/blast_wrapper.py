@@ -162,7 +162,7 @@ def run_blast(query_file, database, output_format='tsv', evalue=1e-5,
     """
     Run BLAST search.
     output_format: 'tsv', 'txt', 'html', 'detailed'
-    Returns (success, result_dir, output_files).
+    Returns (success, result_dir, output_files, command).
     """
     try:
         query_file = sanitize_path(query_file)
@@ -231,6 +231,9 @@ def run_blast(query_file, database, output_format='tsv', evalue=1e-5,
         f'-evalue {evalue} -num_threads {num_threads} -max_target_seqs {max_hits}'
     )
 
+    # Full command for display (with conda wrapper)
+    full_command = f"conda run -n {config.CONDA_ENV} {command}"
+
     # Save parameters
     params = {
         'query_file': query_file,
@@ -248,10 +251,10 @@ def run_blast(query_file, database, output_format='tsv', evalue=1e-5,
 
     if success:
         logger.info(f"BLAST search completed: {output_file}")
-        return True, result_dir, {'main': output_file}
+        return True, result_dir, {'main': output_file}, full_command
     else:
         logger.error(f"BLAST search failed: {stderr}")
-        return False, stderr, None
+        return False, stderr, None, full_command
 
 
 def extract_sequences(database, hit_ids, output_file):

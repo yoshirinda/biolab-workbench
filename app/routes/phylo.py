@@ -96,6 +96,8 @@ def run_step(step):
         from app.utils.file_utils import create_result_dir
         output_dir = create_result_dir('phylo', step)
 
+        command = None
+
         if step == 'step1':
             success, output, message = step1_clean_fasta(input_file, output_dir)
 
@@ -104,7 +106,7 @@ def run_step(step):
             if hmm_file:
                 hmm_file = os.path.join(config.HMM_PROFILES_DIR, hmm_file)
             cut_ga = request.form.get('cut_ga', 'true').lower() == 'true'
-            success, output, message = step2_hmmsearch(input_file, hmm_file, output_dir, cut_ga)
+            success, output, message, command = step2_hmmsearch(input_file, hmm_file, output_dir, cut_ga)
 
         elif step == 'step2_5':
             gold_file = request.form.get('gold_list_file')
@@ -123,18 +125,18 @@ def run_step(step):
 
         elif step == 'step3':
             maxiterate = int(request.form.get('maxiterate', 1000))
-            success, output, message = step3_mafft(input_file, output_dir, maxiterate)
+            success, output, message, command = step3_mafft(input_file, output_dir, maxiterate)
 
         elif step == 'step4':
             mode = request.form.get('clipkit_mode', 'kpic-gappy')
-            success, output, message = step4_clipkit(input_file, output_dir, mode)
+            success, output, message, command = step4_clipkit(input_file, output_dir, mode)
 
         elif step == 'step5':
             model = request.form.get('model', 'MFP')
             bootstrap = int(request.form.get('bootstrap', 1000))
             threads = int(request.form.get('threads', config.DEFAULT_THREADS))
             bnni = request.form.get('bnni', 'true').lower() == 'true'
-            success, output, message = step5_iqtree(input_file, output_dir, model, bootstrap, threads, bnni)
+            success, output, message, command = step5_iqtree(input_file, output_dir, model, bootstrap, threads, bnni)
 
         else:
             return jsonify({'success': False, 'error': f'Unknown step: {step}'})
@@ -143,7 +145,8 @@ def run_step(step):
             'success': success,
             'output': output,
             'message': message,
-            'result_dir': output_dir
+            'result_dir': output_dir,
+            'command': command
         })
 
     except Exception as e:

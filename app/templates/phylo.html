@@ -7,6 +7,7 @@
     <h2 class="mb-4">
         <i class="bi bi-diagram-3 text-info"></i>
         Phylogenetic Pipeline
+        <a href="{{ url_for('docs.phylo_docs') }}" class="help-btn" title="Help"><i class="bi bi-question-lg"></i></a>
     </h2>
 
     <!-- Mode Selection -->
@@ -368,6 +369,12 @@
                         <div id="outputFiles"></div>
                     </div>
 
+                    <!-- Commands Display -->
+                    <div id="commandsArea" class="mt-4 d-none">
+                        <h6><i class="bi bi-terminal"></i> Executed Commands</h6>
+                        <div id="commandsList"></div>
+                    </div>
+
                     <!-- Step Result Details -->
                     <div id="stepResultDetails" class="mt-4 d-none">
                         <div class="alert alert-secondary">
@@ -377,6 +384,8 @@
                                 <i class="bi bi-download"></i> Download Output
                             </a>
                         </div>
+                        <!-- Step Command Display -->
+                        <div id="stepCommandDisplay" class="d-none"></div>
                     </div>
                 </div>
             </div>
@@ -504,6 +513,23 @@
                 }
 
                 document.getElementById('resultsArea').classList.remove('d-none');
+
+                // Display executed commands
+                if (data.results.commands && data.results.commands.length > 0) {
+                    const commandsDiv = document.getElementById('commandsList');
+                    commandsDiv.innerHTML = data.results.commands.map(cmd => `
+                        <div class="command-display mb-2">
+                            <div class="command-header">
+                                <span class="command-label"><i class="bi bi-terminal"></i> ${cmd.name}</span>
+                                <button class="copy-btn" onclick="copyCommand(this, '${encodeURIComponent(cmd.command)}')">
+                                    <i class="bi bi-clipboard"></i> Copy
+                                </button>
+                            </div>
+                            <pre>${escapeHtml(cmd.command)}</pre>
+                        </div>
+                    `).join('');
+                    document.getElementById('commandsArea').classList.remove('d-none');
+                }
             }
 
             if (data.success) {
@@ -581,6 +607,11 @@
                     downloadBtn.classList.remove('d-none');
                 }
 
+                // Display command if available
+                if (data.command) {
+                    displayCommand('stepCommandDisplay', data.command);
+                }
+
                 showAlert('success', `${step} completed successfully`);
             } else {
                 stepDiv.classList.remove('running');
@@ -591,6 +622,11 @@
                 document.getElementById('stepResultDetails').classList.remove('d-none');
                 document.getElementById('stepResultMessage').textContent = data.error || data.message || 'Step failed';
                 document.getElementById('stepResultDownload').classList.add('d-none');
+
+                // Display command even on failure
+                if (data.command) {
+                    displayCommand('stepCommandDisplay', data.command);
+                }
 
                 showAlert('danger', data.error || `${step} failed`);
             }

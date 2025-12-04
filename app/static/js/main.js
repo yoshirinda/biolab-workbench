@@ -167,3 +167,141 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+/**
+ * Display executed command in a copyable block
+ * @param {string} containerId - ID of the container element
+ * @param {string} command - Command string to display
+ */
+function displayCommand(containerId, command) {
+    if (!command) return;
+
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    container.innerHTML = `
+        <div class="command-display">
+            <div class="command-header">
+                <span class="command-label"><i class="bi bi-terminal"></i> Executed Command</span>
+                <button class="copy-btn" onclick="copyCommand(this, '${encodeURIComponent(command)}')">
+                    <i class="bi bi-clipboard"></i> Copy
+                </button>
+            </div>
+            <pre>${escapeHtml(command)}</pre>
+        </div>
+    `;
+    container.classList.remove('d-none');
+}
+
+/**
+ * Copy command to clipboard
+ * @param {HTMLElement} btn - The button element
+ * @param {string} encodedCommand - URL-encoded command string
+ */
+function copyCommand(btn, encodedCommand) {
+    const command = decodeURIComponent(encodedCommand);
+    navigator.clipboard.writeText(command).then(() => {
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = '<i class="bi bi-check"></i> Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+            btn.innerHTML = originalHtml;
+            btn.classList.remove('copied');
+        }, 2000);
+    }).catch(err => {
+        console.error('Failed to copy:', err);
+        showAlert('danger', 'Failed to copy command to clipboard');
+    });
+}
+
+/**
+ * Escape HTML to prevent XSS
+ * @param {string} text - Text to escape
+ * @returns {string} Escaped text
+ */
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+/**
+ * Create an SSE connection for streaming console output
+ * @param {string} url - SSE endpoint URL
+ * @param {string} consoleId - ID of the console output container
+ * @param {Function} onComplete - Callback when stream completes
+ */
+function createSSEConnection(url, consoleId, onComplete) {
+    const consoleEl = document.getElementById(consoleId);
+    if (!consoleEl) return null;
+
+    const eventSource = new EventSource(url);
+
+    eventSource.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+
+        if (data.done) {
+            eventSource.close();
+            if (onComplete) {
+                onComplete(data.returncode === 0);
+            }
+            return;
+        }
+
+        if (data.line) {
+            const line = document.createElement('div');
+            line.className = 'log-line';
+
+            // Colorize based on content
+            if (data.line.toLowerCase().includes('error')) {
+                line.classList.add('error');
+            } else if (data.line.toLowerCase().includes('warning')) {
+                line.classList.add('warning');
+            }
+
+            line.textContent = data.line;
+            consoleEl.appendChild(line);
+
+            // Auto-scroll to bottom
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+        }
+    };
+
+    eventSource.onerror = function(error) {
+        console.error('SSE error:', error);
+        eventSource.close();
+        if (onComplete) {
+            onComplete(false);
+        }
+    };
+
+    return eventSource;
+}
+
+/**
+ * Clear console output
+ * @param {string} consoleId - ID of the console output container
+ */
+function clearConsole(consoleId) {
+    const consoleEl = document.getElementById(consoleId);
+    if (consoleEl) {
+        consoleEl.innerHTML = '';
+    }
+}
+
+/**
+ * Append message to console
+ * @param {string} consoleId - ID of the console output container
+ * @param {string} message - Message to append
+ * @param {string} type - Message type (info, warning, error)
+ */
+function appendToConsole(consoleId, message, type = 'info') {
+    const consoleEl = document.getElementById(consoleId);
+    if (!consoleEl) return;
+
+    const line = document.createElement('div');
+    line.className = `log-line ${type}`;
+    line.textContent = message;
+    consoleEl.appendChild(line);
+    consoleEl.scrollTop = consoleEl.scrollHeight;
+}

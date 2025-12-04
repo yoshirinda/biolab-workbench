@@ -91,7 +91,7 @@ def search():
         max_hits = int(request.form.get('max_hits', 500))
         program = request.form.get('program')  # None for auto-detect
 
-        success, result_dir, output_files = run_blast(
+        success, result_dir, output_files, command = run_blast(
             query_file=query_file,
             database=database,
             output_format=output_format,
@@ -111,10 +111,11 @@ def search():
                 'result_dir': result_dir,
                 'output_files': output_files,
                 'hits': hits[:100],  # First 100 for display
-                'total_hits': len(hits)
+                'total_hits': len(hits),
+                'command': command
             })
         else:
-            return jsonify({'success': False, 'error': result_dir})
+            return jsonify({'success': False, 'error': result_dir, 'command': command})
 
     except Exception as e:
         logger.error(f"BLAST search error: {str(e)}")

@@ -85,13 +85,14 @@ def step1_clean_fasta(input_file, output_dir):
 def step2_hmmsearch(input_file, hmm_file, output_dir, cut_ga=True):
     """
     Step 2: Run HMMer search (hmmsearch).
+    Returns (success, output, message, command).
     """
     try:
         input_file = sanitize_path(input_file)
         hmm_file = sanitize_path(hmm_file)
         output_dir = sanitize_path(output_dir)
     except ValueError as e:
-        return False, None, str(e)
+        return False, None, str(e), None
 
     output_file = os.path.join(output_dir, 'step2_hmmsearch.out')
     tblout_file = os.path.join(output_dir, 'step2_hmmsearch.tbl')
@@ -107,16 +108,19 @@ def step2_hmmsearch(input_file, hmm_file, output_dir, cut_ga=True):
         f'{shlex.quote(hmm_file)} {shlex.quote(input_file)}'
     )
 
+    # Full command for display
+    full_command = f"conda run -n {config.CONDA_ENV} {command}"
+
     success, stdout, stderr = run_conda_command(command)
 
     if success:
         # Parse hits from tblout
         hits = parse_hmmsearch_tblout(tblout_file)
         logger.info(f"Step 2: Found {len(hits)} HMM hits")
-        return True, tblout_file, f"Found {len(hits)} HMM hits"
+        return True, tblout_file, f"Found {len(hits)} HMM hits", full_command
     else:
         logger.error(f"Step 2 failed: {stderr}")
-        return False, None, stderr
+        return False, None, stderr, full_command
 
 
 def parse_hmmsearch_tblout(tblout_file):
@@ -210,19 +214,23 @@ def step2_8_length_filter(input_file, output_dir, min_length=50):
 def step3_mafft(input_file, output_dir, maxiterate=1000):
     """
     Step 3: Run MAFFT multiple sequence alignment.
+    Returns (success, output, message, command).
     """
     try:
         input_file = sanitize_path(input_file)
         output_dir = sanitize_path(output_dir)
         maxiterate = int(maxiterate)
     except (ValueError, TypeError) as e:
-        return False, None, str(e)
+        return False, None, str(e), None
 
     output_file = os.path.join(output_dir, 'step3_alignment.fasta')
     log_file = os.path.join(output_dir, 'step3_mafft.log')
 
     # Use shlex.quote for safe command construction
     command = f'mafft --maxiterate {maxiterate} {shlex.quote(input_file)}'
+
+    # Full command for display
+    display_command = f"conda run -n {config.CONDA_ENV} {command} > {output_file} 2> {log_file}"
 
     full_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} {command} > {shlex.quote(output_file)} 2> {shlex.quote(log_file)}"
 
@@ -231,35 +239,39 @@ def step3_mafft(input_file, output_dir, maxiterate=1000):
         success = result.returncode == 0 and os.path.exists(output_file) and os.path.getsize(output_file) > 0
     except Exception as e:
         logger.error(f"Step 3 failed: {str(e)}")
-        return False, None, str(e)
+        return False, None, str(e), display_command
 
     if success:
         logger.info(f"Step 3: MAFFT alignment completed")
-        return True, output_file, "MAFFT alignment completed"
+        return True, output_file, "MAFFT alignment completed", display_command
     else:
-        return False, None, "MAFFT alignment failed"
+        return False, None, "MAFFT alignment failed", display_command
 
 
 def step4_clipkit(input_file, output_dir, mode='kpic-gappy'):
     """
     Step 4: Trim alignment with ClipKIT.
     mode: kpic-gappy, gappy, kpic
+    Returns (success, output, message, command).
     """
     try:
         input_file = sanitize_path(input_file)
         output_dir = sanitize_path(output_dir)
     except ValueError as e:
-        return False, None, str(e)
+        return False, None, str(e), None
 
     # Validate mode
     valid_modes = ['kpic-gappy', 'gappy', 'kpic']
     if mode not in valid_modes:
-        return False, None, f"Invalid mode: {mode}"
+        return False, None, f"Invalid mode: {mode}", None
 
     output_file = os.path.join(output_dir, 'step4_trimmed.fasta')
     log_file = os.path.join(output_dir, 'step4_clipkit.log')
 
     command = f'clipkit {shlex.quote(input_file)} -o {shlex.quote(output_file)} -m {mode} -l'
+
+    # Full command for display
+    display_command = f"conda run -n {config.CONDA_ENV} {command}"
 
     full_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} {command} 2> {shlex.quote(log_file)}"
 
@@ -268,13 +280,13 @@ def step4_clipkit(input_file, output_dir, mode='kpic-gappy'):
         success = result.returncode == 0 and os.path.exists(output_file)
     except Exception as e:
         logger.error(f"Step 4 failed: {str(e)}")
-        return False, None, str(e)
+        return False, None, str(e), display_command
 
     if success:
         logger.info(f"Step 4: ClipKIT trimming completed")
-        return True, output_file, "ClipKIT trimming completed"
+        return True, output_file, "ClipKIT trimming completed", display_command
     else:
-        return False, None, "ClipKIT trimming failed"
+        return False, None, "ClipKIT trimming failed", display_command
 
 
 def step4_5_check_sites(clipkit_log_file):
@@ -311,6 +323,7 @@ def step4_5_check_sites(clipkit_log_file):
 def step5_iqtree(input_file, output_dir, model='MFP', bootstrap=1000, threads=None, bnni=True):
     """
     Step 5: Build phylogenetic tree with IQ-Tree.
+    Returns (success, output, message, command).
     """
     try:
         input_file = sanitize_path(input_file)
@@ -319,11 +332,11 @@ def step5_iqtree(input_file, output_dir, model='MFP', bootstrap=1000, threads=No
         if threads is not None:
             threads = int(threads)
     except (ValueError, TypeError) as e:
-        return False, None, str(e)
+        return False, None, str(e), None
 
     # Validate model - only allow alphanumeric and common model chars
     if not re.match(r'^[A-Za-z0-9+\-*]+$', model):
-        return False, None, f"Invalid model: {model}"
+        return False, None, f"Invalid model: {model}", None
 
     prefix = os.path.join(output_dir, 'step5_tree')
     treefile = prefix + '.treefile'
@@ -335,14 +348,17 @@ def step5_iqtree(input_file, output_dir, model='MFP', bootstrap=1000, threads=No
 
     command = f'iqtree -s {shlex.quote(input_file)} -pre {shlex.quote(prefix)} -m {model} -B {bootstrap} -T {threads} {bnni_opt}'
 
+    # Full command for display
+    full_command = f"conda run -n {config.CONDA_ENV} {command}"
+
     success, stdout, stderr = run_conda_command(command, timeout=14400)
 
     if success and os.path.exists(treefile):
         logger.info(f"Step 5: IQ-Tree completed")
-        return True, treefile, "IQ-Tree completed"
+        return True, treefile, "IQ-Tree completed", full_command
     else:
         logger.error(f"Step 5 failed: {stderr}")
-        return False, None, stderr or "IQ-Tree failed"
+        return False, None, stderr or "IQ-Tree failed", full_command
 
 
 def run_full_pipeline(input_file, hmm_file=None, gold_list_file=None, options=None):
@@ -366,7 +382,8 @@ def run_full_pipeline(input_file, hmm_file=None, gold_list_file=None, options=No
 
     results = {
         'result_dir': result_dir,
-        'steps': {}
+        'steps': {},
+        'commands': []
     }
 
     current_file = input_file
@@ -380,11 +397,13 @@ def run_full_pipeline(input_file, hmm_file=None, gold_list_file=None, options=No
 
     # Step 2: HMMer (optional)
     if hmm_file and os.path.exists(hmm_file):
-        success, output, message = step2_hmmsearch(
+        success, output, message, command = step2_hmmsearch(
             current_file, hmm_file, result_dir,
             cut_ga=options.get('cut_ga', True)
         )
-        results['steps']['step2'] = {'success': success, 'output': output, 'message': message}
+        results['steps']['step2'] = {'success': success, 'output': output, 'message': message, 'command': command}
+        if command:
+            results['commands'].append({'step': 'step2', 'name': 'HMMer Search', 'command': command})
         if not success:
             return False, results
 
@@ -411,33 +430,39 @@ def run_full_pipeline(input_file, hmm_file=None, gold_list_file=None, options=No
         current_file = output
 
     # Step 3: MAFFT
-    success, output, message = step3_mafft(
+    success, output, message, command = step3_mafft(
         current_file, result_dir,
         maxiterate=options.get('maxiterate', 1000)
     )
-    results['steps']['step3'] = {'success': success, 'output': output, 'message': message}
+    results['steps']['step3'] = {'success': success, 'output': output, 'message': message, 'command': command}
+    if command:
+        results['commands'].append({'step': 'step3', 'name': 'MAFFT Alignment', 'command': command})
     if not success:
         return False, results
     current_file = output
 
     # Step 4: ClipKIT
-    success, output, message = step4_clipkit(
+    success, output, message, command = step4_clipkit(
         current_file, result_dir,
         mode=options.get('clipkit_mode', 'kpic-gappy')
     )
-    results['steps']['step4'] = {'success': success, 'output': output, 'message': message}
+    results['steps']['step4'] = {'success': success, 'output': output, 'message': message, 'command': command}
+    if command:
+        results['commands'].append({'step': 'step4', 'name': 'ClipKIT Trim', 'command': command})
     if not success:
         return False, results
     current_file = output
 
     # Step 5: IQ-Tree
-    success, output, message = step5_iqtree(
+    success, output, message, command = step5_iqtree(
         current_file, result_dir,
         model=options.get('model', 'MFP'),
         bootstrap=options.get('bootstrap', 1000),
         threads=options.get('threads', config.DEFAULT_THREADS),
         bnni=options.get('bnni', True)
     )
-    results['steps']['step5'] = {'success': success, 'output': output, 'message': message}
+    results['steps']['step5'] = {'success': success, 'output': output, 'message': message, 'command': command}
+    if command:
+        results['commands'].append({'step': 'step5', 'name': 'IQ-Tree', 'command': command})
 
     return success, results
