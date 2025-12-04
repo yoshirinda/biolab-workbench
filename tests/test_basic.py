@@ -155,6 +155,80 @@ class TestRoutes:
         response = client.get('/tree/')
         assert response.status_code == 200
 
+    def test_docs_index_page(self, client):
+        """Test documentation index page loads."""
+        response = client.get('/docs/')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert 'Documentation' in html
+
+    def test_docs_blast_page(self, client):
+        """Test BLAST documentation page loads."""
+        response = client.get('/docs/blast')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert 'BLAST' in html
+        assert 'E-value' in html
+
+    def test_docs_phylo_page(self, client):
+        """Test phylo documentation page loads."""
+        response = client.get('/docs/phylo')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert 'Phylogenetic' in html
+        assert 'IQ-Tree' in html
+
+    def test_docs_alignment_page(self, client):
+        """Test alignment documentation page loads."""
+        response = client.get('/docs/alignment')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert 'Alignment' in html
+        assert 'MAFFT' in html
+
+    def test_docs_tree_page(self, client):
+        """Test tree documentation page loads."""
+        response = client.get('/docs/tree')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert 'Tree' in html
+        assert 'Visualization' in html
+
+    def test_navigation_includes_docs_link(self, client):
+        """Test that navigation bar includes Docs link."""
+        response = client.get('/')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert 'href="/docs/"' in html
+
+    def test_blast_page_has_help_button(self, client):
+        """Test that BLAST page has help button linking to docs."""
+        response = client.get('/blast/')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert 'href="/docs/blast"' in html
+
+    def test_phylo_page_has_help_button(self, client):
+        """Test that phylo page has help button linking to docs."""
+        response = client.get('/phylo/')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert 'href="/docs/phylo"' in html
+
+    def test_alignment_page_has_help_button(self, client):
+        """Test that alignment page has help button linking to docs."""
+        response = client.get('/alignment/')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert 'href="/docs/alignment"' in html
+
+    def test_tree_page_has_help_button(self, client):
+        """Test that tree page has help button linking to docs."""
+        response = client.get('/tree/')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert 'href="/docs/tree"' in html
+
     def test_index_module_links_use_url_for(self, client):
         """Test that index page module links use url_for() generated URLs."""
         response = client.get('/')
