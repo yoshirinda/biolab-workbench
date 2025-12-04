@@ -149,53 +149,45 @@ def extract():
         return jsonify({'success': False, 'error': str(e)})
 
 
-@blast_bp.route('/download/<path:filepath>')
-def download(filepath):
+@blast_bp.route('/download')
+def download():
     """Download a result file."""
     try:
         from urllib.parse import unquote
         
-        # URL decode the filepath for port-forwarding scenarios
+        # Get filepath from query parameter instead of path
+        filepath = request.args.get('path', '')
+        if not filepath:
+            return jsonify({'success': False, 'error': 'No file path provided'}), 400
+        
+        # URL decode the filepath
         filepath = unquote(filepath)
         
         # Handle both absolute and relative paths
-        # If relative, join with RESULTS_DIR
         if not os.path.isabs(filepath):
-            abs_path = os.path.join(config.RESULTS_DIR, filepath)
+            abs_path = os. path.join(config. RESULTS_DIR, filepath)
         else:
             abs_path = filepath
         
-        abs_path = os.path.abspath(abs_path)
-        results_dir = os.path.abspath(config.RESULTS_DIR)
-        uploads_dir = os.path.abspath(config.UPLOADS_DIR)
+        abs_path = os. path.abspath(abs_path)
         
         # Security: Ensure the file is within allowed directories
-        # Only allow downloads from results or uploads directories
-        if not (abs_path.startswith(results_dir + os.sep) or 
-                abs_path.startswith(uploads_dir + os.sep)):
+        results_dir = os.path.abspath(config. RESULTS_DIR)
+        uploads_dir = os. path.abspath(config.UPLOADS_DIR)
+        
+        if not (abs_path.startswith(results_dir) or abs_path. startswith(uploads_dir)):
             logger.warning(f"Attempted path traversal: {filepath}")
             return jsonify({'success': False, 'error': 'Access denied'}), 403
         
         if os.path.exists(abs_path):
-            # Determine MIME type based on file extension
-            filename = os.path.basename(abs_path)
-            mimetype = None
-            if filename.endswith('.fasta') or filename.endswith('.fa') or filename.endswith('.fna') or filename.endswith('.faa'):
-                mimetype = 'text/plain'
-            elif filename.endswith('.tsv') or filename.endswith('.txt'):
-                mimetype = 'text/tab-separated-values'
-            elif filename.endswith('.json'):
-                mimetype = 'application/json'
-            elif filename.endswith('.xml'):
-                mimetype = 'application/xml'
-            
+            filename = os.path. basename(abs_path)
             return send_file(
                 abs_path, 
                 as_attachment=True,
-                download_name=filename,
-                mimetype=mimetype
+                download_name=filename
             )
         else:
+            logger.error(f"File not found: {abs_path}")
             return jsonify({'success': False, 'error': 'File not found'}), 404
     except Exception as e:
         logger.error(f"Download error: {str(e)}")
