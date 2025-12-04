@@ -253,8 +253,28 @@ def calculate_conservation(sequences):
     return conservation
 
 
-# Display configuration
+# Display configuration constants
 MAX_SEQ_ID_DISPLAY_LENGTH = 25  # Maximum length for sequence ID display
+BLOCK_SIZE = 60  # Number of residues per alignment block
+SEQ_NAME_TRUNCATE_LENGTH = 22  # Maximum length for sequence name in exported HTML
+
+# Amino acid color scheme for visualization
+# Based on residue chemical properties
+AA_COLORS = {
+    # Hydrophobic - Yellow/Orange
+    'A': '#f0c000', 'V': '#f0c000', 'L': '#f0c000', 'I': '#f0c000', 
+    'M': '#f0c000', 'F': '#f0c000', 'W': '#f0c000', 'P': '#f0c000',
+    # Polar - Green
+    'S': '#00c000', 'T': '#00c000', 'N': '#00c000', 'Q': '#00c000',
+    # Negatively charged - Red
+    'D': '#c00000', 'E': '#c00000',
+    # Positively charged - Blue
+    'K': '#0000c0', 'R': '#0000c0', 'H': '#0080c0',
+    # Special - Cyan/Gray
+    'C': '#00c0c0', 'G': '#c0c0c0', 'Y': '#00c0c0',
+    # Gap
+    '-': '#e5e5e5',
+}
 
 
 def generate_alignment_html(sequences, conservation=None, color_mode='conservation'):
@@ -440,6 +460,8 @@ def generate_alignment_html(sequences, conservation=None, color_mode='conservati
 def export_alignment_html(sequences, output_file, conservation=None, color_mode='conservation'):
     """
     Export alignment visualization to an HTML file.
+    Generates a complete, standalone HTML file with embedded styling.
+    Based on the original seq_aligner.py export_html_visualization implementation.
     
     Args:
         sequences: List of (id, sequence) tuples
@@ -451,31 +473,217 @@ def export_alignment_html(sequences, output_file, conservation=None, color_mode=
         (success, message)
     """
     try:
-        html_content = generate_alignment_html(sequences, conservation, color_mode)
+        if not sequences:
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write('<html><body><p>No sequences to display</p></body></html>')
+            return True, "Empty alignment exported"
         
-        full_html = f'''<!DOCTYPE html>
+        # Convert sequences to dictionary format for processing
+        sequences_dict = {name: seq for name, seq in sequences}
+        names = list(sequences_dict.keys())
+        seqs = list(sequences_dict.values())
+        seq_len = len(seqs[0]) if seqs else 0
+        
+        # Use module-level amino acid colors constant
+        colors = AA_COLORS
+        
+        def get_conservation(pos):
+            """Calculate conservation at a position."""
+            bases = [s[pos].upper() for s in seqs if pos < len(s)]
+            if not bases:
+                return 0, '-'
+            most_common = max(set(bases), key=bases.count)
+            ratio = bases.count(most_common) / len(bases)
+            return ratio, most_common
+        
+        # Build HTML
+        html = f'''<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Sequence Alignment</title>
+    <title>Alignment Visualization</title>
     <style>
-        body {{ font-family: Arial, sans-serif; margin: 20px; }}
-        h1 {{ color: #333; }}
-        .info {{ color: #666; margin-bottom: 20px; }}
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ 
+            font-family: Consolas, Monaco, 'Courier New', monospace;
+            background: #f5f5f5; 
+            padding: 20px;
+            font-size: 13px;
+        }}
+        .header {{
+            background: linear-gradient(135deg, #1e3a5f, #2d5a87);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }}
+        .header h1 {{ font-size: 24px; margin-bottom: 10px; }}
+        .stats {{ display: flex; gap: 20px; margin-top: 15px; }}
+        .stat {{ background: rgba(255,255,255,0.1); padding: 8px 15px; border-radius: 4px; }}
+        .alignment-container {{
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            overflow-x: auto;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }}
+        .block {{ margin-bottom: 30px; }}
+        .seq-row {{
+            display: flex;
+            align-items: center;
+            height: 22px;
+            white-space: nowrap;
+        }}
+        .seq-name {{
+            display: inline-block;
+            width: 200px;
+            min-width: 200px;
+            max-width: 200px;
+            padding-right: 15px;
+            text-align: right;
+            font-weight: bold;
+            color: #333;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            border-right: 2px solid #ccc;
+            margin-right: 10px;
+        }}
+        .seq-data {{
+            display: flex;
+        }}
+        .base {{
+            display: inline-block;
+            width: 14px;
+            height: 18px;
+            text-align: center;
+            line-height: 18px;
+            margin: 0;
+            font-size: 12px;
+        }}
+        .conserved {{
+            background: #c00000 !important;
+            color: white !important;
+            font-weight: bold;
+        }}
+        .similar {{
+            background: #ffcccc !important;
+            color: #800000 !important;
+        }}
+        .position-row {{
+            color: #888;
+            font-size: 11px;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 5px;
+            padding-bottom: 3px;
+        }}
+        .consensus-row {{
+            border-top: 1px solid #eee;
+            margin-top: 5px;
+            padding-top: 5px;
+        }}
+        .consensus-name {{
+            color: #888;
+            font-style: italic;
+            font-weight: normal;
+        }}
+        .legend {{
+            margin-top: 20px;
+            padding: 15px;
+            background: #fafafa;
+            border-radius: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }}
+        .legend-title {{ width: 100%; font-weight: bold; margin-bottom: 5px; }}
+        .legend-item {{ display: flex; align-items: center; gap: 5px; padding: 3px 8px; background: white; border-radius: 4px; }}
+        .legend-color {{ width: 20px; height: 20px; border-radius: 3px; }}
     </style>
 </head>
 <body>
-    <h1>Sequence Alignment Visualization</h1>
-    <div class="info">
-        <p>Sequences: {len(sequences)} | Alignment Length: {len(sequences[0][1]) if sequences else 0} positions</p>
-        <p>Color Mode: {color_mode.capitalize()}</p>
+    <div class="header">
+        <h1>🧬 Sequence Alignment Visualization</h1>
+        <div class="stats">
+            <div class="stat">📊 Sequences: {len(names)}</div>
+            <div class="stat">📏 Length: {seq_len}</div>
+            <div class="stat">🎨 Color Mode: {color_mode.capitalize()}</div>
+        </div>
     </div>
-    {html_content}
+    <div class="alignment-container">
+'''
+        
+        for start in range(0, seq_len, BLOCK_SIZE):
+            end = min(start + BLOCK_SIZE, seq_len)
+            
+            # Position ruler
+            ruler_html = '<div class="seq-row position-row"><span class="seq-name"></span><span class="seq-data">'
+            for i in range(start, end):
+                if (i + 1) % 10 == 0:
+                    ruler_html += f'<span class="base" style="font-weight:bold">{i+1}</span>'
+                else:
+                    ruler_html += '<span class="base">·</span>'
+            ruler_html += '</span></div>'
+            
+            html += f'<div class="block">\n{ruler_html}\n'
+            
+            # Sequence rows
+            for name, seq in zip(names, seqs):
+                segment = seq[start:end] if start < len(seq) else ''
+                display_name = name[:SEQ_NAME_TRUNCATE_LENGTH] if len(name) > SEQ_NAME_TRUNCATE_LENGTH else name
+                
+                html += f'<div class="seq-row"><span class="seq-name" title="{name}">{display_name}</span><span class="seq-data">'
+                
+                for i, base in enumerate(segment):
+                    pos = start + i
+                    cons_ratio, most_common = get_conservation(pos)
+                    base_upper = base.upper()
+                    
+                    if cons_ratio == 1.0 and base != '-':
+                        css_class = "base conserved"
+                        style = ""
+                    elif cons_ratio >= 0.7 and base_upper == most_common:
+                        css_class = "base similar"
+                        style = ""
+                    else:
+                        css_class = "base"
+                        color = colors.get(base_upper, '#fff')
+                        style = f'style="background:{color}"'
+                    
+                    html += f'<span class="{css_class}" {style}>{base}</span>'
+                
+                html += '</span></div>\n'
+            
+            # Consensus row
+            html += '<div class="seq-row consensus-row"><span class="seq-name consensus-name">consensus</span><span class="seq-data">'
+            for i in range(start, end):
+                if i < seq_len:
+                    cons_ratio, most_common = get_conservation(i)
+                    if cons_ratio == 1.0 and most_common != '-':
+                        html += '<span class="base" style="color:#c00000;font-weight:bold">*</span>'
+                    elif cons_ratio >= 0.7:
+                        html += '<span class="base" style="color:#888">:</span>'
+                    elif cons_ratio >= 0.5:
+                        html += '<span class="base" style="color:#ccc">.</span>'
+                    else:
+                        html += '<span class="base"> </span>'
+            html += '</span></div>\n</div>\n'
+        
+        html += '''
+    </div>
+    <div class="legend">
+        <div class="legend-title">📖 Legend</div>
+        <div class="legend-item"><div class="legend-color" style="background:#c00000"></div> 100% conserved</div>
+        <div class="legend-item"><div class="legend-color" style="background:#ffcccc"></div> ≥70% similar</div>
+        <div class="legend-item"><div class="legend-color" style="background:#f0c000"></div> Hydrophobic</div>
+        <div class="legend-item"><div class="legend-color" style="background:#00c000"></div> Polar</div>
+        <div class="legend-item"><div class="legend-color" style="background:#0000c0"></div> Positive</div>
+        <div class="legend-item"><div class="legend-color" style="background:#c00000;opacity:0.7"></div> Negative</div>
+    </div>
 </body>
 </html>'''
         
         with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(full_html)
+            f.write(html)
         
         return True, f"Alignment exported to {output_file}"
     except Exception as e:

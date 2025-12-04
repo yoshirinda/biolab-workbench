@@ -218,11 +218,18 @@ def download(filepath):
         # URL decode the filepath for port-forwarding scenarios
         filepath = unquote(filepath)
         
-        # Security: Ensure the file is within allowed directories
-        abs_path = os.path.abspath(filepath)
+        # Handle both absolute and relative paths
+        # If relative, join with RESULTS_DIR
+        if not os.path.isabs(filepath):
+            abs_path = os.path.join(config.RESULTS_DIR, filepath)
+        else:
+            abs_path = filepath
+        
+        abs_path = os.path.abspath(abs_path)
         results_dir = os.path.abspath(config.RESULTS_DIR)
         uploads_dir = os.path.abspath(config.UPLOADS_DIR)
         
+        # Security: Ensure the file is within allowed directories
         # Only allow downloads from results or uploads directories
         if not (abs_path.startswith(results_dir + os.sep) or 
                 abs_path.startswith(uploads_dir + os.sep)):
