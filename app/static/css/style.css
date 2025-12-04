@@ -169,3 +169,113 @@ code {
 .footer {
     border-top: 1px solid #dee2e6;
 }
+
+/* Command Display */
+.command-display {
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-top: 1rem;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.875rem;
+    position: relative;
+    overflow-x: auto;
+}
+
+.command-display pre {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+.command-display .copy-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #d4d4d4;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.command-display .copy-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.command-display .copy-btn.copied {
+    background: #198754;
+    border-color: #198754;
+}
+
+.command-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.command-header .command-label {
+    color: #6c757d;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Console Output */
+.console-output {
+    background-color: #1e1e1e;
+    color: #00ff00;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.8rem;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    height: 400px;
+    overflow-y: auto;
+    margin-top: 1rem;
+}
+
+.console-output .log-line {
+    margin: 0;
+    line-height: 1.4;
+}
+
+.console-output .log-line.error {
+    color: #ff6b6b;
+}
+
+.console-output .log-line.warning {
+    color: #ffc107;
+}
+
+.console-output .log-line.info {
+    color: #17a2b8;
+}
+
+/* Help Button */
+.help-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background-color: #6c757d;
+    color: white;
+    font-size: 0.75rem;
+    font-weight: bold;
+    text-decoration: none;
+    margin-left: 0.5rem;
+    transition: background-color 0.2s;
+}
+
+.help-btn:hover {
+    background-color: #5a6268;
+    color: white;
+    text-decoration: none;
+}

@@ -61,7 +61,7 @@ def run():
         if request.form.get('auto'):
             options['auto'] = True
 
-        success, result_dir, output_file = run_alignment(input_file, tool, options)
+        success, result_dir, output_file, command = run_alignment(input_file, tool, options)
 
         if success:
             # Parse alignment for visualization
@@ -75,10 +75,11 @@ def run():
                 'output_file': output_file,
                 'alignment_html': html_view,
                 'sequence_count': len(sequences),
-                'alignment_length': len(sequences[0][1]) if sequences else 0
+                'alignment_length': len(sequences[0][1]) if sequences else 0,
+                'command': command
             })
         else:
-            return jsonify({'success': False, 'error': result_dir})
+            return jsonify({'success': False, 'error': result_dir, 'command': command})
 
     except Exception as e:
         logger.error(f"Alignment error: {str(e)}")

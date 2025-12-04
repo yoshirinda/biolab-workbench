@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block title %}BLAST Documentation - BioLab Workbench{% endblock %}
+
+{% block content %}
+<div class="container">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('docs.docs_index') }}">Documentation</a></li>
+            <li class="breadcrumb-item active">BLAST</li>
+        </ol>
+    </nav>
+
+    <h2 class="mb-4">
+        <i class="bi bi-search text-success"></i>
+        BLAST Search Documentation
+    </h2>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- Overview -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-info-circle"></i> Overview</h5>
+                </div>
+                <div class="card-body">
+                    <p>
+                        <strong>BLAST</strong> (Basic Local Alignment Search Tool) is a sequence similarity search program.
+                        It compares query sequences against a database and finds regions of local similarity.
+                        BLAST is useful for identifying homologous sequences, functional annotation, and evolutionary studies.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Parameter Documentation -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-sliders"></i> Parameter Documentation</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Default</th>
+                                    <th>Description</th>
+                                    <th>When to Adjust</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>E-value</strong></td>
+                                    <td><code>1e-5</code></td>
+                                    <td>
+                                        Expectation value threshold. Represents the number of hits expected by chance.
+                                        Lower values indicate more reliable matches.
+                                    </td>
+                                    <td>
+                                        <ul class="mb-0">
+                                            <li>Strict screening: <code>1e-10</code> or lower</li>
+                                            <li>Relaxed search: <code>1e-3</code></li>
+                                            <li>Default suits most cases</li>
+                                        </ul>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Max Hits</strong></td>
+                                    <td><code>500</code></td>
+                                    <td>Maximum number of aligned sequences to return.</td>
+                                    <td>
+                                        <ul class="mb-0">
+                                            <li>Increase for comprehensive searches</li>
+                                            <li>Decrease for faster results</li>
+                                        </ul>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Program</strong></td>
+                                    <td>Auto-detect</td>
+                                    <td>
+                                        The BLAST program to use, based on query and database types.
+                                    </td>
+                                    <td>
+                                        <ul class="mb-0">
+                                            <li><code>blastn</code>: DNA vs DNA</li>
+                                            <li><code>blastp</code>: Protein vs Protein</li>
+                                            <li><code>blastx</code>: Translated DNA vs Protein</li>
+                                            <li><code>tblastn</code>: Protein vs Translated DNA</li>
+                                        </ul>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Use Cases -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-lightbulb"></i> Common Use Cases</h5>
+                </div>
+                <div class="card-body">
+                    <div class="accordion" id="useCasesAccordion">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#useCase1">
+                                    Finding Homologs in a Specific Organism
+                                </button>
+                            </h2>
+                            <div id="useCase1" class="accordion-collapse collapse show" data-bs-parent="#useCasesAccordion">
+                                <div class="accordion-body">
+                                    <p>When searching for homologous genes in a specific organism:</p>
+                                    <ul>
+                                        <li>Use <code>E-value: 1e-5</code> for initial screening</li>
+                                        <li>Set <code>Max Hits: 100</code> for manageable results</li>
+                                        <li>Use organism-specific database if available</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#useCase2">
+                                    Identifying Distant Relatives
+                                </button>
+                            </h2>
+                            <div id="useCase2" class="accordion-collapse collapse" data-bs-parent="#useCasesAccordion">
+                                <div class="accordion-body">
+                                    <p>When looking for distantly related sequences:</p>
+                                    <ul>
+                                        <li>Use relaxed <code>E-value: 1e-3</code> or <code>1e-2</code></li>
+                                        <li>Increase <code>Max Hits</code> to capture more candidates</li>
+                                        <li>Consider using <code>blastp</code> for better sensitivity with proteins</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#useCase3">
+                                    High-Confidence Annotations
+                                </button>
+                            </h2>
+                            <div id="useCase3" class="accordion-collapse collapse" data-bs-parent="#useCasesAccordion">
+                                <div class="accordion-body">
+                                    <p>When reliable functional annotation is critical:</p>
+                                    <ul>
+                                        <li>Use strict <code>E-value: 1e-10</code> or lower</li>
+                                        <li>Look for hits with >50% identity and >70% coverage</li>
+                                        <li>Consider reciprocal best BLAST hits</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Example Commands -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-terminal"></i> Example Commands</h5>
+                </div>
+                <div class="card-body">
+                    <h6>Basic nucleotide BLAST:</h6>
+                    <div class="command-display">
+                        <pre>blastn -query query.fasta -db database -out results.tsv -outfmt 6 -evalue 1e-5</pre>
+                    </div>
+
+                    <h6 class="mt-4">Protein BLAST with detailed output:</h6>
+                    <div class="command-display">
+                        <pre>blastp -query protein.fasta -db nr -out results.txt -outfmt 0 -evalue 1e-10 -max_target_seqs 100</pre>
+                    </div>
+
+                    <h6 class="mt-4">Translated search (DNA query vs protein DB):</h6>
+                    <div class="command-display">
+                        <pre>blastx -query dna.fasta -db swissprot -out results.tsv -outfmt 6 -evalue 1e-5</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <!-- Quick Reference -->
+            <div class="card shadow-sm sticky-top" style="top: 1rem;">
+                <div class="card-header bg-success text-white">
+                    <h6 class="mb-0"><i class="bi bi-bookmark"></i> Quick Reference</h6>
+                </div>
+                <div class="card-body">
+                    <h6>Recommended E-values:</h6>
+                    <ul class="small">
+                        <li><code>1e-50</code>: Very high confidence</li>
+                        <li><code>1e-10</code>: High confidence</li>
+                        <li><code>1e-5</code>: Standard (default)</li>
+                        <li><code>1e-3</code>: Sensitive search</li>
+                    </ul>
+
+                    <hr>
+
+                    <h6>Output Formats:</h6>
+                    <ul class="small">
+                        <li><strong>TSV</strong>: Best for parsing</li>
+                        <li><strong>Text</strong>: Human-readable alignments</li>
+                        <li><strong>Detailed</strong>: TSV with extra columns</li>
+                    </ul>
+
+                    <hr>
+
+                    <a href="{{ url_for('blast.blast_page') }}" class="btn btn-success w-100">
+                        <i class="bi bi-arrow-left"></i> Go to BLAST
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

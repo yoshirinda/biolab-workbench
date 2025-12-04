@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+
+{% block title %}Tree Visualization Documentation - BioLab Workbench{% endblock %}
+
+{% block content %}
+<div class="container">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('docs.docs_index') }}">Documentation</a></li>
+            <li class="breadcrumb-item active">Tree Visualization</li>
+        </ol>
+    </nav>
+
+    <h2 class="mb-4">
+        <i class="bi bi-tree text-secondary"></i>
+        Tree Visualization Documentation
+    </h2>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- Overview -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0"><i class="bi bi-info-circle"></i> Overview</h5>
+                </div>
+                <div class="card-body">
+                    <p>
+                        The tree visualization module uses ETE3 to render phylogenetic trees from Newick format files.
+                        You can customize the appearance with different layouts, colors, and highlighting options.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Input Format -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-file-earmark-text"></i> Input Format</h5>
+                </div>
+                <div class="card-body">
+                    <p>The tool accepts Newick format tree files with the following extensions:</p>
+                    <ul>
+                        <li><code>.treefile</code> - IQ-Tree output</li>
+                        <li><code>.nwk</code> / <code>.newick</code> - Standard Newick</li>
+                        <li><code>.tre</code> / <code>.tree</code> - Common alternatives</li>
+                    </ul>
+
+                    <h6>Example Newick format:</h6>
+                    <div class="command-display">
+                        <pre>((A:0.1,B:0.2)90:0.3,(C:0.3,D:0.4)85:0.2);</pre>
+                    </div>
+                    <p class="small text-muted mt-2">
+                        This represents a tree with taxa A, B, C, D with branch lengths and bootstrap support values.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Visualization Parameters -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-sliders"></i> Visualization Parameters</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Default</th>
+                                    <th>Description</th>
+                                    <th>Options</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Layout</strong></td>
+                                    <td>Rectangular</td>
+                                    <td>Tree display layout</td>
+                                    <td>
+                                        <ul class="mb-0 small">
+                                            <li><strong>Rectangular:</strong> Standard phylogram</li>
+                                            <li><strong>Circular:</strong> Radial layout for many taxa</li>
+                                        </ul>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Font Size</strong></td>
+                                    <td><code>10</code></td>
+                                    <td>Size of taxon labels</td>
+                                    <td>Range: 6-24. Decrease for trees with many taxa.</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Vertical Scale</strong></td>
+                                    <td><code>1.0</code></td>
+                                    <td>Vertical spacing between branches</td>
+                                    <td>Range: 0.5-3.0. Increase to spread out dense trees.</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Show Bootstrap</strong></td>
+                                    <td>Enabled</td>
+                                    <td>Display bootstrap support values</td>
+                                    <td>Values are shown on internal branches</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Coloring Options -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-palette"></i> Coloring Options</h5>
+                </div>
+                <div class="card-body">
+                    <h6>Species Colors</h6>
+                    <p>
+                        Taxa are automatically grouped by species prefix (characters before the first number or underscore).
+                        Each species group can be assigned a custom color for easy visual identification.
+                    </p>
+
+                    <h6>Highlighted Genes</h6>
+                    <p>
+                        Specific genes can be highlighted with a yellow background.
+                        Enter gene names separated by commas in the highlight field.
+                    </p>
+
+                    <div class="alert alert-info">
+                        <i class="bi bi-lightbulb"></i>
+                        <strong>Tip:</strong> Use consistent naming conventions (e.g., <code>Species_GeneID</code>)
+                        for automatic species detection to work correctly.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Best Practices -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-check-circle"></i> Best Practices</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6><i class="bi bi-check-lg text-success"></i> Do:</h6>
+                            <ul>
+                                <li>Use consistent naming conventions</li>
+                                <li>Choose circular layout for >50 taxa</li>
+                                <li>Adjust font size based on tree size</li>
+                                <li>Use contrasting colors for different clades</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6><i class="bi bi-x-lg text-danger"></i> Avoid:</h6>
+                            <ul>
+                                <li>Very long taxon names</li>
+                                <li>Similar colors for adjacent clades</li>
+                                <li>Very small font sizes (&lt;6)</li>
+                                <li>Rectangular layout with many taxa</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Interpreting Bootstrap -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-graph-up"></i> Interpreting Bootstrap Values</h5>
+                </div>
+                <div class="card-body">
+                    <p>
+                        Bootstrap values indicate the statistical support for each branch in the tree.
+                        They represent the percentage of bootstrap replicates that recovered that particular clade.
+                    </p>
+
+                    <div class="row mt-3">
+                        <div class="col-md-4">
+                            <div class="card bg-success text-white">
+                                <div class="card-body text-center">
+                                    <h3>≥95</h3>
+                                    <p class="mb-0">Strong Support</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-warning text-dark">
+                                <div class="card-body text-center">
+                                    <h3>70-94</h3>
+                                    <p class="mb-0">Moderate Support</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-danger text-white">
+                                <div class="card-body text-center">
+                                    <h3>&lt;70</h3>
+                                    <p class="mb-0">Weak Support</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <!-- Quick Reference -->
+            <div class="card shadow-sm sticky-top" style="top: 1rem;">
+                <div class="card-header bg-secondary text-white">
+                    <h6 class="mb-0"><i class="bi bi-bookmark"></i> Quick Reference</h6>
+                </div>
+                <div class="card-body">
+                    <h6>Layout Selection:</h6>
+                    <ul class="small">
+                        <li><strong>&lt;30 taxa:</strong> Rectangular</li>
+                        <li><strong>30-100 taxa:</strong> Either works</li>
+                        <li><strong>&gt;100 taxa:</strong> Circular recommended</li>
+                    </ul>
+
+                    <hr>
+
+                    <h6>Font Size Guide:</h6>
+                    <ul class="small">
+                        <li><strong>&lt;20 taxa:</strong> 10-12 pt</li>
+                        <li><strong>20-50 taxa:</strong> 8-10 pt</li>
+                        <li><strong>&gt;50 taxa:</strong> 6-8 pt</li>
+                    </ul>
+
+                    <hr>
+
+                    <h6>Output Format:</h6>
+                    <p class="small">
+                        Trees are exported as SVG files, which can be:
+                    </p>
+                    <ul class="small">
+                        <li>Opened in web browsers</li>
+                        <li>Edited in Inkscape/Illustrator</li>
+                        <li>Converted to PNG/PDF</li>
+                    </ul>
+
+                    <hr>
+
+                    <a href="{{ url_for('tree.tree_page') }}" class="btn btn-secondary w-100">
+                        <i class="bi bi-arrow-left"></i> Go to Tree Viz
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

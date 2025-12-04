@@ -1,0 +1,317 @@
+{% extends "base.html" %}
+
+{% block title %}Phylogenetic Pipeline Documentation - BioLab Workbench{% endblock %}
+
+{% block content %}
+<div class="container">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('docs.docs_index') }}">Documentation</a></li>
+            <li class="breadcrumb-item active">Phylogenetic Pipeline</li>
+        </ol>
+    </nav>
+
+    <h2 class="mb-4">
+        <i class="bi bi-diagram-3 text-info"></i>
+        Phylogenetic Pipeline Documentation
+    </h2>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- Overview -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-info-circle"></i> Overview</h5>
+                </div>
+                <div class="card-body">
+                    <p>
+                        The phylogenetic pipeline automates the process of building phylogenetic trees from sequence data.
+                        It includes steps for sequence cleaning, domain search, alignment, trimming, and tree inference.
+                    </p>
+                    <div class="alert alert-info">
+                        <i class="bi bi-lightbulb"></i>
+                        <strong>Tip:</strong> For publication-quality trees, use the default parameters with bootstrap ≥1000.
+                    </div>
+                </div>
+            </div>
+
+            <!-- HMMer Parameters -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-search"></i> HMMer Search Parameters</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Default</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>--cut_ga</strong></td>
+                                    <td>Enabled</td>
+                                    <td>
+                                        Use GA (gathering) threshold from HMM profile. This is the curated threshold
+                                        for identifying true members of a protein family.
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>HMM Profile</strong></td>
+                                    <td>Optional</td>
+                                    <td>
+                                        Pfam or custom HMM profile for domain filtering.
+                                        Upload profiles to the references/hmm_profiles directory.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MAFFT Parameters -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-text-left"></i> MAFFT Alignment Parameters</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Default</th>
+                                    <th>Description</th>
+                                    <th>When to Adjust</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>--maxiterate</strong></td>
+                                    <td><code>1000</code></td>
+                                    <td>Maximum number of iterative refinement cycles.</td>
+                                    <td>
+                                        <ul class="mb-0">
+                                            <li><code>0</code>: Fastest, less accurate</li>
+                                            <li><code>1000</code>: Best for &lt;50 sequences</li>
+                                            <li>Reduce for &gt;100 sequences</li>
+                                        </ul>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>--auto</strong></td>
+                                    <td>Off</td>
+                                    <td>Automatically selects the best algorithm based on data size.</td>
+                                    <td>Enable for unknown data characteristics</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ClipKIT Parameters -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-crop"></i> ClipKIT Trimming Parameters</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Default</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Mode</strong></td>
+                                    <td><code>kpic-gappy</code></td>
+                                    <td>Trimming mode selection</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h6 class="mt-3">Available Modes:</h6>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h6><code>kpic-gappy</code></h6>
+                                    <p class="small mb-0">
+                                        <strong>Recommended.</strong> Keeps parsimony-informative sites and removes gappy columns.
+                                        Best balance of information retention and noise removal.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h6><code>gappy</code></h6>
+                                    <p class="small mb-0">
+                                        Only removes columns with too many gaps. Preserves more alignment positions.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h6><code>kpic</code></h6>
+                                    <p class="small mb-0">
+                                        Keeps only parsimony-informative columns. More aggressive trimming.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- IQ-Tree Parameters -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-tree"></i> IQ-Tree Parameters</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Default</th>
+                                    <th>Description</th>
+                                    <th>When to Adjust</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Model (-m)</strong></td>
+                                    <td><code>MFP</code></td>
+                                    <td>
+                                        ModelFinder Plus - automatically selects the best substitution model.
+                                    </td>
+                                    <td>
+                                        <ul class="mb-0">
+                                            <li><code>LG+G4</code>: Fast, good for proteins</li>
+                                            <li><code>GTR+G4</code>: Standard for nucleotides</li>
+                                            <li><code>MFP</code>: Let IQ-Tree decide</li>
+                                        </ul>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Bootstrap (-B)</strong></td>
+                                    <td><code>1000</code></td>
+                                    <td>Number of ultrafast bootstrap replicates.</td>
+                                    <td>
+                                        <ul class="mb-0">
+                                            <li><code>100</code>: Quick preview</li>
+                                            <li><code>1000</code>: Publication quality</li>
+                                            <li><code>5000+</code>: Very robust support</li>
+                                        </ul>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Threads (-T)</strong></td>
+                                    <td><code>AUTO</code></td>
+                                    <td>Number of CPU threads to use.</td>
+                                    <td>Increase for faster analysis on multi-core systems</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>-bnni</strong></td>
+                                    <td>Enabled</td>
+                                    <td>
+                                        Reduces bootstrap bias by performing NNI optimization.
+                                        <strong>Recommended to keep enabled.</strong>
+                                    </td>
+                                    <td>Disable only for speed in exploratory analyses</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Example Commands -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-terminal"></i> Example Commands</h5>
+                </div>
+                <div class="card-body">
+                    <h6>MAFFT alignment:</h6>
+                    <div class="command-display">
+                        <pre>mafft --maxiterate 1000 input.fasta > alignment.fasta</pre>
+                    </div>
+
+                    <h6 class="mt-4">ClipKIT trimming:</h6>
+                    <div class="command-display">
+                        <pre>clipkit alignment.fasta -o trimmed.fasta -m kpic-gappy</pre>
+                    </div>
+
+                    <h6 class="mt-4">IQ-Tree with model selection:</h6>
+                    <div class="command-display">
+                        <pre>iqtree -s trimmed.fasta -m MFP -B 1000 -T AUTO -bnni</pre>
+                    </div>
+
+                    <h6 class="mt-4">IQ-Tree with fixed model:</h6>
+                    <div class="command-display">
+                        <pre>iqtree -s trimmed.fasta -m LG+G4 -B 1000 -T 4 -bnni</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <!-- Quick Reference -->
+            <div class="card shadow-sm sticky-top" style="top: 1rem;">
+                <div class="card-header bg-info text-white">
+                    <h6 class="mb-0"><i class="bi bi-bookmark"></i> Quick Reference</h6>
+                </div>
+                <div class="card-body">
+                    <h6>Pipeline Steps:</h6>
+                    <ol class="small">
+                        <li>Clean FASTA headers</li>
+                        <li>HMMer search (optional)</li>
+                        <li>Length filtering</li>
+                        <li>MAFFT alignment</li>
+                        <li>ClipKIT trimming</li>
+                        <li>IQ-Tree inference</li>
+                    </ol>
+
+                    <hr>
+
+                    <h6>Recommended Settings:</h6>
+                    <ul class="small">
+                        <li><strong>&lt;50 sequences:</strong> maxiterate=1000</li>
+                        <li><strong>50-200 sequences:</strong> maxiterate=100</li>
+                        <li><strong>&gt;200 sequences:</strong> Use --auto</li>
+                    </ul>
+
+                    <hr>
+
+                    <h6>Bootstrap Interpretation:</h6>
+                    <ul class="small">
+                        <li><strong>≥95:</strong> Strong support</li>
+                        <li><strong>70-94:</strong> Moderate support</li>
+                        <li><strong>&lt;70:</strong> Weak support</li>
+                    </ul>
+
+                    <hr>
+
+                    <a href="{{ url_for('phylo.phylo_page') }}" class="btn btn-info w-100">
+                        <i class="bi bi-arrow-left"></i> Go to Pipeline
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

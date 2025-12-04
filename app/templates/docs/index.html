@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}Documentation - BioLab Workbench{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h2 class="mb-4">
+        <i class="bi bi-book text-primary"></i>
+        Documentation
+    </h2>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h4>Welcome to BioLab Workbench Documentation</h4>
+                    <p class="text-muted">
+                        This documentation provides detailed information about the parameters and usage of each tool in BioLab Workbench.
+                        Understanding these parameters will help you optimize your analysis and get the best results.
+                    </p>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6 mb-4">
+                    <div class="card h-100 shadow-sm module-card">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="icon-box bg-success text-white rounded-circle me-3">
+                                    <i class="bi bi-search"></i>
+                                </div>
+                                <h5 class="mb-0">BLAST Search</h5>
+                            </div>
+                            <p class="text-muted">
+                                Learn about E-value thresholds, BLAST programs, and how to optimize your sequence similarity searches.
+                            </p>
+                            <a href="{{ url_for('docs.blast_docs') }}" class="btn btn-outline-success">
+                                <i class="bi bi-arrow-right"></i> View Documentation
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 mb-4">
+                    <div class="card h-100 shadow-sm module-card">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="icon-box bg-info text-white rounded-circle me-3">
+                                    <i class="bi bi-diagram-3"></i>
+                                </div>
+                                <h5 class="mb-0">Phylogenetic Pipeline</h5>
+                            </div>
+                            <p class="text-muted">
+                                Understand HMMer, MAFFT, ClipKIT, and IQ-Tree parameters for building phylogenetic trees.
+                            </p>
+                            <a href="{{ url_for('docs.phylo_docs') }}" class="btn btn-outline-info">
+                                <i class="bi bi-arrow-right"></i> View Documentation
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 mb-4">
+                    <div class="card h-100 shadow-sm module-card">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="icon-box bg-warning text-dark rounded-circle me-3">
+                                    <i class="bi bi-text-left"></i>
+                                </div>
+                                <h5 class="mb-0">Sequence Alignment</h5>
+                            </div>
+                            <p class="text-muted">
+                                Learn about MAFFT, ClustalW, and MUSCLE parameters for multiple sequence alignment.
+                            </p>
+                            <a href="{{ url_for('docs.alignment_docs') }}" class="btn btn-outline-warning">
+                                <i class="bi bi-arrow-right"></i> View Documentation
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 mb-4">
+                    <div class="card h-100 shadow-sm module-card">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="icon-box bg-secondary text-white rounded-circle me-3">
+                                    <i class="bi bi-tree"></i>
+                                </div>
+                                <h5 class="mb-0">Tree Visualization</h5>
+                            </div>
+                            <p class="text-muted">
+                                Customize your phylogenetic tree visualizations with layout options and color schemes.
+                            </p>
+                            <a href="{{ url_for('docs.tree_docs') }}" class="btn btn-outline-secondary">
+                                <i class="bi bi-arrow-right"></i> View Documentation
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0"><i class="bi bi-lightbulb"></i> Quick Tips</h6>
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled">
+                        <li class="mb-3">
+                            <i class="bi bi-terminal text-primary me-2"></i>
+                            <strong>Command Display:</strong> After running any tool, you can see the actual command executed and copy it to use in terminal.
+                        </li>
+                        <li class="mb-3">
+                            <i class="bi bi-question-circle text-info me-2"></i>
+                            <strong>Help Buttons:</strong> Look for the <span class="help-btn" style="font-size: 0.75rem; display: inline-flex; width: 18px; height: 18px;">?</span> icon on each tool page to access detailed documentation.
+                        </li>
+                        <li class="mb-3">
+                            <i class="bi bi-download text-success me-2"></i>
+                            <strong>Results:</strong> All results can be downloaded for further analysis.
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

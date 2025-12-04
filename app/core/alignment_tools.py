@@ -70,13 +70,13 @@ def check_available_tools():
 def run_mafft(input_file, output_file, options=None):
     """
     Run MAFFT alignment.
-    Returns (success, message).
+    Returns (success, message, command).
     """
     try:
         input_file = sanitize_path(input_file)
         output_file = sanitize_path(output_file)
     except ValueError as e:
-        return False, str(e)
+        return False, str(e), None
 
     if options is None:
         options = {}
@@ -94,64 +94,73 @@ def run_mafft(input_file, output_file, options=None):
     opts_str = ' '.join(cmd_opts)
     command = f'mafft {opts_str} {shlex.quote(input_file)}'
 
-    full_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} {command} > {shlex.quote(output_file)}"
+    # Full command for display
+    full_command = f"conda run -n {config.CONDA_ENV} {command} > {shlex.quote(output_file)}"
+
+    full_shell_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} {command} > {shlex.quote(output_file)}"
 
     try:
-        result = subprocess.run(full_command, shell=True, capture_output=True, text=True, timeout=3600)
+        result = subprocess.run(full_shell_command, shell=True, capture_output=True, text=True, timeout=3600)
         if result.returncode == 0 and os.path.exists(output_file):
-            return True, "MAFFT alignment completed"
+            return True, "MAFFT alignment completed", full_command
         else:
-            return False, result.stderr or "MAFFT failed"
+            return False, result.stderr or "MAFFT failed", full_command
     except Exception as e:
-        return False, str(e)
+        return False, str(e), full_command
 
 
 def run_clustalw(input_file, output_file, options=None):
     """
     Run ClustalW alignment.
-    Returns (success, message).
+    Returns (success, message, command).
     """
     try:
         input_file = sanitize_path(input_file)
         output_file = sanitize_path(output_file)
     except ValueError as e:
-        return False, str(e)
+        return False, str(e), None
 
     command = f'clustalw -INFILE={shlex.quote(input_file)} -OUTFILE={shlex.quote(output_file)} -OUTPUT=FASTA'
+
+    # Full command for display
+    full_command = f"conda run -n {config.CONDA_ENV} {command}"
 
     success, stdout, stderr = run_conda_command(command)
 
     if success:
-        return True, "ClustalW alignment completed"
+        return True, "ClustalW alignment completed", full_command
     else:
-        return False, stderr or "ClustalW failed"
+        return False, stderr or "ClustalW failed", full_command
 
 
 def run_muscle(input_file, output_file, options=None):
     """
     Run MUSCLE alignment.
-    Returns (success, message).
+    Returns (success, message, command).
     """
     try:
         input_file = sanitize_path(input_file)
         output_file = sanitize_path(output_file)
     except ValueError as e:
-        return False, str(e)
+        return False, str(e), None
 
     command = f'muscle -in {shlex.quote(input_file)} -out {shlex.quote(output_file)}'
+
+    # Full command for display
+    full_command = f"conda run -n {config.CONDA_ENV} {command}"
 
     success, stdout, stderr = run_conda_command(command)
 
     if success:
-        return True, "MUSCLE alignment completed"
+        return True, "MUSCLE alignment completed", full_command
     else:
-        return False, stderr or "MUSCLE failed"
+        return False, stderr or "MUSCLE failed", full_command
 
 
 def run_alignment(input_file, tool='mafft', options=None):
     """
     Run sequence alignment with the specified tool.
-    Returns (success, result_dir, output_file).
+    Returns (success, result_dir, output_file, command).
     """
     if options is None:
         options = {}
@@ -169,21 +178,22 @@ def run_alignment(input_file, tool='mafft', options=None):
     save_params(result_dir, params)
 
     # Run alignment
+    command = None
     if tool == 'mafft':
-        success, message = run_mafft(input_file, output_file, options)
+        success, message, command = run_mafft(input_file, output_file, options)
     elif tool == 'clustalw':
-        success, message = run_clustalw(input_file, output_file, options)
+        success, message, command = run_clustalw(input_file, output_file, options)
     elif tool == 'muscle':
-        success, message = run_muscle(input_file, output_file, options)
+        success, message, command = run_muscle(input_file, output_file, options)
     else:
-        return False, f"Unknown alignment tool: {tool}", None
+        return False, f"Unknown alignment tool: {tool}", None, None
 
     if success:
         logger.info(f"Alignment completed with {tool}")
-        return True, result_dir, output_file
+        return True, result_dir, output_file, command
     else:
         logger.error(f"Alignment failed: {message}")
-        return False, message, None
+        return False, message, None, command
 
 
 def parse_alignment(filepath):

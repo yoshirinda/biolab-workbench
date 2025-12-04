@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+
+{% block title %}Alignment Documentation - BioLab Workbench{% endblock %}
+
+{% block content %}
+<div class="container">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('docs.docs_index') }}">Documentation</a></li>
+            <li class="breadcrumb-item active">Alignment</li>
+        </ol>
+    </nav>
+
+    <h2 class="mb-4">
+        <i class="bi bi-text-left text-warning"></i>
+        Sequence Alignment Documentation
+    </h2>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- Overview -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0"><i class="bi bi-info-circle"></i> Overview</h5>
+                </div>
+                <div class="card-body">
+                    <p>
+                        Multiple sequence alignment (MSA) is a fundamental step in comparative sequence analysis.
+                        It identifies conserved regions across homologous sequences and is essential for
+                        phylogenetics, protein structure prediction, and functional annotation.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Tool Comparison -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-list-check"></i> Tool Comparison</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Tool</th>
+                                    <th>Speed</th>
+                                    <th>Accuracy</th>
+                                    <th>Best For</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>MAFFT</strong></td>
+                                    <td>Fast</td>
+                                    <td>High</td>
+                                    <td>General purpose, large datasets</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>ClustalW</strong></td>
+                                    <td>Moderate</td>
+                                    <td>Good</td>
+                                    <td>Classic tool, educational use</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>MUSCLE</strong></td>
+                                    <td>Fast</td>
+                                    <td>High</td>
+                                    <td>Medium-sized datasets</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MAFFT Parameters -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-gear"></i> MAFFT Parameters</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Default</th>
+                                    <th>Description</th>
+                                    <th>Recommendation</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Algorithm</strong></td>
+                                    <td>Auto</td>
+                                    <td>Alignment algorithm selection</td>
+                                    <td>
+                                        <ul class="mb-0 small">
+                                            <li><strong>Auto:</strong> Let MAFFT choose</li>
+                                            <li><strong>L-INS-i:</strong> Most accurate, slow</li>
+                                            <li><strong>G-INS-i:</strong> Global alignment</li>
+                                            <li><strong>E-INS-i:</strong> For sequences with domains</li>
+                                            <li><strong>FFT-NS-2:</strong> Fast, for large datasets</li>
+                                        </ul>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Max Iterations</strong></td>
+                                    <td><code>1000</code></td>
+                                    <td>Number of refinement iterations</td>
+                                    <td>
+                                        <ul class="mb-0 small">
+                                            <li><code>0</code>: No iteration (fastest)</li>
+                                            <li><code>1000</code>: High accuracy</li>
+                                        </ul>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Gap Open Penalty</strong></td>
+                                    <td><code>1.53</code></td>
+                                    <td>Penalty for opening a gap</td>
+                                    <td>Increase for fewer, longer gaps</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Gap Extension Penalty</strong></td>
+                                    <td><code>0.123</code></td>
+                                    <td>Penalty for extending a gap</td>
+                                    <td>Increase for shorter gaps</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>--auto</strong></td>
+                                    <td>Off</td>
+                                    <td>Automatic algorithm selection</td>
+                                    <td>Enable for unknown data characteristics</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ClustalW Parameters -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-gear"></i> ClustalW Parameters</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Default</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Scoring Matrix</strong></td>
+                                    <td>BLOSUM</td>
+                                    <td>
+                                        <ul class="mb-0 small">
+                                            <li><strong>BLOSUM:</strong> Best for proteins</li>
+                                            <li><strong>PAM:</strong> For divergent sequences</li>
+                                            <li><strong>GONNET:</strong> Alternative protein matrix</li>
+                                        </ul>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Gap Open</strong></td>
+                                    <td><code>10</code></td>
+                                    <td>Penalty for opening a gap</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Gap Extension</strong></td>
+                                    <td><code>0.1</code></td>
+                                    <td>Penalty for extending a gap</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MUSCLE Parameters -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-gear"></i> MUSCLE Parameters</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Default</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Max Iterations</strong></td>
+                                    <td><code>16</code></td>
+                                    <td>Maximum number of refinement iterations</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Diagonal Optimization</strong></td>
+                                    <td>Off</td>
+                                    <td>Use diagonal optimization for speed</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Example Commands -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-terminal"></i> Example Commands</h5>
+                </div>
+                <div class="card-body">
+                    <h6>MAFFT with high accuracy:</h6>
+                    <div class="command-display">
+                        <pre>mafft --maxiterate 1000 --localpair sequences.fasta > alignment.fasta</pre>
+                    </div>
+
+                    <h6 class="mt-4">MAFFT auto mode:</h6>
+                    <div class="command-display">
+                        <pre>mafft --auto sequences.fasta > alignment.fasta</pre>
+                    </div>
+
+                    <h6 class="mt-4">ClustalW:</h6>
+                    <div class="command-display">
+                        <pre>clustalw -INFILE=sequences.fasta -OUTFILE=alignment.fasta -OUTPUT=FASTA</pre>
+                    </div>
+
+                    <h6 class="mt-4">MUSCLE:</h6>
+                    <div class="command-display">
+                        <pre>muscle -in sequences.fasta -out alignment.fasta</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <!-- Quick Reference -->
+            <div class="card shadow-sm sticky-top" style="top: 1rem;">
+                <div class="card-header bg-warning text-dark">
+                    <h6 class="mb-0"><i class="bi bi-bookmark"></i> Quick Reference</h6>
+                </div>
+                <div class="card-body">
+                    <h6>Choosing the Right Tool:</h6>
+                    <ul class="small">
+                        <li><strong>Large dataset (&gt;500 seq):</strong> MAFFT FFT-NS-2</li>
+                        <li><strong>High accuracy needed:</strong> MAFFT L-INS-i</li>
+                        <li><strong>Medium dataset:</strong> MUSCLE or MAFFT auto</li>
+                        <li><strong>Learning/teaching:</strong> ClustalW</li>
+                    </ul>
+
+                    <hr>
+
+                    <h6>Conservation Scores:</h6>
+                    <ul class="small">
+                        <li><span class="badge" style="background-color:#ff0000">&nbsp;</span> 90-100%: Highly conserved</li>
+                        <li><span class="badge" style="background-color:#ff6600">&nbsp;</span> 70-90%: Conserved</li>
+                        <li><span class="badge" style="background-color:#ffcc00">&nbsp;</span> 50-70%: Moderately conserved</li>
+                        <li><span class="badge bg-light text-dark">&nbsp;</span> &lt;50%: Variable</li>
+                    </ul>
+
+                    <hr>
+
+                    <h6>Tips:</h6>
+                    <ul class="small">
+                        <li>Remove redundant sequences before alignment</li>
+                        <li>Check alignment manually for obvious errors</li>
+                        <li>Consider trimming gappy regions</li>
+                    </ul>
+
+                    <hr>
+
+                    <a href="{{ url_for('alignment.alignment_page') }}" class="btn btn-warning w-100">
+                        <i class="bi bi-arrow-left"></i> Go to Alignment
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

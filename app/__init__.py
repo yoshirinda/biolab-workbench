@@ -35,6 +35,7 @@ def create_app():
     from app.routes.alignment import alignment_bp
     from app.routes.uniprot import uniprot_bp
     from app.routes.tree import tree_bp
+    from app.routes.docs import docs_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(sequence_bp, url_prefix='/sequence')
@@ -43,6 +44,7 @@ def create_app():
     app.register_blueprint(alignment_bp, url_prefix='/alignment')
     app.register_blueprint(uniprot_bp, url_prefix='/uniprot')
     app.register_blueprint(tree_bp, url_prefix='/tree')
+    app.register_blueprint(docs_bp, url_prefix='/docs')
 
     # Setup logging
     from app.utils.logger import setup_logging
