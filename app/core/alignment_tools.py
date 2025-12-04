@@ -253,6 +253,10 @@ def calculate_conservation(sequences):
     return conservation
 
 
+# Display configuration
+MAX_SEQ_ID_DISPLAY_LENGTH = 25  # Maximum length for sequence ID display
+
+
 def generate_alignment_html(sequences, conservation=None, color_mode='conservation'):
     """
     Generate HTML visualization of alignment with color coding.
@@ -321,7 +325,7 @@ def generate_alignment_html(sequences, conservation=None, color_mode='conservati
     # Build consensus sequence
     consensus = []
     for pos in range(alignment_length):
-        residues = [seq[1][pos].upper() if pos < len(seq[1]) else '-' for _, seq in sequences]
+        residues = [sequence[pos].upper() if pos < len(sequence) else '-' for _, sequence in sequences]
         residues_no_gaps = [r for r in residues if r not in ['-', '.']]
         if residues_no_gaps:
             from collections import Counter
@@ -381,7 +385,8 @@ def generate_alignment_html(sequences, conservation=None, color_mode='conservati
         # Sequence rows
         for seq_id, sequence in sequences:
             html.append('<div class="seq-row">')
-            html.append(f'<span class="seq-id" title="{seq_id}">{seq_id[:25]}</span>')
+            display_id = seq_id[:MAX_SEQ_ID_DISPLAY_LENGTH] if len(seq_id) > MAX_SEQ_ID_DISPLAY_LENGTH else seq_id
+            html.append(f'<span class="seq-id" title="{seq_id}">{display_id}</span>')
             html.append('<span class="seq-data">')
             
             for pos in range(block_start, block_end):

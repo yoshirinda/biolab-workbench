@@ -364,9 +364,9 @@ def add_sequence_feature(project_id, sequence_id, feature):
                 if 'features' not in seq:
                     seq['features'] = []
                 
-                # Add feature with unique ID
+                # Add feature with unique ID (using full UUID for uniqueness)
                 feature_entry = {
-                    'id': str(uuid.uuid4())[:8],
+                    'id': str(uuid.uuid4()),
                     'type': feature.get('type', 'region'),
                     'start': int(feature.get('start', 1)),
                     'end': int(feature.get('end', 1)),
