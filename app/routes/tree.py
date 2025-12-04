@@ -119,6 +119,11 @@ def visualize():
 def download(filepath):
     """Download a result file."""
     try:
+        from urllib.parse import unquote
+        
+        # URL decode the filepath for port-forwarding scenarios
+        filepath = unquote(filepath)
+        
         # Security: Ensure the file is within allowed directories
         abs_path = os.path.abspath(filepath)
         results_dir = os.path.abspath(config.RESULTS_DIR)
@@ -131,10 +136,30 @@ def download(filepath):
             return jsonify({'success': False, 'error': 'Access denied'}), 403
         
         if os.path.exists(abs_path):
-            return send_file(abs_path, as_attachment=True)
+            # Determine MIME type based on file extension
+            filename = os.path.basename(abs_path)
+            mimetype = None
+            if filename.endswith('.svg'):
+                mimetype = 'image/svg+xml'
+            elif filename.endswith('.png'):
+                mimetype = 'image/png'
+            elif filename.endswith('.pdf'):
+                mimetype = 'application/pdf'
+            elif filename.endswith('.nwk') or filename.endswith('.treefile'):
+                mimetype = 'text/plain'
+            elif filename.endswith('.json'):
+                mimetype = 'application/json'
+            
+            return send_file(
+                abs_path, 
+                as_attachment=True,
+                download_name=filename,
+                mimetype=mimetype
+            )
         else:
             return jsonify({'success': False, 'error': 'File not found'}), 404
     except Exception as e:
+        logger.error(f"Download error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -142,6 +167,11 @@ def download(filepath):
 def view(filepath):
     """View a SVG file."""
     try:
+        from urllib.parse import unquote
+        
+        # URL decode the filepath for port-forwarding scenarios
+        filepath = unquote(filepath)
+        
         # Security: Ensure the file is within allowed directories
         abs_path = os.path.abspath(filepath)
         results_dir = os.path.abspath(config.RESULTS_DIR)
@@ -158,4 +188,5 @@ def view(filepath):
         else:
             return jsonify({'success': False, 'error': 'File not found'}), 404
     except Exception as e:
+        logger.error(f"View error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500

@@ -167,7 +167,7 @@ def delete_project(project_id):
 def add_sequences_to_project(project_id, sequences):
     """
     Add sequences to a project.
-    sequences: list of sequence dicts with id, description, sequence, type, annotation (optional)
+    sequences: list of sequence dicts with id, description, sequence, type, annotation (optional), features (optional)
     Returns (success, project_data, message).
     """
     success, project_data, msg = get_project(project_id)
@@ -187,6 +187,7 @@ def add_sequences_to_project(project_id, sequences):
                     'type': seq.get('type', 'unknown'),
                     'length': len(seq['sequence']),
                     'annotation': seq.get('annotation', ''),
+                    'features': seq.get('features', []),
                     'added': datetime.now().isoformat()
                 }
                 project_data.setdefault('sequences', []).append(seq_entry)
@@ -315,8 +316,180 @@ def load_collection(project_id):
     Load a sequence collection from a project.
     Returns (success, sequences, message).
     """
+    try:
+        success, project_data, msg = get_project(project_id)
+        if not success:
+            return False, [], msg
+
+        sequences = project_data.get('sequences', [])
+        # Ensure all sequences have required fields
+        validated_sequences = []
+        for seq in sequences:
+            validated_seq = {
+                'id': seq.get('id', 'unknown'),
+                'description': seq.get('description', ''),
+                'sequence': seq.get('sequence', ''),
+                'type': seq.get('type', 'unknown'),
+                'length': seq.get('length', len(seq.get('sequence', ''))),
+                'annotation': seq.get('annotation', ''),
+                'features': seq.get('features', [])
+            }
+            validated_sequences.append(validated_seq)
+
+        return True, validated_sequences, "Loaded successfully"
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON parse error when loading project {project_id}: {e}")
+        return False, [], f"Failed to parse project data: {str(e)}"
+    except Exception as e:
+        logger.error(f"Error loading collection {project_id}: {e}")
+        return False, [], str(e)
+
+
+def add_sequence_feature(project_id, sequence_id, feature):
+    """
+    Add a feature annotation to a sequence.
+    feature: dict with type, start, end, strand (optional), label, color (optional), qualifiers (optional)
+    Returns (success, project_data, message).
+    """
     success, project_data, msg = get_project(project_id)
     if not success:
-        return False, [], msg
+        return False, None, msg
 
-    return True, project_data.get('sequences', []), "Loaded successfully"
+    try:
+        import uuid
+        found = False
+        for seq in project_data.get('sequences', []):
+            if seq['id'] == sequence_id:
+                # Initialize features list if not exists
+                if 'features' not in seq:
+                    seq['features'] = []
+                
+                # Add feature with unique ID
+                feature_entry = {
+                    'id': str(uuid.uuid4())[:8],
+                    'type': feature.get('type', 'region'),
+                    'start': int(feature.get('start', 1)),
+                    'end': int(feature.get('end', 1)),
+                    'strand': feature.get('strand', '+'),
+                    'label': feature.get('label', ''),
+                    'color': feature.get('color', '#4CAF50'),
+                    'qualifiers': feature.get('qualifiers', {}),
+                    'created': datetime.now().isoformat()
+                }
+                seq['features'].append(feature_entry)
+                seq['modified'] = datetime.now().isoformat()
+                found = True
+                break
+
+        if not found:
+            return False, None, "Sequence not found in project"
+
+        project_data['modified'] = datetime.now().isoformat()
+
+        project_file = os.path.join(project_data['path'], PROJECT_FILE)
+        with open(project_file, 'w', encoding='utf-8') as f:
+            json.dump(project_data, f, indent=2, ensure_ascii=False)
+
+        return True, project_data, "Feature added"
+    except Exception as e:
+        logger.error(f"Failed to add feature: {e}")
+        return False, None, str(e)
+
+
+def update_sequence_feature(project_id, sequence_id, feature_id, feature_updates):
+    """
+    Update a feature annotation on a sequence.
+    Returns (success, project_data, message).
+    """
+    success, project_data, msg = get_project(project_id)
+    if not success:
+        return False, None, msg
+
+    try:
+        found = False
+        for seq in project_data.get('sequences', []):
+            if seq['id'] == sequence_id:
+                for feature in seq.get('features', []):
+                    if feature['id'] == feature_id:
+                        # Update feature fields
+                        for key, value in feature_updates.items():
+                            if key in ['type', 'start', 'end', 'strand', 'label', 'color', 'qualifiers']:
+                                if key in ['start', 'end']:
+                                    feature[key] = int(value)
+                                else:
+                                    feature[key] = value
+                        feature['modified'] = datetime.now().isoformat()
+                        found = True
+                        break
+                break
+
+        if not found:
+            return False, None, "Feature not found"
+
+        project_data['modified'] = datetime.now().isoformat()
+
+        project_file = os.path.join(project_data['path'], PROJECT_FILE)
+        with open(project_file, 'w', encoding='utf-8') as f:
+            json.dump(project_data, f, indent=2, ensure_ascii=False)
+
+        return True, project_data, "Feature updated"
+    except Exception as e:
+        logger.error(f"Failed to update feature: {e}")
+        return False, None, str(e)
+
+
+def delete_sequence_feature(project_id, sequence_id, feature_id):
+    """
+    Delete a feature annotation from a sequence.
+    Returns (success, project_data, message).
+    """
+    success, project_data, msg = get_project(project_id)
+    if not success:
+        return False, None, msg
+
+    try:
+        found = False
+        for seq in project_data.get('sequences', []):
+            if seq['id'] == sequence_id:
+                original_len = len(seq.get('features', []))
+                seq['features'] = [f for f in seq.get('features', []) if f['id'] != feature_id]
+                if len(seq.get('features', [])) < original_len:
+                    found = True
+                    seq['modified'] = datetime.now().isoformat()
+                break
+
+        if not found:
+            return False, None, "Feature not found"
+
+        project_data['modified'] = datetime.now().isoformat()
+
+        project_file = os.path.join(project_data['path'], PROJECT_FILE)
+        with open(project_file, 'w', encoding='utf-8') as f:
+            json.dump(project_data, f, indent=2, ensure_ascii=False)
+
+        return True, project_data, "Feature deleted"
+    except Exception as e:
+        logger.error(f"Failed to delete feature: {e}")
+        return False, None, str(e)
+
+
+# Feature type definitions (Geneious-like)
+FEATURE_TYPES = [
+    {'id': 'CDS', 'name': 'CDS (Coding Sequence)', 'color': '#4CAF50'},
+    {'id': 'gene', 'name': 'Gene', 'color': '#2196F3'},
+    {'id': 'exon', 'name': 'Exon', 'color': '#9C27B0'},
+    {'id': 'intron', 'name': 'Intron', 'color': '#607D8B'},
+    {'id': 'promoter', 'name': 'Promoter', 'color': '#FF9800'},
+    {'id': 'domain', 'name': 'Domain', 'color': '#E91E63'},
+    {'id': 'motif', 'name': 'Motif', 'color': '#00BCD4'},
+    {'id': 'region', 'name': 'Region', 'color': '#795548'},
+    {'id': 'misc_feature', 'name': 'Misc Feature', 'color': '#9E9E9E'},
+    {'id': 'primer_bind', 'name': 'Primer Binding Site', 'color': '#CDDC39'},
+    {'id': 'mutation', 'name': 'Mutation', 'color': '#F44336'},
+    {'id': 'variation', 'name': 'Variation', 'color': '#FF5722'},
+]
+
+
+def get_feature_types():
+    """Get list of available feature types."""
+    return FEATURE_TYPES

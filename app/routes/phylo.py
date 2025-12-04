@@ -158,6 +158,11 @@ def run_step(step):
 def download(filepath):
     """Download a result file."""
     try:
+        from urllib.parse import unquote
+        
+        # URL decode the filepath for port-forwarding scenarios
+        filepath = unquote(filepath)
+        
         # Security: Ensure the file is within allowed directories
         abs_path = os.path.abspath(filepath)
         results_dir = os.path.abspath(config.RESULTS_DIR)
@@ -170,8 +175,26 @@ def download(filepath):
             return jsonify({'success': False, 'error': 'Access denied'}), 403
         
         if os.path.exists(abs_path):
-            return send_file(abs_path, as_attachment=True)
+            # Determine MIME type based on file extension
+            filename = os.path.basename(abs_path)
+            mimetype = None
+            if filename.endswith('.fasta') or filename.endswith('.fa') or filename.endswith('.fna') or filename.endswith('.faa'):
+                mimetype = 'text/plain'
+            elif filename.endswith('.treefile') or filename.endswith('.nwk'):
+                mimetype = 'text/plain'
+            elif filename.endswith('.tsv') or filename.endswith('.txt') or filename.endswith('.log'):
+                mimetype = 'text/plain'
+            elif filename.endswith('.json'):
+                mimetype = 'application/json'
+            
+            return send_file(
+                abs_path, 
+                as_attachment=True,
+                download_name=filename,
+                mimetype=mimetype
+            )
         else:
             return jsonify({'success': False, 'error': 'File not found'}), 404
     except Exception as e:
+        logger.error(f"Download error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500

@@ -11,7 +11,9 @@ from app.core.project_manager import (
     list_projects, create_project, get_project, update_project, delete_project,
     add_sequences_to_project, remove_sequence_from_project,
     update_sequence_annotation, export_project_sequences,
-    save_collection, load_collection
+    save_collection, load_collection,
+    add_sequence_feature, update_sequence_feature, delete_sequence_feature,
+    get_feature_types
 )
 from app.utils.file_utils import save_uploaded_file, read_fasta_file
 from app.utils.logger import get_app_logger
@@ -417,12 +419,102 @@ def load_seq_collection(project_id):
     try:
         success, sequences, message = load_collection(project_id)
 
+        # Ensure we always return proper JSON with Content-Type header
+        response = jsonify({
+            'success': success,
+            'sequences': sequences if success else [],
+            'message': message
+        })
+        response.headers['Content-Type'] = 'application/json'
+        return response
+
+    except Exception as e:
+        logger.error(f"Load collection error: {str(e)}")
+        response = jsonify({'success': False, 'error': str(e), 'sequences': []})
+        response.headers['Content-Type'] = 'application/json'
+        return response
+
+
+# Feature Annotation Routes
+
+@sequence_bp.route('/feature-types', methods=['GET'])
+def get_feature_type_list():
+    """Get list of available feature types."""
+    try:
+        types = get_feature_types()
+        return jsonify({'success': True, 'types': types})
+    except Exception as e:
+        logger.error(f"Get feature types error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@sequence_bp.route('/projects/<project_id>/sequences/<sequence_id>/features', methods=['POST'])
+def add_feature(project_id, sequence_id):
+    """Add a feature annotation to a sequence."""
+    try:
+        data = request.get_json()
+
+        if not data.get('type') or not data.get('start') or not data.get('end'):
+            return jsonify({'success': False, 'error': 'Feature type, start, and end are required'})
+
+        feature = {
+            'type': data.get('type'),
+            'start': data.get('start'),
+            'end': data.get('end'),
+            'strand': data.get('strand', '+'),
+            'label': data.get('label', ''),
+            'color': data.get('color', '#4CAF50'),
+            'qualifiers': data.get('qualifiers', {})
+        }
+
+        success, project_data, message = add_sequence_feature(project_id, sequence_id, feature)
+
         return jsonify({
             'success': success,
-            'sequences': sequences,
+            'project': project_data,
             'message': message
         })
 
     except Exception as e:
-        logger.error(f"Load collection error: {str(e)}")
+        logger.error(f"Add feature error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@sequence_bp.route('/projects/<project_id>/sequences/<sequence_id>/features/<feature_id>', methods=['PUT'])
+def update_feature(project_id, sequence_id, feature_id):
+    """Update a feature annotation."""
+    try:
+        data = request.get_json()
+
+        success, project_data, message = update_sequence_feature(
+            project_id, sequence_id, feature_id, data
+        )
+
+        return jsonify({
+            'success': success,
+            'project': project_data,
+            'message': message
+        })
+
+    except Exception as e:
+        logger.error(f"Update feature error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@sequence_bp.route('/projects/<project_id>/sequences/<sequence_id>/features/<feature_id>', methods=['DELETE'])
+def remove_feature(project_id, sequence_id, feature_id):
+    """Delete a feature annotation."""
+    try:
+        success, project_data, message = delete_sequence_feature(
+            project_id, sequence_id, feature_id
+        )
+
+        return jsonify({
+            'success': success,
+            'project': project_data,
+            'message': message
+        })
+
+    except Exception as e:
+        logger.error(f"Delete feature error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
