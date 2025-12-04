@@ -119,8 +119,19 @@ def visualize():
 def download(filepath):
     """Download a result file."""
     try:
-        if os.path.exists(filepath):
-            return send_file(filepath, as_attachment=True)
+        # Security: Ensure the file is within allowed directories
+        abs_path = os.path.abspath(filepath)
+        results_dir = os.path.abspath(config.RESULTS_DIR)
+        uploads_dir = os.path.abspath(config.UPLOADS_DIR)
+        
+        # Only allow downloads from results or uploads directories
+        if not (abs_path.startswith(results_dir + os.sep) or 
+                abs_path.startswith(uploads_dir + os.sep)):
+            logger.warning(f"Attempted path traversal: {filepath}")
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        if os.path.exists(abs_path):
+            return send_file(abs_path, as_attachment=True)
         else:
             return jsonify({'success': False, 'error': 'File not found'}), 404
     except Exception as e:
@@ -131,8 +142,19 @@ def download(filepath):
 def view(filepath):
     """View a SVG file."""
     try:
-        if os.path.exists(filepath) and filepath.endswith('.svg'):
-            return send_file(filepath, mimetype='image/svg+xml')
+        # Security: Ensure the file is within allowed directories
+        abs_path = os.path.abspath(filepath)
+        results_dir = os.path.abspath(config.RESULTS_DIR)
+        uploads_dir = os.path.abspath(config.UPLOADS_DIR)
+        
+        # Only allow viewing from results or uploads directories
+        if not (abs_path.startswith(results_dir + os.sep) or 
+                abs_path.startswith(uploads_dir + os.sep)):
+            logger.warning(f"Attempted path traversal: {filepath}")
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        if os.path.exists(abs_path) and filepath.endswith('.svg'):
+            return send_file(abs_path, mimetype='image/svg+xml')
         else:
             return jsonify({'success': False, 'error': 'File not found'}), 404
     except Exception as e:
