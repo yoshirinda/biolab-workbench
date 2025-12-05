@@ -259,20 +259,22 @@ BLOCK_SIZE = 60  # Number of residues per alignment block
 SEQ_NAME_TRUNCATE_LENGTH = 22  # Maximum length for sequence name in exported HTML
 
 # Amino acid color scheme for visualization
-# Based on residue chemical properties
+# Based on residue chemical properties as specified in original seq_aligner.py
 AA_COLORS = {
-    # Hydrophobic - Yellow/Orange
+    # Hydrophobic (A,V,L,I,M,F,W,P) - Yellow
     'A': '#f0c000', 'V': '#f0c000', 'L': '#f0c000', 'I': '#f0c000', 
     'M': '#f0c000', 'F': '#f0c000', 'W': '#f0c000', 'P': '#f0c000',
-    # Polar - Green
+    # Polar (S,T,N,Q) - Green
     'S': '#00c000', 'T': '#00c000', 'N': '#00c000', 'Q': '#00c000',
-    # Negatively charged - Red
+    # Negatively charged (D,E) - Red
     'D': '#c00000', 'E': '#c00000',
-    # Positively charged - Blue
-    'K': '#0000c0', 'R': '#0000c0', 'H': '#0080c0',
-    # Special - Cyan/Gray
-    'C': '#00c0c0', 'G': '#c0c0c0', 'Y': '#00c0c0',
-    # Gap
+    # Positively charged (K,R) - Blue
+    'K': '#0000c0', 'R': '#0000c0',
+    # Histidine - Light blue
+    'H': '#0080c0',
+    # C, G, Y - Cyan
+    'C': '#00c0c0', 'G': '#00c0c0', 'Y': '#00c0c0',
+    # Gap - Gray
     '-': '#e5e5e5',
 }
 

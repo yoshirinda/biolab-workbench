@@ -406,6 +406,93 @@ class TestBlastWrapper:
         assert databases[0]['type'] == 'nucleotide'
         assert databases[0]['path'] == os.path.join(temp_databases_dir, 'test_db')
 
+    def test_extract_from_fasta(self, tmpdir):
+        """Test extracting sequences from FASTA file by IDs."""
+        from app.core.blast_wrapper import extract_from_fasta
+
+        # Create a test FASTA file
+        source_fasta = str(tmpdir.join("source.fasta"))
+        with open(source_fasta, 'w') as f:
+            f.write(">seq1 description\nATGCATGC\n>seq2\nGGGGGGGG\n>seq3 other\nCCCCCCCC\n")
+
+        output_file = str(tmpdir.join("output.fasta"))
+        hit_ids = ['seq1', 'seq3']
+
+        success, count = extract_from_fasta(source_fasta, hit_ids, output_file)
+
+        assert success is True
+        assert count == 2
+        assert os.path.exists(output_file)
+
+        with open(output_file, 'r') as f:
+            content = f.read()
+            assert '>seq1 description' in content
+            assert '>seq3 other' in content
+            assert 'ATGCATGC' in content
+            assert 'CCCCCCCC' in content
+            assert 'seq2' not in content
+
+    def test_get_source_fasta(self, tmpdir):
+        """Test retrieving source FASTA path from metadata."""
+        from app.core.blast_wrapper import save_database_metadata, get_source_fasta
+
+        # Create a test source FASTA file
+        source_fasta = str(tmpdir.join("source.fasta"))
+        with open(source_fasta, 'w') as f:
+            f.write(">seq1\nATGC\n")
+
+        # Create metadata
+        db_path = str(tmpdir.join("test_db"))
+        save_database_metadata(db_path, source_fasta, 'nucl', 'Test DB')
+
+        # Verify metadata file was created
+        assert os.path.exists(db_path + '.meta.json')
+
+        # Retrieve source FASTA
+        result = get_source_fasta(db_path)
+        assert result == source_fasta
+
+    def test_get_source_fasta_missing_metadata(self, tmpdir):
+        """Test get_source_fasta returns None when metadata is missing."""
+        from app.core.blast_wrapper import get_source_fasta
+
+        db_path = str(tmpdir.join("nonexistent_db"))
+        result = get_source_fasta(db_path)
+        assert result is None
+
+    def test_add_tsv_header(self, tmpdir):
+        """Test adding header to TSV file."""
+        from app.core.blast_wrapper import add_tsv_header
+
+        # Create a test TSV file without header
+        tsv_file = str(tmpdir.join("result.tsv"))
+        with open(tsv_file, 'w') as f:
+            f.write("query1\tsubject1\t99.5\t100\t0\t0\t1\t100\t1\t100\t1e-50\t200\n")
+
+        add_tsv_header(tsv_file, 'tsv')
+
+        with open(tsv_file, 'r') as f:
+            content = f.read()
+            lines = content.strip().split('\n')
+            assert len(lines) == 2
+            assert lines[0].startswith('qseqid')
+            assert 'query1' in lines[1]
+
+    def test_parse_blast_tsv_skips_header(self, tmpdir):
+        """Test that parse_blast_tsv skips header row."""
+        from app.core.blast_wrapper import parse_blast_tsv
+
+        # Create a TSV file with header
+        tsv_file = str(tmpdir.join("result.tsv"))
+        with open(tsv_file, 'w') as f:
+            f.write("qseqid\tsseqid\tpident\tlength\tmismatch\tgapopen\tqstart\tqend\tsstart\tsend\tevalue\tbitscore\n")
+            f.write("query1\tsubject1\t99.5\t100\t0\t0\t1\t100\t1\t100\t1e-50\t200\n")
+
+        hits = parse_blast_tsv(tsv_file)
+        assert len(hits) == 1
+        assert hits[0]['qseqid'] == 'query1'
+        assert hits[0]['sseqid'] == 'subject1'
+
 
 class TestPhyloPipeline:
     """Tests for phylogenetic pipeline functions."""
@@ -484,7 +571,7 @@ class TestDownloadRoutes:
     """Tests for download route functionality."""
 
     def test_blast_download_relative_path(self, client, tmpdir, monkeypatch):
-        """Test BLAST download route handles relative paths."""
+        """Test BLAST download route handles relative paths with ?path= parameter."""
         import config
 
         # Set up temporary results directory
@@ -496,8 +583,8 @@ class TestDownloadRoutes:
         with open(test_file, 'w') as f:
             f.write(">seq1\nATGC\n")
 
-        # Test with relative path
-        response = client.get('/blast/download/test_file.fasta')
+        # Test with query parameter (current implementation)
+        response = client.get('/blast/download?path=test_file.fasta')
         assert response.status_code == 200
 
     def test_blast_download_denies_path_traversal(self, client, tmpdir, monkeypatch):
@@ -512,8 +599,8 @@ class TestDownloadRoutes:
         with open(outside_file, 'w') as f:
             f.write("secret")
 
-        # Try to access it via path traversal
-        response = client.get('/blast/download/../outside.txt')
+        # Try to access it via path traversal using query parameter
+        response = client.get('/blast/download?path=../outside.txt')
         assert response.status_code == 403
 
     def test_alignment_download_handles_html(self, client, tmpdir, monkeypatch):

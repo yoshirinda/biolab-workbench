@@ -93,6 +93,94 @@ def list_blast_databases(db_dir=None):
     return databases
 
 
+def save_database_metadata(db_path, source_fasta, db_type, title):
+    """
+    Save metadata for a BLAST database including the source FASTA path.
+    This allows fallback extraction from the source file when blastdbcmd fails.
+    """
+    metadata_file = db_path + '.meta.json'
+    metadata = {
+        'source_fasta': source_fasta,
+        'db_type': db_type,
+        'title': title,
+        'created': datetime.now().isoformat()
+    }
+    try:
+        with open(metadata_file, 'w', encoding='utf-8') as f:
+            json.dump(metadata, f, indent=2)
+        logger.info(f"Saved database metadata: {metadata_file}")
+    except Exception as e:
+        logger.warning(f"Failed to save database metadata: {e}")
+
+
+def get_source_fasta(database):
+    """
+    Get the source FASTA file path from database metadata.
+    Returns the source FASTA path if available and exists, None otherwise.
+    """
+    metadata_file = database + '.meta.json'
+    if not os.path.exists(metadata_file):
+        return None
+    
+    try:
+        with open(metadata_file, 'r', encoding='utf-8') as f:
+            metadata = json.load(f)
+        source_fasta = metadata.get('source_fasta')
+        if source_fasta and os.path.exists(source_fasta):
+            return source_fasta
+    except Exception as e:
+        logger.warning(f"Failed to read database metadata: {e}")
+    
+    return None
+
+
+def extract_from_fasta(source_fasta, hit_ids, output_file):
+    """
+    Extract sequences from a FASTA file by IDs.
+    This is a fallback when blastdbcmd fails.
+    Returns (success, extracted_count).
+    """
+    try:
+        hit_ids_set = set(hit_ids)
+        extracted = []
+        
+        with open(source_fasta, 'r', encoding='utf-8') as f:
+            current_header = None
+            current_seq = []
+            
+            for line in f:
+                line = line.strip()
+                if line.startswith('>'):
+                    # Save previous sequence if it matches
+                    if current_header is not None:
+                        seq_id = current_header.split()[0]
+                        if seq_id in hit_ids_set:
+                            extracted.append((current_header, ''.join(current_seq)))
+                    current_header = line[1:]
+                    current_seq = []
+                elif line:
+                    current_seq.append(line)
+            
+            # Handle last sequence
+            if current_header is not None:
+                seq_id = current_header.split()[0]
+                if seq_id in hit_ids_set:
+                    extracted.append((current_header, ''.join(current_seq)))
+        
+        # Write extracted sequences
+        with open(output_file, 'w', encoding='utf-8') as f:
+            for header, seq in extracted:
+                f.write(f">{header}\n")
+                # Write sequence in lines of 60 characters
+                for i in range(0, len(seq), 60):
+                    f.write(seq[i:i+60] + '\n')
+        
+        return True, len(extracted)
+    except Exception as e:
+        logger.error(f"Failed to extract from FASTA: {e}")
+        return False, 0
+
+
 def create_blast_database(input_file, db_name, db_type='auto', title=None):
     """
     Create a BLAST database using makeblastdb.
@@ -135,6 +223,8 @@ def create_blast_database(input_file, db_name, db_type='auto', title=None):
 
     if success:
         logger.info(f"Created BLAST database: {db_path}")
+        # Save metadata with source FASTA path for fallback extraction
+        save_database_metadata(db_path, input_file, db_type, title)
         return True, "Database created successfully", db_path
     else:
         logger.error(f"Failed to create database: {stderr}")
@@ -156,6 +246,48 @@ def select_blast_program(query_type, db_type):
         return 'tblastn'
     else:
         return 'blastn'  # Default
+
+
+def add_tsv_header(filepath, output_format):
+    """
+    Add a header row to TSV BLAST output files.
+    Uses a temporary file approach to handle large files efficiently.
+    """
+    if output_format not in ['tsv', 'detailed']:
+        return  # Only add headers to TSV format files
+    
+    if not os.path.exists(filepath):
+        return
+    
+    # Define headers based on format
+    if output_format == 'tsv':
+        header = "qseqid\tsseqid\tpident\tlength\tmismatch\tgapopen\tqstart\tqend\tsstart\tsend\tevalue\tbitscore\n"
+    elif output_format == 'detailed':
+        header = "qseqid\tsseqid\tpident\tlength\tmismatch\tgapopen\tqstart\tqend\tsstart\tsend\tevalue\tbitscore\tqlen\tslen\tqcovs\tstitle\n"
+    else:
+        return
+    
+    temp_file = filepath + '.tmp'
+    try:
+        # Write header to temp file, then append original content (stream approach)
+        with open(temp_file, 'w', encoding='utf-8') as out_f:
+            out_f.write(header)
+            with open(filepath, 'r', encoding='utf-8') as in_f:
+                for line in in_f:
+                    out_f.write(line)
+        
+        # Replace original file with temp file
+        os.replace(temp_file, filepath)
+        
+        logger.info(f"Added TSV header to {filepath}")
+    except Exception as e:
+        logger.warning(f"Failed to add TSV header: {e}")
+        # Clean up temp file if it exists
+        if os.path.exists(temp_file):
+            try:
+                os.remove(temp_file)
+            except Exception:
+                pass
 
 
 def run_blast(query_file, database, output_format='tsv', evalue=1e-5,
@@ -251,6 +383,8 @@ def run_blast(query_file, database, output_format='tsv', evalue=1e-5,
     success, stdout, stderr = run_conda_command(command)
 
     if success:
+        # Add header to TSV output files
+        add_tsv_header(output_file, output_format)
         logger.info(f"BLAST search completed: {output_file}")
         return True, result_dir, {'main': output_file}, full_command
     else:
@@ -261,6 +395,8 @@ def run_blast(query_file, database, output_format='tsv', evalue=1e-5,
 def extract_sequences(database, hit_ids, output_file):
     """
     Extract sequences from BLAST database using blastdbcmd.
+    Falls back to extracting from source FASTA if blastdbcmd fails.
+    
     hit_ids: list of sequence IDs to extract
     Returns (success, message).
     """
@@ -284,25 +420,48 @@ def extract_sequences(database, hit_ids, output_file):
     if not sanitized_ids:
         return False, "No valid hit IDs after sanitization"
 
-    # Write IDs to temp file
+    # First try blastdbcmd
     id_file = output_file + '.ids'
-    with open(id_file, 'w') as f:
-        f.write('\n'.join(sanitized_ids))
+    stderr = ''
+    try:
+        with open(id_file, 'w') as f:
+            f.write('\n'.join(sanitized_ids))
 
-    command = f'blastdbcmd -db {shlex.quote(database)} -entry_batch {shlex.quote(id_file)} -out {shlex.quote(output_file)}'
+        command = f'blastdbcmd -db {shlex.quote(database)} -entry_batch {shlex.quote(id_file)} -out {shlex.quote(output_file)}'
 
-    success, stdout, stderr = run_conda_command(command)
+        success, stdout, stderr = run_conda_command(command)
+    finally:
+        # Clean up temp file
+        if os.path.exists(id_file):
+            try:
+                os.remove(id_file)
+            except Exception:
+                pass
 
-    # Clean up temp file
-    if os.path.exists(id_file):
-        os.remove(id_file)
+    # Check if blastdbcmd succeeded and output file has content
+    blastdbcmd_success = success and os.path.exists(output_file) and os.path.getsize(output_file) > 0
 
-    if success:
+    if blastdbcmd_success:
         logger.info(f"Extracted {len(sanitized_ids)} sequences to {output_file}")
         return True, f"Extracted {len(sanitized_ids)} sequences"
+    
+    # Fallback: try to extract from source FASTA
+    logger.info(f"blastdbcmd failed, attempting fallback extraction from source FASTA")
+    source_fasta = get_source_fasta(database)
+    
+    if source_fasta:
+        logger.info(f"Found source FASTA: {source_fasta}")
+        fallback_success, extracted_count = extract_from_fasta(source_fasta, sanitized_ids, output_file)
+        
+        if fallback_success and extracted_count > 0:
+            logger.info(f"Fallback extraction succeeded: {extracted_count} sequences")
+            return True, f"Extracted {extracted_count} sequences (from source FASTA)"
+        else:
+            logger.error(f"Fallback extraction failed")
+            return False, f"blastdbcmd failed and fallback extraction found no matching sequences"
     else:
-        logger.error(f"Sequence extraction failed: {stderr}")
-        return False, stderr
+        logger.error(f"No source FASTA available for fallback extraction")
+        return False, f"Sequence extraction failed: {stderr}. No source FASTA available for fallback."
 
 
 def parse_blast_tsv(filepath):
@@ -313,6 +472,9 @@ def parse_blast_tsv(filepath):
     hits = []
     headers = ['qseqid', 'sseqid', 'pident', 'length', 'mismatch', 'gapopen',
                'qstart', 'qend', 'sstart', 'send', 'evalue', 'bitscore']
+    
+    # Set of expected header field names for robust detection
+    header_fields = set(headers)
 
     if not os.path.exists(filepath):
         return hits
@@ -322,8 +484,17 @@ def parse_blast_tsv(filepath):
             line = line.strip()
             if not line or line.startswith('#'):
                 continue
-
+            
             parts = line.split('\t')
+            
+            # Skip header row if present - check if all fields match expected headers
+            # This handles both standard and detailed format headers
+            if parts and parts[0] in header_fields:
+                # Check if this looks like a header row (first few fields match headers)
+                first_fields = set(parts[:min(len(parts), 6)])
+                if first_fields <= header_fields.union({'qlen', 'slen', 'qcovs', 'stitle'}):
+                    continue
+
             hit = {}
             for i, header in enumerate(headers):
                 if i < len(parts):
