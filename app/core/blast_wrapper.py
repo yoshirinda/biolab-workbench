@@ -10,7 +10,7 @@ from datetime import datetime
 import config
 from app.utils.logger import get_tools_logger
 from app.utils.file_utils import create_result_dir, save_params
-from app.core.sequence_utils import detect_sequence_type
+from app.core.sequence_utils import detect_sequence_type, normalize_gene_id
 
 logger = get_tools_logger()
 
@@ -132,31 +132,6 @@ def get_source_fasta(database):
         logger.warning(f"Failed to read database metadata: {e}")
     
     return None
-
-
-def normalize_gene_id(gene_id):
-    """
-    Normalize a gene ID for fuzzy matching.
-    
-    Handles:
-    - Case insensitivity (Mp3g11110 -> mp3g11110)
-    - Version suffix removal (Mp3g11110.1 -> mp3g11110)
-    - Common formats: Mp3g11110.1, AT1G01010.1, Os01g0100100, etc.
-    
-    Returns:
-        tuple: (normalized_id, original_id)
-    """
-    if not gene_id:
-        return ('', gene_id)
-    
-    original = gene_id.strip()
-    normalized = original.lower()
-    
-    # Remove version suffix (e.g., .1, .2, etc.)
-    # Common patterns: .1, .2, _v1, -1, etc.
-    normalized = re.sub(r'[._-]v?\d+$', '', normalized)
-    
-    return (normalized, original)
 
 
 def build_fuzzy_id_index(hit_ids):

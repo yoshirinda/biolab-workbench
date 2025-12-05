@@ -125,7 +125,9 @@
                         <div class="col-md-8 mb-3">
                             <label for="geneIdInput" class="form-label"><i class="bi bi-list-ol"></i> Gene IDs (paste BLAST results or gene list):</label>
                             <textarea class="form-control font-monospace" id="geneIdInput" rows="4"
-                                placeholder="Paste BLAST results table or gene IDs here...&#10;Example: ACO2_Arabidopsis	Mp3g11110.1	31.9%&#10;Or simply: Mp3g11110.1&#10;AT1G01010.1"></textarea>
+                                placeholder="Paste BLAST results or gene IDs (e.g., Mp3g11110.1, AT1G01010.1)"
+                                aria-describedby="geneIdInputHelp"></textarea>
+                            <small id="geneIdInputHelp" class="text-muted">Supports BLAST table format or one gene ID per line</small>
                         </div>
                     </div>
                     

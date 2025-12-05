@@ -804,8 +804,8 @@ def export_alignment_visualization(sequences, output_dir, base_name,
             # Clean up temp file
             try:
                 os.remove(temp_fasta)
-            except OSError:
-                pass
+            except OSError as cleanup_error:
+                logger.debug(f"Failed to clean up temp file {temp_fasta}: {cleanup_error}")
             
             if success:
                 return True, result_file, message
@@ -820,8 +820,8 @@ def export_alignment_visualization(sequences, output_dir, base_name,
             # Clean up on error
             try:
                 os.remove(temp_fasta)
-            except OSError:
-                pass
+            except OSError as cleanup_error:
+                logger.debug(f"Failed to clean up temp file {temp_fasta}: {cleanup_error}")
             logger.error(f"Visualization export failed: {e}")
             return False, None, str(e)
     

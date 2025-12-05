@@ -29,6 +29,24 @@ CODON_TABLE = {
 # Amino acid specific characters (not in DNA/RNA)
 AA_ONLY_CHARS = set('EFILPQ')
 
+# Common gene ID patterns for plants and model organisms (compiled at module level)
+# Pattern examples: Mp3g11110.1, AT1G01010.1, Os01g0100100, Zm00001d002345, etc.
+GENE_ID_PATTERN = re.compile(
+    r'\b('
+    r'[A-Za-z]{2,4}\d+g\d+(?:\.\d+)?|'  # Mp3g11110.1, AT1G01010.1
+    r'[A-Za-z]{2,4}\d{5,}(?:\.\d+)?|'    # Zm00001d002345
+    r'Os\d{2}g\d{7}|'                     # Os01g0100100 (Rice)
+    r'LOC_Os\d{2}g\d{5}(?:\.\d+)?|'       # LOC_Os01g01010.1
+    r'GRMZM\d+G\d+(?:_[A-Z]\d+)?|'        # GRMZM2G001000 (Maize)
+    r'Solyc\d{2}g\d{6}(?:\.\d+)?|'        # Solyc01g001000.1 (Tomato)
+    r'Potri\.\d{3}G\d{6}(?:\.\d+)?|'      # Potri.001G001000.1 (Poplar)
+    r'Pp\d+s\d+(?:\.\d+)?|'               # Pp3c1_12345 (Physcomitrella)
+    r'[A-Za-z]\d+\.\d+|'                  # Generic: A12345.1
+    r'[A-Za-z]{1,6}_[A-Za-z0-9]+|'        # Gene_Name format
+    r'[A-Z][a-z]{0,4}\d+[gG]\d+(?:\.\d+)?' # General gene format
+    r')\b'
+)
+
 
 def detect_sequence_type(sequence):
     """
@@ -300,24 +318,6 @@ def parse_gene_ids_from_text(text):
     """
     gene_ids = []
     
-    # Common gene ID patterns for plants and model organisms
-    # Pattern examples: Mp3g11110.1, AT1G01010.1, Os01g0100100, Zm00001d002345, etc.
-    gene_id_pattern = re.compile(
-        r'\b('
-        r'[A-Za-z]{2,4}\d+g\d+(?:\.\d+)?|'  # Mp3g11110.1, AT1G01010.1
-        r'[A-Za-z]{2,4}\d{5,}(?:\.\d+)?|'    # Zm00001d002345
-        r'Os\d{2}g\d{7}|'                     # Os01g0100100 (Rice)
-        r'LOC_Os\d{2}g\d{5}(?:\.\d+)?|'       # LOC_Os01g01010.1
-        r'GRMZM\d+G\d+(?:_[A-Z]\d+)?|'        # GRMZM2G001000 (Maize)
-        r'Solyc\d{2}g\d{6}(?:\.\d+)?|'        # Solyc01g001000.1 (Tomato)
-        r'Potri\.\d{3}G\d{6}(?:\.\d+)?|'      # Potri.001G001000.1 (Poplar)
-        r'Pp\d+s\d+(?:\.\d+)?|'               # Pp3c1_12345 (Physcomitrella)
-        r'[A-Za-z]\d+\.\d+|'                  # Generic: A12345.1
-        r'[A-Za-z]{1,6}_[A-Za-z0-9]+|'        # Gene_Name format
-        r'[A-Z][a-z]{0,4}\d+[gG]\d+(?:\.\d+)?' # General gene format
-        r')\b'
-    )
-    
     lines = text.strip().split('\n')
     
     for line in lines:
@@ -334,7 +334,7 @@ def parse_gene_ids_from_text(text):
             potential_id = fields[1].strip()
             
             # Check if it looks like a gene ID
-            match = gene_id_pattern.search(potential_id)
+            match = GENE_ID_PATTERN.search(potential_id)
             if match:
                 gene_ids.append(match.group(1))
                 continue
@@ -345,7 +345,7 @@ def parse_gene_ids_from_text(text):
                 continue
         
         # Try to find gene IDs in the whole line
-        matches = gene_id_pattern.findall(line)
+        matches = GENE_ID_PATTERN.findall(line)
         if matches:
             gene_ids.extend(matches)
         elif len(fields) == 1 and re.match(r'^[\w.-]+$', fields[0]):
