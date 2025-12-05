@@ -1,0 +1,749 @@
+{% extends "base.html" %}
+
+{% block title %}Sequence Management - BioLab Workbench{% endblock %}
+
+{% block content %}
+<style>
+    body.seq-dark-mode { background: #f5f5f5; }
+    .seq-main-container { display: flex; height: calc(100vh - 120px); }
+    .seq-sidebar { width: 300px; background: #fff; border-right: 1px solid #ddd; overflow-y: auto; padding: 0; }
+    .seq-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .seq-toolbar { background: #f9f9f9; border-bottom: 1px solid #ddd; padding: 10px; }
+    .seq-editor { flex: 1; display: flex; overflow: hidden; }
+    .seq-viewer-panel { flex: 1; overflow-y: auto; padding: 15px; }
+    .seq-features-panel { width: 350px; background: #fafafa; border-left: 1px solid #ddd; overflow-y: auto; padding: 15px; }
+
+    /* Sidebar Tree */
+    .seq-tree { list-style: none; margin: 0; padding: 0; }
+    .seq-tree-item { margin: 0; border-left: 3px solid transparent; }
+    .seq-tree-item.active { border-left-color: #0d6efd; background: #f0f6ff; }
+    .seq-tree-toggle { background: none; border: none; cursor: pointer; padding: 3px 5px; color: #666; }
+    .seq-tree-label { padding: 6px 8px; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; font-size: 13px; }
+    .seq-tree-label:hover { background: #f5f5f5; }
+    .seq-tree-label.collection { color: #666; font-weight: 500; }
+    .seq-tree-label.sequence { color: #555; padding-left: 30px; }
+    .seq-tree-children { list-style: none; margin: 0; padding-left: 15px; }
+
+    /* Sequence Viewer */
+    .seq-line { white-space: nowrap; font-family: 'Courier New', monospace; margin: 2px 0; font-size: 12px; }
+    .seq-idx { color: #999; margin-right: 8px; display: inline-block; width: 50px; text-align: right; user-select: none; }
+    .seq-base { display: inline-block; padding: 2px 1px; border-radius: 2px; cursor: default; user-select: none; line-height: 1.4; }
+    .seq-base.selected { outline: 2px solid #0d6efd; }
+    .seq-base.hover { opacity: 0.7; }
+    .seq-header { margin-bottom: 10px; padding: 8px; background: #f0f6ff; border-radius: 4px; border: 1px solid #cce5ff; }
+
+    /* Feature Controls */
+    .feature-control { background: #fff; border: 1px solid #ddd; border-radius: 4px; padding: 10px; margin-bottom: 8px; }
+    .feature-control.dragging { border-color: #0d6efd; background: #f0f6ff; }
+    .feature-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
+    .feature-color-dot { width: 14px; height: 14px; border-radius: 3px; cursor: pointer; }
+    .feature-badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; color: white; }
+
+    /* Buttons & Forms */
+    .btn-sm-seq { padding: 4px 8px; font-size: 12px; }
+    .modal-dialog-seq { max-width: 500px; }
+
+    /* Edit Inline */
+    .seq-name-edit { display: inline-block; min-width: 150px; }
+
+    @media (max-width: 768px) {
+        .seq-sidebar { display: none; }
+        .seq-features-panel { width: 100%; max-height: 200px; border-left: none; border-top: 1px solid #ddd; }
+        .seq-editor { flex-direction: column; }
+    }
+</style>
+
+<div class="seq-main-container">
+    <!-- Left Sidebar: Project & Collection Tree -->
+    <div class="seq-sidebar">
+        <div style="padding: 12px 10px; border-bottom: 1px solid #ddd;">
+            <button class="btn btn-sm btn-primary w-100 mb-2" onclick="showImportModal()">
+                <i class="bi bi-plus-circle"></i> New Sequence
+            </button>
+            <button class="btn btn-sm btn-secondary w-100" onclick="showCreateProjectModal()">
+                <i class="bi bi-folder-plus"></i> New Project
+            </button>
+        </div>
+        <ul class="seq-tree" id="projectTree">
+            <li class="seq-tree-item">
+                <div class="seq-tree-label" onclick="selectProject('inbox')">
+                    <i class="bi bi-inbox"></i> <span>Inbox (Unsaved)</span>
+                </div>
+            </li>
+        </ul>
+    </div>
+
+    <!-- Right Content Area -->
+    <div class="seq-content">
+        <!-- Toolbar -->
+        <div class="seq-toolbar">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span id="currentProjectName" class="fw-bold">Inbox (Unsaved)</span>
+                    <span id="sequenceCountBadge" class="badge bg-primary ms-2">0 sequences</span>
+                </div>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary" onclick="exportCurrentProject()">
+                        <i class="bi bi-download"></i> Export
+                    </button>
+                    <button class="btn btn-sm btn-outline-success" onclick="saveCurrentProject()">
+                        <i class="bi bi-save"></i> Save
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Editor Area -->
+        <div class="seq-editor">
+            <!-- Sequence Viewer & List -->
+            <div class="seq-viewer-panel">
+                <!-- Sequence List for current project -->
+                <div class="table-responsive mb-3">
+                    <table class="table table-sm align-middle mb-0" id="sequenceListTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 30px;"><input type="checkbox" id="selectAllSeqs" onchange="toggleSelectAllSeqs(this.checked)"></th>
+                                <th>Name</th>
+                                <th style="width: 60px;">Length</th>
+                                <th style="width: 60px;">Type</th>
+                                <th style="width: 100px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sequenceListBody">
+                            <tr><td colspan="5" class="text-center text-muted">No sequences</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Sequence Viewer -->
+                <div class="seq-header" id="sequenceHeaderDiv" style="display:none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong id="viewerSeqName" style="cursor: pointer;" ondblclick="enableSeqNameEdit()">Sequence</strong>
+                            <span class="badge bg-info ms-2" id="viewerSeqType">nucleotide</span>
+                            <span class="badge bg-secondary ms-1" id="viewerSeqLen">0 bp</span>
+                        </div>
+                        <div>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="editSequenceContent()">
+                                <i class="bi bi-pencil"></i> Edit Seq
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="sequenceViewerDiv" class="font-monospace" style="background: #fff; padding: 10px; border: 1px solid #e0e0e0; border-radius: 4px; user-select: none;">
+                    <span class="text-muted">Click a sequence to view</span>
+                </div>
+            </div>
+
+            <!-- Right Panel: Features & Annotations -->
+            <div class="seq-features-panel">
+                <h6><i class="bi bi-bookmark-plus"></i> Annotation Panel</h6>
+                <hr class="my-2">
+
+                <!-- Annotation Notes -->
+                <div class="mb-3">
+                    <label class="form-label small">Notes</label>
+                    <textarea class="form-control form-control-sm" id="annotationNotes" rows="3" placeholder="Add notes..."></textarea>
+                    <button class="btn btn-sm btn-primary mt-1 w-100" onclick="saveAnnotationNotes()">Save Notes</button>
+                </div>
+
+                <!-- Feature Adding Form -->
+                <div class="feature-control">
+                    <div class="fw-bold mb-2">Add Feature</div>
+                    <div class="feature-row">
+                        <label class="small" style="width: 35px;">Start</label>
+                        <input type="number" class="form-control form-control-sm" id="featureStart" min="1" style="flex:1;">
+                    </div>
+                    <div class="feature-row">
+                        <label class="small" style="width: 35px;">End</label>
+                        <input type="number" class="form-control form-control-sm" id="featureEnd" min="1" style="flex:1;">
+                    </div>
+                    <div class="feature-row">
+                        <label class="small" style="width: 35px;">Type</label>
+                        <input type="text" class="form-control form-control-sm" id="featureType" placeholder="CDS" style="flex:1;">
+                    </div>
+                    <div class="feature-row">
+                        <label class="small" style="width: 35px;">Label</label>
+                        <input type="text" class="form-control form-control-sm" id="featureLabel" placeholder="Name" style="flex:1;">
+                    </div>
+                    <div class="feature-row">
+                        <label class="small" style="width: 35px;">Color</label>
+                        <input type="color" class="form-control form-control-sm" id="featureColor" value="#ffcc66" style="flex:1;height:32px;">
+                    </div>
+                    <button class="btn btn-sm btn-success w-100 mt-2" onclick="addFeatureFromForm()">
+                        <i class="bi bi-plus"></i> Add Feature
+                    </button>
+                </div>
+
+                <!-- Feature List -->
+                <div>
+                    <div class="fw-bold mb-2">Features</div>
+                    <div id="featureListDiv" style="max-height: 300px; overflow-y: auto;">
+                        <div class="text-muted small">No features</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modals -->
+
+<!-- Import Modal -->
+<div class="modal fade" id="importModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-upload"></i> Import Sequences</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Save to</label>
+                    <select class="form-select" id="importProjectSelect">
+                        <option value="inbox">Inbox (Unsaved)</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Import from</label>
+                    <div class="btn-group w-100" role="group">
+                        <input type="radio" class="btn-check" name="importSource" id="importText" value="text" checked>
+                        <label class="btn btn-outline-primary" for="importText">Paste Text</label>
+                        <input type="radio" class="btn-check" name="importSource" id="importFile" value="file">
+                        <label class="btn btn-outline-primary" for="importFile">Upload File</label>
+                    </div>
+                </div>
+                <div id="importTextDiv" class="mb-3">
+                    <label class="form-label">FASTA</label>
+                    <textarea class="form-control" id="importTextArea" rows="8"></textarea>
+                </div>
+                <div id="importFileDiv" class="mb-3 d-none">
+                    <label class="form-label">File</label>
+                    <input type="file" class="form-control" id="importFile" accept=".fasta,.fa,.faa,.txt">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="performImport()">Import</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Sequence Modal -->
+<div class="modal fade" id="editSequenceModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> Edit Sequence</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Name</label>
+                    <input type="text" class="form-control" id="editSeqName">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Sequence</label>
+                    <textarea class="form-control font-monospace" id="editSeqContent" rows="10" style="font-size: 12px;"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveEditedSequence()">Save Changes</button>
+                <button type="button" class="btn btn-danger" onclick="deleteCurrentSequence()">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Project Modal -->
+<div class="modal fade" id="createProjectModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-folder-plus"></i> Create Project</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Project Name</label>
+                    <input type="text" class="form-control" id="newProjectName" placeholder="My Project">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Description</label>
+                    <textarea class="form-control" id="newProjectDesc" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="createNewProject()">Create</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const SEQUENCE_URLS = {
+        import: '{{ url_for("sequence.import_sequences") }}',
+        projects: '{{ url_for("sequence.get_projects") }}',
+        saveCollection: '{{ url_for("sequence.save_seq_collection") }}',
+        featureTypes: '{{ url_for("sequence.get_feature_type_list") }}'
+    };
+
+    const FEATURE_COLORS = ['#ffcc66', '#9bd0f5', '#c3f0c8', '#f8b4b4', '#d1c4e9', '#c8e6c9', '#ffe0b2'];
+
+    let projectsData = {}; // {id -> {name, description, sequences: []}}
+    let currentProjectId = 'inbox';
+    let currentSequenceIdx = null;
+    let sequenceSelectionStart = null;
+    let sequenceSelectionEnd = null;
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', async () => {
+        setupEventListeners();
+        loadProjects();
+        renderProjectTree();
+        selectProject('inbox');
+    });
+
+    function setupEventListeners() {
+        document.querySelectorAll('input[name="importSource"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                document.getElementById('importTextDiv').classList.toggle('d-none', e.target.value !== 'text');
+                document.getElementById('importFileDiv').classList.toggle('d-none', e.target.value !== 'file');
+            });
+        });
+    }
+
+    // ============ Project Management ============
+
+    function loadProjects() {
+        projectsData['inbox'] = {id: 'inbox', name: 'Inbox (Unsaved)', sequences: [], description: ''};
+        // TODO: load from backend
+    }
+
+    function renderProjectTree() {
+        const tree = document.getElementById('projectTree');
+        tree.innerHTML = '<li class="seq-tree-item"><div class="seq-tree-label" onclick="selectProject(\'inbox\')"><i class="bi bi-inbox"></i> <span>Inbox (Unsaved)</span></div></li>';
+        // TODO: render saved projects
+    }
+
+    function selectProject(projectId) {
+        currentProjectId = projectId;
+        currentSequenceIdx = null;
+        const project = projectsData[projectId] || projectsData['inbox'];
+        document.getElementById('currentProjectName').textContent = project.name;
+        updateSequenceList();
+        clearViewer();
+    }
+
+    function updateSequenceList() {
+        const project = projectsData[currentProjectId];
+        const tbody = document.getElementById('sequenceListBody');
+        document.getElementById('sequenceCountBadge').textContent = `${project.sequences.length} sequences`;
+
+        if (!project.sequences || project.sequences.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No sequences</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = project.sequences.map((seq, idx) => `
+            <tr>
+                <td><input type="checkbox" class="seq-checkbox" data-idx="${idx}"></td>
+                <td><a href="#" onclick="viewSequence(${idx}); return false;">${seq.id}</a></td>
+                <td>${seq.sequence.length}</td>
+                <td><span class="badge bg-${seq.type === 'nucleotide' ? 'success' : 'info'}">${seq.type}</span></td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="viewSequence(${idx})" title="View"><i class="bi bi-eye"></i></button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteSequenceAt(${idx})" title="Delete"><i class="bi bi-trash"></i></button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    // ============ Sequence Viewing ============
+
+    function viewSequence(idx) {
+        currentSequenceIdx = idx;
+        const project = projectsData[currentProjectId];
+        const seq = project.sequences[idx];
+
+        document.getElementById('sequenceHeaderDiv').style.display = 'block';
+        document.getElementById('viewerSeqName').textContent = seq.id;
+        document.getElementById('viewerSeqType').textContent = seq.type;
+        document.getElementById('viewerSeqLen').textContent = `${seq.sequence.length} bp`;
+        document.getElementById('annotationNotes').value = seq.annotation || '';
+        document.getElementById('featureStart').value = '';
+        document.getElementById('featureEnd').value = '';
+
+        renderSequenceWithFeatures(seq);
+        renderFeatureList(seq);
+        setupSequenceMouseSelection();
+    }
+
+    function renderSequenceWithFeatures(seq) {
+        const s = seq.sequence || '';
+        const features = (seq.features || []).slice();
+        const featureMap = new Array(s.length).fill([]);
+
+        features.forEach((f) => {
+            const start = Math.max(1, f.start) - 1;
+            const end = Math.min(s.length, f.end);
+            for (let i = start; i < end; i++) {
+                featureMap[i] = [...(featureMap[i] || []), f];
+            }
+        });
+
+        const lineLen = 60;
+        let html = '';
+        for (let i = 0; i < s.length; i++) {
+            if (i % lineLen === 0) {
+                const idx = (i + 1).toString().padStart(6, ' ');
+                html += `<div class="seq-line"><span class="seq-idx">${idx}</span>`;
+            }
+            const base = s[i];
+            const basFeatures = featureMap[i];
+            let style = '';
+            if (basFeatures && basFeatures.length > 0) {
+                // Use first feature's color; if many, use gradient or layered styling
+                style = `style="background:${basFeatures[0].color || '#ffcc66'};"`;
+                if (basFeatures.length > 1) {
+                    style += ` data-multi="${basFeatures.length}"`;
+                }
+            }
+            const title = basFeatures && basFeatures.length > 0
+                ? basFeatures.map(f => `${f.type} ${f.label || ''} (${f.start}-${f.end})`).join(' | ')
+                : '';
+            html += `<span class="seq-base" ${style} data-pos="${i + 1}" title="${title}">${base}</span>`;
+            if ((i + 1) % lineLen === 0 || i === s.length - 1) {
+                html += '</div>';
+            }
+        }
+        document.getElementById('sequenceViewerDiv').innerHTML = html;
+    }
+
+    function setupSequenceMouseSelection() {
+        const viewer = document.getElementById('sequenceViewerDiv');
+        let isSelecting = false;
+        let startPos = null;
+
+        viewer.addEventListener('mousedown', (e) => {
+            const base = e.target.closest('.seq-base');
+            if (!base) return;
+            isSelecting = true;
+            startPos = parseInt(base.dataset.pos, 10);
+            base.classList.add('selected');
+        });
+
+        viewer.addEventListener('mouseover', (e) => {
+            if (!isSelecting || startPos === null) return;
+            const base = e.target.closest('.seq-base');
+            if (!base) return;
+            const endPos = parseInt(base.dataset.pos, 10);
+
+            viewer.querySelectorAll('.seq-base').forEach(b => b.classList.remove('selected'));
+            const min = Math.min(startPos, endPos);
+            const max = Math.max(startPos, endPos);
+            viewer.querySelectorAll('.seq-base').forEach(b => {
+                const pos = parseInt(b.dataset.pos, 10);
+                if (pos >= min && pos <= max) b.classList.add('selected');
+            });
+        });
+
+        viewer.addEventListener('mouseup', (e) => {
+            if (!isSelecting || startPos === null) return;
+            const base = e.target.closest('.seq-base');
+            const endPos = base ? parseInt(base.dataset.pos, 10) : startPos;
+            const min = Math.min(startPos, endPos);
+            const max = Math.max(startPos, endPos);
+
+            document.getElementById('featureStart').value = min;
+            document.getElementById('featureEnd').value = max;
+            isSelecting = false;
+            startPos = null;
+        });
+
+        viewer.addEventListener('mouseleave', () => {
+            isSelecting = false;
+            startPos = null;
+        });
+    }
+
+    function clearViewer() {
+        document.getElementById('sequenceHeaderDiv').style.display = 'none';
+        document.getElementById('sequenceViewerDiv').innerHTML = '<span class="text-muted">Click a sequence to view</span>';
+        document.getElementById('annotationNotes').value = '';
+    }
+
+    // ============ Feature Management ============
+
+    function addFeatureFromForm() {
+        if (currentSequenceIdx === null) {
+            alert('Select a sequence first');
+            return;
+        }
+        const project = projectsData[currentProjectId];
+        const seq = project.sequences[currentSequenceIdx];
+
+        const start = parseInt(document.getElementById('featureStart').value, 10);
+        const end = parseInt(document.getElementById('featureEnd').value, 10);
+        const type = document.getElementById('featureType').value.trim() || 'feature';
+        const label = document.getElementById('featureLabel').value.trim();
+        const color = document.getElementById('featureColor').value || FEATURE_COLORS[0];
+
+        if (!start || !end || start < 1 || end < start || end > seq.sequence.length) {
+            alert('Invalid start/end positions');
+            return;
+        }
+
+        seq.features = seq.features || [];
+        seq.features.push({
+            id: 'f' + Date.now(),
+            start,
+            end,
+            type,
+            label,
+            color,
+            strand: '+'
+        });
+
+        renderSequenceWithFeatures(seq);
+        renderFeatureList(seq);
+        showAlert('success', 'Feature added');
+    }
+
+    function renderFeatureList(seq) {
+        const div = document.getElementById('featureListDiv');
+        const features = seq.features || [];
+        if (features.length === 0) {
+            div.innerHTML = '<div class="text-muted small">No features</div>';
+            return;
+        }
+        div.innerHTML = features.map((f, i) => `
+            <div class="feature-control">
+                <div class="feature-row">
+                    <div class="feature-color-dot" style="background:${f.color}"></div>
+                    <span class="fw-bold" style="flex:1;">${f.type || 'feature'}</span>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteFeature(${i})"><i class="bi bi-x"></i></button>
+                </div>
+                <div class="feature-row small">
+                    <span style="flex:1;">${f.label || ''}</span>
+                    <span style="color:#999;">${f.start}-${f.end}</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function deleteFeature(idx) {
+        if (currentSequenceIdx === null) return;
+        const project = projectsData[currentProjectId];
+        const seq = project.sequences[currentSequenceIdx];
+        if (seq.features) {
+            seq.features.splice(idx, 1);
+            renderSequenceWithFeatures(seq);
+            renderFeatureList(seq);
+        }
+    }
+
+    // ============ Sequence Editing ============
+
+    function editSequenceContent() {
+        if (currentSequenceIdx === null) return;
+        const project = projectsData[currentProjectId];
+        const seq = project.sequences[currentSequenceIdx];
+        document.getElementById('editSeqName').value = seq.id;
+        document.getElementById('editSeqContent').value = seq.sequence;
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('editSequenceModal')).show();
+    }
+
+    function saveEditedSequence() {
+        if (currentSequenceIdx === null) return;
+        const project = projectsData[currentProjectId];
+        const seq = project.sequences[currentSequenceIdx];
+        const newName = document.getElementById('editSeqName').value.trim();
+        const newContent = document.getElementById('editSeqContent').value.trim().replace(/\s+/g, '').toUpperCase();
+
+        if (!newName || !newContent) {
+            alert('Name and sequence cannot be empty');
+            return;
+        }
+
+        seq.id = newName;
+        seq.sequence = newContent;
+        seq.length = newContent.length;
+
+        renderSequenceWithFeatures(seq);
+        updateSequenceList();
+        showAlert('success', 'Sequence updated');
+        bootstrap.Modal.getInstance(document.getElementById('editSequenceModal')).hide();
+    }
+
+    function deleteCurrentSequence() {
+        if (currentSequenceIdx === null) return;
+        if (!confirm('Delete this sequence?')) return;
+        deleteSequenceAt(currentSequenceIdx);
+        bootstrap.Modal.getInstance(document.getElementById('editSequenceModal')).hide();
+    }
+
+    function deleteSequenceAt(idx) {
+        const project = projectsData[currentProjectId];
+        project.sequences.splice(idx, 1);
+        currentSequenceIdx = null;
+        updateSequenceList();
+        clearViewer();
+        showAlert('success', 'Sequence deleted');
+    }
+
+    // ============ Import / Export ============
+
+    function showImportModal() {
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('importModal')).show();
+    }
+
+    async function performImport() {
+        const source = document.querySelector('input[name="importSource"]:checked').value;
+        const projectId = document.getElementById('importProjectSelect').value || 'inbox';
+        const project = projectsData[projectId];
+
+        let sequences = [];
+        try {
+            if (source === 'text') {
+                const text = document.getElementById('importTextArea').value;
+                sequences = parseFasta(text);
+            } else {
+                const file = document.getElementById('importFile').files[0];
+                if (!file) {
+                    alert('Select a file');
+                    return;
+                }
+                const text = await file.text();
+                sequences = parseFasta(text);
+            }
+
+            if (sequences.length === 0) {
+                alert('No valid sequences found');
+                return;
+            }
+
+            sequences.forEach(seq => {
+                project.sequences.push({
+                    id: seq.id,
+                    sequence: seq.sequence,
+                    description: seq.description || '',
+                    annotation: '',
+                    features: [],
+                    type: detectSequenceType(seq.sequence)
+                });
+            });
+
+            updateSequenceList();
+            selectProject(projectId);
+            bootstrap.Modal.getInstance(document.getElementById('importModal')).hide();
+            showAlert('success', `Imported ${sequences.length} sequences`);
+        } catch (e) {
+            alert('Import failed: ' + e.message);
+        }
+    }
+
+    function parseFasta(text) {
+        const sequences = [];
+        let currentId = null;
+        let currentDesc = '';
+        let currentSeq = [];
+
+        text.split('\n').forEach(line => {
+            line = line.trim();
+            if (line.startsWith('>')) {
+                if (currentId !== null) {
+                    sequences.push({id: currentId, description: currentDesc, sequence: currentSeq.join('')});
+                }
+                const parts = line.slice(1).split(/\s+/);
+                currentId = parts[0];
+                currentDesc = parts.slice(1).join(' ');
+                currentSeq = [];
+            } else if (line && currentId !== null) {
+                currentSeq.push(line);
+            }
+        });
+
+        if (currentId !== null) {
+            sequences.push({id: currentId, description: currentDesc, sequence: currentSeq.join('')});
+        }
+
+        return sequences;
+    }
+
+    function detectSequenceType(seq) {
+        const upper = seq.toUpperCase().replace(/[^ACGTU-]/g, '');
+        const hasU = seq.toUpperCase().includes('U');
+        return hasU || seq.toUpperCase().match(/^[ACGU-]+$/) ? 'nucleotide' : 'protein';
+    }
+
+    function exportCurrentProject() {
+        const project = projectsData[currentProjectId];
+        const lines = [];
+        project.sequences.forEach(seq => {
+            lines.push(`>${seq.id} ${seq.description || ''}`);
+            for (let i = 0; i < seq.sequence.length; i += 60) {
+                lines.push(seq.sequence.slice(i, i + 60));
+            }
+        });
+        const fasta = lines.join('\n');
+        const blob = new Blob([fasta], {type: 'text/plain'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = (project.name || 'export') + '.fasta';
+        a.click();
+    }
+
+    function saveCurrentProject() {
+        alert('Save functionality to backend pending');
+        // TODO: save to backend
+    }
+
+    // ============ Utilities ============
+
+    function showAlert(type, msg) {
+        console.log(type, msg); // TODO: use Bootstrap toast
+    }
+
+    function saveAnnotationNotes() {
+        if (currentSequenceIdx === null) return;
+        const project = projectsData[currentProjectId];
+        const seq = project.sequences[currentSequenceIdx];
+        seq.annotation = document.getElementById('annotationNotes').value;
+        showAlert('success', 'Notes saved');
+    }
+
+    function enableSeqNameEdit() {
+        alert('Double-click rename pending - edit via Edit Sequence modal');
+    }
+
+    function showCreateProjectModal() {
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('createProjectModal')).show();
+    }
+
+    function createNewProject() {
+        const name = document.getElementById('newProjectName').value.trim();
+        if (!name) {
+            alert('Enter project name');
+            return;
+        }
+        const id = 'proj-' + Date.now();
+        projectsData[id] = {id, name, description: document.getElementById('newProjectDesc').value, sequences: []};
+        renderProjectTree();
+        selectProject(id);
+        bootstrap.Modal.getInstance(document.getElementById('createProjectModal')).hide();
+        showAlert('success', 'Project created');
+    }
+
+    function toggleSelectAllSeqs(checked) {
+        document.querySelectorAll('.seq-checkbox').forEach(cb => cb.checked = checked);
+    }
+</script>
+{% endblock %}
