@@ -54,7 +54,7 @@ def sequence_page():
     """Render the sequence management page."""
     projects = list_projects()
     source_fasta = session.get(SOURCE_FASTA_KEY, None)
-    return render_template('sequence_v2.html', projects=projects, source_fasta=source_fasta)
+    return render_template('sequence.html', projects=projects, source_fasta=source_fasta)
 
 
 @sequence_bp.route('/import', methods=['POST'])
