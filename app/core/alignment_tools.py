@@ -78,20 +78,30 @@ def check_available_tools(force: bool = False):
     }
 
     # Check each tool with appropriate command
-    tool_commands = {
-        'mafft': 'mafft --version',
-        'clustalw': 'clustalw -version',  # Note: clustalw uses -version (single dash)
-        'muscle': 'muscle -version'  # Note: muscle uses -version (single dash)
-    }
-    
-    for tool, cmd in tool_commands.items():
-        try:
-            success, _, _ = run_conda_command(cmd)
-            tools[tool] = success
-            logger.info(f"Tool {tool}: {'available' if success else 'not available'}")
-        except Exception as e:
-            logger.error(f"Error checking tool {tool}: {str(e)}")
-            tools[tool] = False
+    # Use tool-specific detection logic (some tools return non-zero even on help/version)
+    try:
+        mafft_ok, _, _ = run_conda_command('mafft --version')
+        tools['mafft'] = mafft_ok
+        logger.info(f"Tool mafft: {'available' if mafft_ok else 'not available'}")
+    except Exception as e:
+        logger.error(f"Error checking tool mafft: {str(e)}")
+
+    try:
+        # ClustalW exits with code 1 for help/version on some builds; detect by banner text
+        clustal_ok, stdout, stderr = run_conda_command('clustalw -help')
+        banner = (stdout or '') + (stderr or '')
+        detected = 'CLUSTAL' in banner.upper()
+        tools['clustalw'] = clustal_ok or detected
+        logger.info(f"Tool clustalw: {'available' if tools['clustalw'] else 'not available'}")
+    except Exception as e:
+        logger.error(f"Error checking tool clustalw: {str(e)}")
+
+    try:
+        muscle_ok, _, _ = run_conda_command('muscle -version')
+        tools['muscle'] = muscle_ok
+        logger.info(f"Tool muscle: {'available' if muscle_ok else 'not available'}")
+    except Exception as e:
+        logger.error(f"Error checking tool muscle: {str(e)}")
 
     # Update cache
     _TOOLS_CACHE['data'] = tools
