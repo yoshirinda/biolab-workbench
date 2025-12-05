@@ -3,6 +3,13 @@
 {% block title %}Sequence Management - BioLab Workbench{% endblock %}
 
 {% block content %}
+<style>
+    .seq-line { white-space: nowrap; font-family: Menlo, Consolas, monospace; }
+    .seq-idx { color: #888; margin-right: 6px; font-size: 12px; display: inline-block; min-width: 46px; text-align: right; }
+    .seq-base { display: inline-block; min-width: 10px; padding: 2px 1px; border-radius: 3px; }
+    #sequenceViewer pre { margin: 0; }
+    #featureTable .badge { font-weight: 600; }
+</style>
 <div class="container">
     <h2 class="mb-4">
         <i class="bi bi-file-earmark-text text-primary"></i>
@@ -260,18 +267,66 @@
             <span id="viewerSeqId" class="badge bg-secondary"></span>
         </div>
         <div class="card-body">
-            <div class="row">
-                <div class="col-md-8">
-                    <div id="sequenceViewer" class="sequence-viewer font-monospace p-3 bg-light border rounded" style="max-height: 300px; overflow-y: auto;">
+            <div class="row g-3">
+                <div class="col-lg-8">
+                    <div id="sequenceViewer" class="sequence-viewer font-monospace p-3 bg-light border rounded" style="max-height: 360px; overflow-y: auto;">
                         <span class="text-muted">Select a sequence to view</span>
                     </div>
+                    <div class="small text-muted mt-2">Click-drag to inspect; features will highlight regions like Geneious-style colored tracks.</div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-lg-4">
                     <label for="annotationInput" class="form-label">Annotation / Notes:</label>
-                    <textarea class="form-control" id="annotationInput" rows="6" placeholder="Add notes or annotation for this sequence..."></textarea>
+                    <textarea class="form-control" id="annotationInput" rows="4" placeholder="Add notes or annotation for this sequence..."></textarea>
                     <button class="btn btn-sm btn-outline-primary mt-2 w-100" onclick="saveAnnotation()" id="saveAnnotationBtn" disabled>
                         <i class="bi bi-pencil"></i> Save Annotation
                     </button>
+
+                    <hr>
+                    <h6><i class="bi bi-bookmark-plus"></i> Feature Marking</h6>
+                    <div class="row g-2 mb-2">
+                        <div class="col-6">
+                            <label class="form-label small">Start</label>
+                            <input type="number" class="form-control form-control-sm" id="featureStart" min="1" placeholder="1">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">End</label>
+                            <input type="number" class="form-control form-control-sm" id="featureEnd" min="1" placeholder="120">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">Type</label>
+                            <input type="text" class="form-control form-control-sm" id="featureType" placeholder="CDS / exon / motif">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">Label</label>
+                            <input type="text" class="form-control form-control-sm" id="featureLabel" placeholder="Name (optional)">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">Strand</label>
+                            <select class="form-select form-select-sm" id="featureStrand">
+                                <option value="+">+</option>
+                                <option value="-">-</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">Color</label>
+                            <input type="color" class="form-control form-control-sm" id="featureColor" value="#ffcc66">
+                        </div>
+                        <div class="col-12 d-grid mt-1">
+                            <button class="btn btn-sm btn-success" onclick="addFeature()" id="addFeatureBtn" disabled>
+                                <i class="bi bi-plus-circle"></i> Add Feature
+                            </button>
+                        </div>
+                    </div>
+                    <div class="table-responsive" style="max-height: 160px; overflow-y: auto;">
+                        <table class="table table-sm align-middle mb-0" id="featureTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Type</th><th>Start</th><th>End</th><th></th>
+                                </tr>
+                            </thead>
+                            <tbody><tr><td colspan="4" class="text-muted">No features</td></tr></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -344,6 +399,8 @@
     let sourceLibrary = [];
     let currentSourceFastaId = null;
 
+    const FEATURE_COLORS = ['#ffcc66', '#9bd0f5', '#c3f0c8', '#f8b4b4', '#d1c4e9'];
+
     document.querySelectorAll('input[name="source"]').forEach(radio => {
         radio.addEventListener('change', function() {
             document.getElementById('textInputDiv').classList.toggle('d-none', this.value !== 'text');
@@ -375,8 +432,12 @@
             const data = await response.json();
 
             if (data.success) {
-                // Add annotation field to each sequence, preserving existing if present
-                sequences = data.sequences.map(seq => ({...seq, annotation: seq.annotation || ''}));
+                // Add annotation/feature fields to each sequence
+                sequences = data.sequences.map((seq, i) => ({
+                    ...seq,
+                    annotation: seq.annotation || '',
+                    features: seq.features || []
+                }));
                 updateSequenceTable();
                 showAlert('success', `Imported ${sequences.length} sequences`);
             } else {
@@ -419,22 +480,14 @@
         selectedSequence = idx;
         const seq = sequences[idx];
         const viewer = document.getElementById('sequenceViewer');
-
-        let html = `<strong>&gt;${seq.id}</strong>`;
-        if (seq.description) {
-            html += ` ${seq.description}`;
-        }
-        html += '\n';
-        const seqStr = seq.sequence;
-        for (let i = 0; i < seqStr.length; i += 60) {
-            html += seqStr.substring(i, i + 60) + '\n';
-        }
-        viewer.innerHTML = `<pre>${html}</pre>`;
+        viewer.innerHTML = renderSequenceWithFeatures(seq);
 
         // Update annotation field
         document.getElementById('annotationInput').value = seq.annotation || '';
         document.getElementById('saveAnnotationBtn').disabled = false;
+        document.getElementById('addFeatureBtn').disabled = false;
         document.getElementById('viewerSeqId').textContent = seq.id;
+        renderFeatureTable(seq);
     }
 
     function saveAnnotation() {
@@ -445,6 +498,99 @@
         showAlert('success', 'Annotation saved');
     }
 
+    function addFeature() {
+        if (selectedSequence === null) return;
+        const seq = sequences[selectedSequence];
+
+        const start = parseInt(document.getElementById('featureStart').value, 10);
+        const end = parseInt(document.getElementById('featureEnd').value, 10);
+        const type = document.getElementById('featureType').value.trim() || 'feature';
+        const label = document.getElementById('featureLabel').value.trim();
+        const strand = document.getElementById('featureStrand').value || '+';
+        const color = document.getElementById('featureColor').value || FEATURE_COLORS[0];
+
+        if (!start || !end || start < 1 || end < start || end > seq.sequence.length) {
+            showAlert('warning', 'Please provide valid start/end within sequence length');
+            return;
+        }
+
+        seq.features = seq.features || [];
+        seq.features.push({
+            id: 'feat-' + Date.now() + '-' + Math.random().toString(16).slice(2),
+            type,
+            label,
+            strand,
+            start,
+            end,
+            color
+        });
+
+        renderFeatureTable(seq);
+        document.getElementById('sequenceViewer').innerHTML = renderSequenceWithFeatures(seq);
+        showAlert('success', 'Feature added');
+    }
+
+    function removeFeature(idx) {
+        if (selectedSequence === null) return;
+        const seq = sequences[selectedSequence];
+        if (!seq.features) return;
+        seq.features.splice(idx, 1);
+        renderFeatureTable(seq);
+        document.getElementById('sequenceViewer').innerHTML = renderSequenceWithFeatures(seq);
+    }
+
+    function renderFeatureTable(seq) {
+        const tbody = document.querySelector('#featureTable tbody');
+        if (!seq.features || seq.features.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-muted">No features</td></tr>';
+            return;
+        }
+        tbody.innerHTML = seq.features.map((f, i) => `
+            <tr>
+                <td><span class="badge" style="background:${f.color || '#ffcc66'}">${f.type || 'feature'}</span></td>
+                <td>${f.start}</td>
+                <td>${f.end}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-danger" onclick="removeFeature(${i})" title="Delete"><i class="bi bi-x"></i></button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function renderSequenceWithFeatures(seq) {
+        const s = seq.sequence || '';
+        const features = (seq.features || []).slice().sort((a, b) => a.start - b.start);
+        const coverage = new Array(s.length).fill(null);
+        features.forEach((f, idx) => {
+            const start = Math.max(1, parseInt(f.start, 10) || 1);
+            const end = Math.min(s.length, parseInt(f.end, 10) || s.length);
+            for (let i = start - 1; i < end; i++) {
+                if (!coverage[i]) coverage[i] = f;
+            }
+        });
+
+        const lineLen = 60;
+        let html = `<div class="mb-2"><strong>&gt;${seq.id}</strong> ${seq.description || ''}</div>`;
+        for (let i = 0; i < s.length; i++) {
+            if (i % lineLen === 0) {
+                const idx = (i + 1).toString().padStart(6, ' ');
+                html += `<div class="seq-line"><span class="seq-idx">${idx}</span> `;
+            }
+            const feat = coverage[i];
+            const base = s[i];
+            if (feat) {
+                const title = `${feat.type || ''} ${feat.label || ''} (${feat.start}-${feat.end}${feat.strand ? ' ' + feat.strand : ''})`;
+                html += `<span class="seq-base" style="background:${feat.color || '#ffcc66'}" title="${title}">${base}</span>`;
+            } else {
+                html += `<span class="seq-base">${base}</span>`;
+            }
+            if ((i + 1) % lineLen === 0 || i === s.length - 1) {
+                html += '</div>';
+            }
+        }
+        return html;
+    }
+
     function deleteSequence(idx) {
         sequences.splice(idx, 1);
         selectedSequence = null;
@@ -452,7 +598,9 @@
         document.getElementById('sequenceViewer').innerHTML = '<span class="text-muted">Select a sequence to view</span>';
         document.getElementById('annotationInput').value = '';
         document.getElementById('saveAnnotationBtn').disabled = true;
+        document.getElementById('addFeatureBtn').disabled = true;
         document.getElementById('viewerSeqId').textContent = '';
+        renderFeatureTable({features: []});
     }
 
     function getSelectedSequences() {
@@ -521,7 +669,8 @@
                     sequence: seq.sequence,
                     length: seq.length || seq.sequence.length,
                     type: seq.type || 'unknown',
-                    annotation: seq.annotation || ''
+                    annotation: seq.annotation || '',
+                    features: seq.features || []
                 }));
                 currentProjectId = projectId;
                 updateSequenceTable();
