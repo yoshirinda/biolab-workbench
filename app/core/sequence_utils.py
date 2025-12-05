@@ -482,3 +482,40 @@ def extract_sequences_fuzzy(source_fasta, gene_ids, output_file=None):
         'unmatched': unmatched,
         'output_file': output_file if output_file else None
     }
+
+
+def layout_features(features):
+    """
+    Arrange features into lanes to prevent visual overlap.
+
+    Args:
+        features (list): A list of feature dictionaries. Each dict must have
+                         'start' and 'end' keys.
+
+    Returns:
+        list: A list of lists, where each inner list is a "lane" of
+              non-overlapping feature dictionaries.
+    """
+    if not features:
+        return []
+
+    # Sort features by their start coordinate
+    sorted_features = sorted(features, key=lambda f: f['start'])
+
+    lanes = []
+    for feature in sorted_features:
+        placed = False
+        # Try to place the feature in an existing lane
+        for lane in lanes:
+            # A feature can be placed if it doesn't overlap with the last feature in the lane.
+            # Overlap check: feature['start'] < last_feature_in_lane['end']
+            if feature['start'] >= lane[-1]['end']:
+                lane.append(feature)
+                placed = True
+                break
+        
+        # If it could not be placed in any existing lane, create a new one
+        if not placed:
+            lanes.append([feature])
+
+    return lanes

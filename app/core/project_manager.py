@@ -8,6 +8,7 @@ from datetime import datetime
 import config
 from app.utils.logger import get_app_logger
 from app.utils.path_utils import ensure_dir, safe_filename
+from app.core.sequence_utils import layout_features
 
 logger = get_app_logger()
 
@@ -100,6 +101,7 @@ def create_project(name, description=''):
 def get_project(project_id):
     """
     Get a project by ID.
+    This function now also calculates feature lanes for visualization.
     Returns (success, project_data, message).
     """
     project_path = os.path.join(get_projects_dir(), safe_filename(project_id))
@@ -112,6 +114,12 @@ def get_project(project_id):
         with open(project_file, 'r', encoding='utf-8') as f:
             project_data = json.load(f)
             project_data['path'] = project_path
+            
+            # Add feature lanes for visualization
+            for seq in project_data.get('sequences', []):
+                if 'features' in seq:
+                    seq['feature_lanes'] = layout_features(seq['features'])
+
             return True, project_data, "Success"
     except Exception as e:
         logger.error(f"Failed to read project {project_id}: {e}")
@@ -133,6 +141,11 @@ def update_project(project_id, name=None, description=None):
         if description is not None:
             project_data['description'] = description
         project_data['modified'] = datetime.now().isoformat()
+        
+        # Strip feature_lanes before saving
+        for seq in project_data.get('sequences', []):
+            if 'feature_lanes' in seq:
+                del seq['feature_lanes']
 
         project_file = os.path.join(project_data['path'], PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
@@ -194,6 +207,11 @@ def add_sequences_to_project(project_id, sequences):
                 added += 1
 
         project_data['modified'] = datetime.now().isoformat()
+        
+        # Strip feature_lanes before saving
+        for seq in project_data.get('sequences', []):
+            if 'feature_lanes' in seq:
+                del seq['feature_lanes']
 
         project_file = os.path.join(project_data['path'], PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
@@ -224,6 +242,11 @@ def remove_sequence_from_project(project_id, sequence_id):
 
         project_data['modified'] = datetime.now().isoformat()
 
+        # Strip feature_lanes before saving
+        for seq in project_data.get('sequences', []):
+            if 'feature_lanes' in seq:
+                del seq['feature_lanes']
+                
         project_file = os.path.join(project_data['path'], PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
             json.dump(project_data, f, indent=2, ensure_ascii=False)
@@ -256,6 +279,11 @@ def update_sequence_annotation(project_id, sequence_id, annotation):
             return False, None, "Sequence not found in project"
 
         project_data['modified'] = datetime.now().isoformat()
+        
+        # Strip feature_lanes before saving
+        for seq in project_data.get('sequences', []):
+            if 'feature_lanes' in seq:
+                del seq['feature_lanes']
 
         project_file = os.path.join(project_data['path'], PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
@@ -322,7 +350,7 @@ def load_collection(project_id):
             return False, [], msg
 
         sequences = project_data.get('sequences', [])
-        # Ensure all sequences have required fields
+        # Ensure all sequences have required fields and feature lanes
         validated_sequences = []
         for seq in sequences:
             validated_seq = {
@@ -332,7 +360,8 @@ def load_collection(project_id):
                 'type': seq.get('type', 'unknown'),
                 'length': seq.get('length', len(seq.get('sequence', ''))),
                 'annotation': seq.get('annotation', ''),
-                'features': seq.get('features', [])
+                'features': seq.get('features', []),
+                'feature_lanes': layout_features(seq.get('features', []))
             }
             validated_sequences.append(validated_seq)
 
@@ -386,6 +415,11 @@ def add_sequence_feature(project_id, sequence_id, feature):
 
         project_data['modified'] = datetime.now().isoformat()
 
+        # Strip feature_lanes before saving
+        for seq in project_data.get('sequences', []):
+            if 'feature_lanes' in seq:
+                del seq['feature_lanes']
+                
         project_file = os.path.join(project_data['path'], PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
             json.dump(project_data, f, indent=2, ensure_ascii=False)
@@ -428,6 +462,11 @@ def update_sequence_feature(project_id, sequence_id, feature_id, feature_updates
 
         project_data['modified'] = datetime.now().isoformat()
 
+        # Strip feature_lanes before saving
+        for seq in project_data.get('sequences', []):
+            if 'feature_lanes' in seq:
+                del seq['feature_lanes']
+
         project_file = os.path.join(project_data['path'], PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
             json.dump(project_data, f, indent=2, ensure_ascii=False)
@@ -462,6 +501,11 @@ def delete_sequence_feature(project_id, sequence_id, feature_id):
             return False, None, "Feature not found"
 
         project_data['modified'] = datetime.now().isoformat()
+
+        # Strip feature_lanes before saving
+        for seq in project_data.get('sequences', []):
+            if 'feature_lanes' in seq:
+                del seq['feature_lanes']
 
         project_file = os.path.join(project_data['path'], PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:

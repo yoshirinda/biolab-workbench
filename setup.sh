@@ -38,14 +38,14 @@ if [ ! -f "environment.yml" ]; then
 fi
 
 # Create or update conda environment
-echo "Setting up conda environment 'biolab'..."
+echo "Setting up conda environment 'bio'..."
 echo ""
 
-if conda env list | grep -q "^biolab "; then
-    echo "Updating existing 'biolab' environment..."
+if conda env list | grep -q "^bio "; then
+    echo "Updating existing 'bio' environment..."
     conda env update -f environment.yml --prune
 else
-    echo "Creating new 'biolab' environment..."
+    echo "Creating new 'bio' environment..."
     conda env create -f environment.yml
 fi
 
@@ -60,7 +60,7 @@ echo ""
 # Source conda for shell
 CONDA_BASE=$(conda info --base)
 source "$CONDA_BASE/etc/profile.d/conda.sh"
-conda activate biolab
+conda activate bio
 
 # Install requirements
 if [ -f "requirements.txt" ]; then
@@ -84,7 +84,7 @@ echo ""
 echo "To start BioLab Workbench:"
 echo ""
 echo "  1. Activate the conda environment:"
-echo "     conda activate biolab"
+echo "     conda activate bio"
 echo ""
 echo "  2. Run the application:"
 echo "     python run.py"

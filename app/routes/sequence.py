@@ -52,54 +52,69 @@ def _save_source_fasta_library(entries):
 @sequence_bp.route('/')
 def sequence_page():
     """Render the sequence management page."""
-    projects = list_projects()
-    source_fasta = session.get(SOURCE_FASTA_KEY, None)
-    return render_template('sequence.html', projects=projects, source_fasta=source_fasta)
+    return render_template('sequence_v2.html')
 
 
 @sequence_bp.route('/import', methods=['POST'])
 def import_sequences():
-    """Import sequences from file or text."""
+    """
+    Import sequences from file or text and add them to a project.
+    """
     try:
+        project_id = request.form.get('project_id')
+        if not project_id:
+            return jsonify({'success': False, 'error': 'Project ID is required'}), 400
+
         source = request.form.get('source', 'text')
+        sequences_to_parse = []
 
         if source == 'file':
             if 'file' not in request.files:
-                return jsonify({'success': False, 'error': 'No file uploaded'})
-
+                return jsonify({'success': False, 'error': 'No file part in the request'}), 400
             file = request.files['file']
             if file.filename == '':
-                return jsonify({'success': False, 'error': 'No file selected'})
+                return jsonify({'success': False, 'error': 'No file selected'}), 400
+            
+            # Read content from file stream directly
+            text_content = file.read().decode('utf-8')
+            sequences_to_parse = parse_fasta(text_content)
 
-            filepath = save_uploaded_file(file)
-            sequences = read_fasta_file(filepath)
-            # Convert to 3-tuple format
-            sequences = [(h.split()[0], ' '.join(h.split()[1:]), s) for h, s in sequences]
-
-        else:
+        else: # source == 'text'
             text = request.form.get('text', '')
             if not text.strip():
-                return jsonify({'success': False, 'error': 'No sequence text provided'})
+                return jsonify({'success': False, 'error': 'No sequence text provided'}), 400
+            sequences_to_parse = parse_fasta(text)
 
-            sequences = parse_fasta(text)
+        if not sequences_to_parse:
+            return jsonify({'success': False, 'error': 'No valid FASTA sequences found in the input.'}), 400
 
-        result = []
-        for seq_id, desc, seq in sequences:
+        # Format sequences for the project manager
+        formatted_sequences = []
+        for seq_id, desc, seq in sequences_to_parse:
             seq_type = detect_sequence_type(seq)
-            result.append({
+            formatted_sequences.append({
                 'id': seq_id,
                 'description': desc,
                 'sequence': seq,
-                'length': len(seq),
                 'type': seq_type
             })
 
-        logger.info(f"Imported {len(result)} sequences")
-        return jsonify({'success': True, 'sequences': result})
+        # Add sequences to the project
+        success, updated_project, message = add_sequences_to_project(project_id, formatted_sequences)
+
+        if not success:
+            return jsonify({'success': False, 'error': message}), 500
+
+        logger.info(f"Imported {len(formatted_sequences)} sequences to project {project_id}")
+        return jsonify({
+            'success': True, 
+            'project': updated_project,
+            'message': message
+        })
 
     except Exception as e:
         logger.error(f"Import error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @sequence_bp.route('/translate', methods=['POST'])
