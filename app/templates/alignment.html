@@ -61,49 +61,20 @@
                                 <h6 class="mb-2"><i class="bi bi-sliders"></i> MAFFT Parameters</h6>
                                 <div class="mb-2">
                                     <label for="mafftAlgorithm" class="form-label small">
-                                        Algorithm:
+                                        Strategy:
                                         <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip" 
-                                           title="L-INS-i: Most accurate for <200 sequences. G-INS-i: Global homology. E-INS-i: Sequences with multiple conserved domains."></i>
+                                           title="Auto: Auto-select. L-INS-i: Most accurate. G-INS-i: Global. E-INS-i: Multiple domains."></i>
                                     </label>
                                     <select class="form-select form-select-sm" id="mafftAlgorithm">
                                         <option value="auto">Auto (recommended)</option>
-                                        <option value="linsi">L-INS-i (accurate, slow)</option>
-                                        <option value="ginsi">G-INS-i (global)</option>
-                                        <option value="einsi">E-INS-i (domains)</option>
-                                        <option value="fftns">FFT-NS-2 (fast)</option>
+                                        <option value="linsi">L-INS-i (most accurate)</option>
+                                        <option value="ginsi">G-INS-i (global alignment)</option>
                                     </select>
-                                </div>
-                                <div class="mb-2">
-                                    <label for="maxiterate" class="form-label small">
-                                        Max Iterations:
-                                        <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip" 
-                                           title="Higher values improve accuracy but take longer. 1000 is good for most cases. 0 = no iteration (fastest)."></i>
-                                    </label>
-                                    <input type="number" class="form-control form-control-sm" id="maxiterate" value="1000" min="0" max="10000">
-                                    <small class="text-muted">0 = no iteration (fastest)</small>
-                                </div>
-                                <div class="mb-2">
-                                    <label for="gapOpenPenalty" class="form-label small">
-                                        Gap Open Penalty:
-                                        <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip" 
-                                           title="Cost of opening a gap. Higher values = fewer gaps. Default: 1.53"></i>
-                                    </label>
-                                    <input type="number" class="form-control form-control-sm" id="gapOpenPenalty" value="1.53" step="0.01" min="0">
-                                </div>
-                                <div class="mb-2">
-                                    <label for="gapExtendPenalty" class="form-label small">
-                                        Gap Extension Penalty:
-                                        <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip" 
-                                           title="Cost of extending a gap. Higher values = shorter gaps. Default: 0.123"></i>
-                                    </label>
-                                    <input type="number" class="form-control form-control-sm" id="gapExtendPenalty" value="0.123" step="0.001" min="0">
                                 </div>
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="autoMode">
                                     <label class="form-check-label small" for="autoMode">
-                                        Auto mode (--auto)
-                                        <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip" 
-                                           title="Automatically selects appropriate strategy based on data size"></i>
+                                        Auto mode (faster for large datasets)
                                     </label>
                                 </div>
                             </div>
@@ -116,38 +87,10 @@
                                 <div class="mb-2">
                                     <label for="clustalwMatrix" class="form-label small">
                                         Scoring Matrix:
-                                        <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip" 
-                                           title="BLOSUM: Best for divergent sequences. PAM: Best for closely related sequences."></i>
                                     </label>
                                     <select class="form-select form-select-sm" id="clustalwMatrix">
-                                        <option value="BLOSUM">BLOSUM (default for proteins)</option>
+                                        <option value="BLOSUM">BLOSUM (recommended)</option>
                                         <option value="PAM">PAM</option>
-                                        <option value="GONNET">GONNET</option>
-                                        <option value="ID">Identity</option>
-                                    </select>
-                                </div>
-                                <div class="mb-2">
-                                    <label for="clustalwGapOpen" class="form-label small">
-                                        Gap Open:
-                                        <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip" 
-                                           title="Penalty for opening a gap. Default: 10"></i>
-                                    </label>
-                                    <input type="number" class="form-control form-control-sm" id="clustalwGapOpen" value="10" step="0.1" min="0">
-                                </div>
-                                <div class="mb-2">
-                                    <label for="clustalwGapExt" class="form-label small">
-                                        Gap Extension:
-                                        <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip" 
-                                           title="Penalty for extending a gap. Default: 0.1"></i>
-                                    </label>
-                                    <input type="number" class="form-control form-control-sm" id="clustalwGapExt" value="0.1" step="0.01" min="0">
-                                </div>
-                                <div class="mb-2">
-                                    <label for="clustalwOutput" class="form-label small">Output Format:</label>
-                                    <select class="form-select form-select-sm" id="clustalwOutput">
-                                        <option value="FASTA">FASTA</option>
-                                        <option value="CLUSTAL">CLUSTAL</option>
-                                        <option value="PHYLIP">PHYLIP</option>
                                     </select>
                                 </div>
                             </div>
@@ -157,26 +100,7 @@
                         <div id="muscleOptions" class="tool-options d-none">
                             <div class="alert alert-light border">
                                 <h6 class="mb-2"><i class="bi bi-sliders"></i> MUSCLE Parameters</h6>
-                                <div class="mb-2">
-                                    <label for="muscleMaxIters" class="form-label small">
-                                        Max Iterations:
-                                        <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip" 
-                                           title="Number of refinement iterations. Default: 16. More iterations = better quality but slower."></i>
-                                    </label>
-                                    <input type="number" class="form-control form-control-sm" id="muscleMaxIters" value="16" min="1" max="100">
-                                </div>
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="muscleDiags">
-                                    <label class="form-check-label small" for="muscleDiags">
-                                        Use diagonal optimization
-                                        <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip" 
-                                           title="Find diagonals to speed up the distance matrix computation. Recommended for large datasets."></i>
-                                    </label>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="muscleQuiet" checked>
-                                    <label class="form-check-label small" for="muscleQuiet">Quiet mode</label>
-                                </div>
+                                <p class="text-muted small mb-0">Using default parameters (recommended)</p>
                             </div>
                         </div>
 
@@ -236,7 +160,9 @@
                     <!-- Command Display -->
                     <div id="commandDisplay" class="d-none"></div>
 
-                    <div id="alignmentViewer" class="d-none" style="overflow-x: auto; max-height: 600px;">
+                    <!-- Alignment Viewer using iframe to display HTML -->
+                    <div id="alignmentViewer" class="d-none" style="width: 100%; height: 800px;">
+                        <iframe id="alignmentIframe" style="width: 100%; height: 100%; border: none; border-radius: 4px;"></iframe>
                     </div>
                 </div>
             </div>
@@ -383,13 +309,18 @@
                         htmlBtn.classList.remove('d-none');
                     }
                     
-                    // PDF export button (opens HTML in print dialog)
+                    // PDF export button (opens HTML in new window for viewing/printing)
                     const pdfBtn = document.getElementById('downloadPdfBtn');
                     if (data.html_file) {
-                        const pdfUrl = ALIGNMENT_URLS.download + '?path=' + encodeURIComponent(data.html_file);
+                        const htmlUrl = ALIGNMENT_URLS.download + '?path=' + encodeURIComponent(data.html_file);
                         pdfBtn.onclick = function(e) {
                             e.preventDefault();
-                            window.open(pdfUrl, '_blank');
+                            const win = window.open('', '_blank');
+                            fetch(htmlUrl).then(r => r.text()).then(html => {
+                                win.document.write(html);
+                                win.document.close();
+                                setTimeout(() => win.print(), 500);
+                            });
                         };
                         pdfBtn.classList.remove('d-none');
                     }
@@ -411,9 +342,15 @@
     });
 
     function displayAlignmentViewer(data) {
-        const viewer = document.getElementById('alignmentViewer');
+        // Display HTML using iframe instead of direct insertion
+        const iframe = document.getElementById('alignmentIframe');
         if (data.alignment_html) {
-            viewer.innerHTML = data.alignment_html;
+            // Use srcdoc to embed HTML directly in iframe
+            iframe.srcdoc = data.alignment_html;
+        } else if (data.html_file) {
+            // Load from HTML file if available
+            const htmlUrl = ALIGNMENT_URLS.download + '?path=' + encodeURIComponent(data.html_file);
+            iframe.src = htmlUrl;
         }
     }
 

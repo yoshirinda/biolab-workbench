@@ -76,14 +76,21 @@ def check_available_tools():
         'muscle': False
     }
 
-    for tool in tools:
+    # Check each tool with appropriate command
+    tool_commands = {
+        'mafft': 'mafft --version',
+        'clustalw': 'clustalw -version',  # Note: clustalw uses -version (single dash)
+        'muscle': 'muscle -version'  # Note: muscle uses -version (single dash)
+    }
+    
+    for tool, cmd in tool_commands.items():
         try:
-            success, _, _ = run_conda_command(f'{tool} --version')
+            success, _, _ = run_conda_command(cmd)
             tools[tool] = success
             logger.info(f"Tool {tool}: {'available' if success else 'not available'}")
         except Exception as e:
             logger.error(f"Error checking tool {tool}: {str(e)}")
-            pass
+            tools[tool] = False
 
     # Update cache
     _TOOLS_CACHE['data'] = tools
