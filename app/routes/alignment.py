@@ -131,22 +131,22 @@ def download():
             return jsonify({'success': False, 'error': 'Access denied'}), 403
         
         if os.path.exists(abs_path):
-            # Determine MIME type based on file extension
+            # Determine MIME type and whether to force download
             filename = os.path.basename(abs_path)
             mimetype = None
-            if filename.endswith('.fasta') or filename.endswith('.fa') or filename.endswith('.aln'):
-                mimetype = 'text/plain'
-            elif filename.endswith('.txt') or filename.endswith('.log'):
+            force_download = True
+            if filename.endswith(('.fasta', '.fa', '.aln', '.txt', '.log')):
                 mimetype = 'text/plain'
             elif filename.endswith('.json'):
                 mimetype = 'application/json'
             elif filename.endswith('.html'):
                 mimetype = 'text/html'
-            
-            logger.info(f"Downloading file: {abs_path}")
+                force_download = False  # allow inline render for iframe
+
+            logger.info(f"Downloading file: {abs_path} (as_attachment={force_download})")
             return send_file(
-                abs_path, 
-                as_attachment=True,
+                abs_path,
+                as_attachment=force_download,
                 download_name=filename,
                 mimetype=mimetype
             )
@@ -186,21 +186,21 @@ def download_legacy(filepath):
             return jsonify({'success': False, 'error': 'Access denied'}), 403
         
         if os.path.exists(abs_path):
-            # Determine MIME type based on file extension
+            # Determine MIME type and whether to force download
             filename = os.path.basename(abs_path)
             mimetype = None
-            if filename.endswith('.fasta') or filename.endswith('.fa') or filename.endswith('.aln'):
-                mimetype = 'text/plain'
-            elif filename.endswith('.txt') or filename.endswith('.log'):
+            force_download = True
+            if filename.endswith(('.fasta', '.fa', '.aln', '.txt', '.log')):
                 mimetype = 'text/plain'
             elif filename.endswith('.json'):
                 mimetype = 'application/json'
             elif filename.endswith('.html'):
                 mimetype = 'text/html'
+                force_download = False
             
             return send_file(
                 abs_path, 
-                as_attachment=True,
+                as_attachment=force_download,
                 download_name=filename,
                 mimetype=mimetype
             )
