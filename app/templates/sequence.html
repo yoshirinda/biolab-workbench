@@ -99,6 +99,74 @@
         </div>
     </div>
 
+    <!-- Sequence Extraction Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-funnel"></i> Sequence Extraction by Gene IDs</h5>
+                    <span class="badge bg-dark" id="sourceFastaStatus">No source FASTA</span>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <!-- Source FASTA Upload -->
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label"><i class="bi bi-file-earmark-arrow-up"></i> Source FASTA File:</label>
+                            <div class="input-group">
+                                <input type="file" class="form-control" id="sourceFastaFile" accept=".fasta,.fa,.fna,.faa,.txt">
+                                <button class="btn btn-outline-primary" onclick="setSourceFasta()">
+                                    <i class="bi bi-upload"></i> Set
+                                </button>
+                            </div>
+                            <small class="text-muted">Upload once, use for multiple extractions</small>
+                        </div>
+                        
+                        <!-- Gene ID Input -->
+                        <div class="col-md-8 mb-3">
+                            <label for="geneIdInput" class="form-label"><i class="bi bi-list-ol"></i> Gene IDs (paste BLAST results or gene list):</label>
+                            <textarea class="form-control font-monospace" id="geneIdInput" rows="4"
+                                placeholder="Paste BLAST results or gene IDs (e.g., Mp3g11110.1, AT1G01010.1)"
+                                aria-describedby="geneIdInputHelp"></textarea>
+                            <small id="geneIdInputHelp" class="text-muted">Supports BLAST table format or one gene ID per line</small>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-4">
+                            <button class="btn btn-outline-secondary w-100" onclick="parseGeneIds()">
+                                <i class="bi bi-list-check"></i> Parse Gene IDs
+                            </button>
+                        </div>
+                        <div class="col-md-4">
+                            <button class="btn btn-primary w-100" onclick="extractByGeneIds()">
+                                <i class="bi bi-funnel-fill"></i> Extract Sequences
+                            </button>
+                        </div>
+                        <div class="col-md-4">
+                            <button class="btn btn-outline-success w-100" onclick="copyExtractedFasta()">
+                                <i class="bi bi-clipboard"></i> Copy FASTA
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Parsed IDs Preview -->
+                    <div class="mt-3 d-none" id="parsedIdsPreview">
+                        <label class="form-label"><i class="bi bi-check2-square"></i> Parsed Gene IDs:</label>
+                        <div class="border rounded p-2 bg-light" id="parsedIdsList" style="max-height: 100px; overflow-y: auto;">
+                        </div>
+                    </div>
+                    
+                    <!-- Extraction Results -->
+                    <div class="mt-3 d-none" id="extractionResults">
+                        <div class="alert alert-info mb-2" id="extractionSummary"></div>
+                        <label class="form-label"><i class="bi bi-file-text"></i> Extracted FASTA:</label>
+                        <textarea class="form-control font-monospace" id="extractedFastaOutput" rows="6" readonly></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Project Management Section -->
     <div class="row mb-4">
         <div class="col-12">
@@ -245,12 +313,18 @@
         export: '{{ url_for("sequence.export") }}',
         projects: '{{ url_for("sequence.get_projects") }}',
         saveCollection: '{{ url_for("sequence.save_seq_collection") }}',
-        loadCollectionBase: '/sequence/collections/'
+        loadCollectionBase: '/sequence/collections/',
+        setSourceFasta: '{{ url_for("sequence.set_source_fasta") }}',
+        getSourceFasta: '{{ url_for("sequence.get_source_fasta") }}',
+        parseGeneIds: '{{ url_for("sequence.parse_gene_ids") }}',
+        extractByIds: '{{ url_for("sequence.extract_by_ids") }}'
     };
 
     let sequences = [];
     let selectedSequence = null;
     let currentProjectId = null;
+    let parsedGeneIds = [];
+    let extractedFasta = '';
 
     document.querySelectorAll('input[name="source"]').forEach(radio => {
         radio.addEventListener('change', function() {
@@ -667,5 +741,165 @@
     document.getElementById('selectAll').addEventListener('change', function() {
         document.querySelectorAll('.seq-checkbox').forEach(cb => cb.checked = this.checked);
     });
+
+    // Sequence Extraction Functions
+    
+    // Check source FASTA status on page load
+    async function checkSourceFasta() {
+        try {
+            const response = await fetch(SEQUENCE_URLS.getSourceFasta);
+            const data = await response.json();
+            
+            const statusBadge = document.getElementById('sourceFastaStatus');
+            if (data.success && data.has_source) {
+                statusBadge.textContent = `✓ ${data.filename}`;
+                statusBadge.classList.remove('bg-dark');
+                statusBadge.classList.add('bg-success');
+            } else {
+                statusBadge.textContent = 'No source FASTA';
+                statusBadge.classList.remove('bg-success');
+                statusBadge.classList.add('bg-dark');
+            }
+        } catch (error) {
+            console.error('Failed to check source FASTA:', error);
+        }
+    }
+    
+    async function setSourceFasta() {
+        const fileInput = document.getElementById('sourceFastaFile');
+        if (!fileInput.files[0]) {
+            showAlert('warning', 'Please select a FASTA file');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        
+        try {
+            const response = await fetch(SEQUENCE_URLS.setSourceFasta, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                showAlert('success', data.message);
+                const statusBadge = document.getElementById('sourceFastaStatus');
+                statusBadge.textContent = `✓ ${data.filename}`;
+                statusBadge.classList.remove('bg-dark');
+                statusBadge.classList.add('bg-success');
+            } else {
+                showAlert('danger', data.error);
+            }
+        } catch (error) {
+            showAlert('danger', 'Failed to set source FASTA: ' + error.message);
+        }
+    }
+    
+    async function parseGeneIds() {
+        const text = document.getElementById('geneIdInput').value;
+        if (!text.trim()) {
+            showAlert('warning', 'Please enter gene IDs or paste BLAST results');
+            return;
+        }
+        
+        try {
+            const response = await fetch(SEQUENCE_URLS.parseGeneIds, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({text: text})
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                parsedGeneIds = data.gene_ids;
+                const preview = document.getElementById('parsedIdsPreview');
+                const list = document.getElementById('parsedIdsList');
+                
+                if (parsedGeneIds.length > 0) {
+                    list.innerHTML = parsedGeneIds.map(id => 
+                        `<span class="badge bg-primary me-1 mb-1">${id}</span>`
+                    ).join('');
+                    preview.classList.remove('d-none');
+                    showAlert('success', `Parsed ${parsedGeneIds.length} gene IDs`);
+                } else {
+                    list.innerHTML = '<span class="text-muted">No gene IDs found</span>';
+                    preview.classList.remove('d-none');
+                    showAlert('warning', 'No gene IDs could be parsed from the input');
+                }
+            } else {
+                showAlert('danger', data.error);
+            }
+        } catch (error) {
+            showAlert('danger', 'Failed to parse gene IDs: ' + error.message);
+        }
+    }
+    
+    async function extractByGeneIds() {
+        // If no IDs parsed yet, try to parse first
+        if (parsedGeneIds.length === 0) {
+            await parseGeneIds();
+        }
+        
+        if (parsedGeneIds.length === 0) {
+            showAlert('warning', 'No gene IDs to extract. Please enter gene IDs first.');
+            return;
+        }
+        
+        try {
+            const response = await fetch(SEQUENCE_URLS.extractByIds, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({gene_ids: parsedGeneIds})
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                extractedFasta = data.fasta;
+                
+                // Show results
+                const resultsDiv = document.getElementById('extractionResults');
+                const summaryDiv = document.getElementById('extractionSummary');
+                const outputArea = document.getElementById('extractedFastaOutput');
+                
+                let summaryHtml = `<strong>Matched:</strong> ${data.matched_count} sequences | `;
+                summaryHtml += `<strong>Not found:</strong> ${data.unmatched_count}`;
+                
+                if (data.unmatched_count > 0) {
+                    summaryHtml += `<br><small class="text-muted">Unmatched IDs: ${data.unmatched_ids.slice(0, 5).join(', ')}${data.unmatched_ids.length > 5 ? '...' : ''}</small>`;
+                }
+                
+                summaryDiv.innerHTML = summaryHtml;
+                outputArea.value = data.fasta;
+                resultsDiv.classList.remove('d-none');
+                
+                // Also add to sequences list if user wants
+                if (data.sequences.length > 0) {
+                    showAlert('success', `Extracted ${data.matched_count} sequences`);
+                }
+            } else {
+                showAlert('danger', data.error);
+            }
+        } catch (error) {
+            showAlert('danger', 'Failed to extract sequences: ' + error.message);
+        }
+    }
+    
+    function copyExtractedFasta() {
+        const fasta = document.getElementById('extractedFastaOutput').value;
+        if (!fasta) {
+            showAlert('warning', 'No extracted sequences to copy');
+            return;
+        }
+        
+        navigator.clipboard.writeText(fasta).then(() => {
+            showAlert('success', 'FASTA copied to clipboard!');
+        }).catch(err => {
+            showAlert('danger', 'Failed to copy: ' + err.message);
+        });
+    }
+    
+    // Check source FASTA on page load
+    document.addEventListener('DOMContentLoaded', checkSourceFasta);
 </script>
 {% endblock %}

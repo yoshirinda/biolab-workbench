@@ -10,7 +10,7 @@ from datetime import datetime
 import config
 from app.utils.logger import get_tools_logger
 from app.utils.file_utils import create_result_dir, save_params
-from app.core.sequence_utils import detect_sequence_type
+from app.core.sequence_utils import detect_sequence_type, normalize_gene_id
 
 logger = get_tools_logger()
 
@@ -134,14 +134,63 @@ def get_source_fasta(database):
     return None
 
 
-def extract_from_fasta(source_fasta, hit_ids, output_file):
+def build_fuzzy_id_index(hit_ids):
+    """
+    Build an index for fuzzy gene ID matching.
+    
+    Returns:
+        dict: Maps normalized IDs to original IDs
+    """
+    index = {}
+    for hit_id in hit_ids:
+        normalized, original = normalize_gene_id(hit_id)
+        if normalized:
+            # Store original ID, preferring exact matches
+            if normalized not in index:
+                index[normalized] = original
+    return index
+
+
+def fuzzy_match_id(seq_id, hit_ids_set, fuzzy_index):
+    """
+    Check if a sequence ID matches any hit ID using fuzzy matching.
+    
+    Priority:
+    1. Exact match
+    2. Case-insensitive match with version suffix handling
+    
+    Returns:
+        bool: True if matched
+    """
+    # Exact match
+    if seq_id in hit_ids_set:
+        return True
+    
+    # Fuzzy match using normalized ID
+    normalized, _ = normalize_gene_id(seq_id)
+    if normalized in fuzzy_index:
+        return True
+    
+    return False
+
+
+def extract_from_fasta(source_fasta, hit_ids, output_file, fuzzy_match=True):
     """
     Extract sequences from a FASTA file by IDs.
     This is a fallback when blastdbcmd fails.
-    Returns (success, extracted_count).
+    
+    Args:
+        source_fasta: Path to source FASTA file
+        hit_ids: List of sequence IDs to extract
+        output_file: Path to output FASTA file
+        fuzzy_match: Enable fuzzy matching (case-insensitive, version-agnostic)
+    
+    Returns:
+        (success, extracted_count)
     """
     try:
         hit_ids_set = set(hit_ids)
+        fuzzy_index = build_fuzzy_id_index(hit_ids) if fuzzy_match else {}
         extracted = []
         
         with open(source_fasta, 'r', encoding='utf-8') as f:
@@ -154,7 +203,7 @@ def extract_from_fasta(source_fasta, hit_ids, output_file):
                     # Save previous sequence if it matches
                     if current_header is not None:
                         seq_id = current_header.split()[0]
-                        if seq_id in hit_ids_set:
+                        if fuzzy_match_id(seq_id, hit_ids_set, fuzzy_index):
                             extracted.append((current_header, ''.join(current_seq)))
                     current_header = line[1:]
                     current_seq = []
@@ -164,7 +213,7 @@ def extract_from_fasta(source_fasta, hit_ids, output_file):
             # Handle last sequence
             if current_header is not None:
                 seq_id = current_header.split()[0]
-                if seq_id in hit_ids_set:
+                if fuzzy_match_id(seq_id, hit_ids_set, fuzzy_index):
                     extracted.append((current_header, ''.join(current_seq)))
         
         # Write extracted sequences

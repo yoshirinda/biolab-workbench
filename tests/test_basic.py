@@ -654,3 +654,233 @@ class TestAlignmentTools:
 
         assert success is True
         assert os.path.exists(output_file)
+
+
+class TestFuzzyMatching:
+    """Tests for fuzzy gene ID matching functionality."""
+
+    def test_normalize_gene_id_basic(self):
+        """Test basic gene ID normalization."""
+        from app.core.sequence_utils import normalize_gene_id
+
+        # Test case insensitivity
+        normalized, original = normalize_gene_id("Mp3g11110")
+        assert normalized == "mp3g11110"
+        assert original == "Mp3g11110"
+
+    def test_normalize_gene_id_with_version(self):
+        """Test gene ID normalization with version suffix."""
+        from app.core.sequence_utils import normalize_gene_id
+
+        # Test version suffix removal
+        normalized, original = normalize_gene_id("Mp3g11110.1")
+        assert normalized == "mp3g11110"
+        assert original == "Mp3g11110.1"
+
+        normalized, original = normalize_gene_id("AT1G01010.2")
+        assert normalized == "at1g01010"
+        assert original == "AT1G01010.2"
+
+    def test_parse_gene_ids_from_blast_table(self):
+        """Test parsing gene IDs from BLAST-like table format."""
+        from app.core.sequence_utils import parse_gene_ids_from_text
+
+        text = """ACO2_Arabidopsis_thaliana_Q41931\tMp3g11110.1\t31.9%
+ACO1_Oryza_sativa\tOs01g0100100\t28.5%
+Some_gene\tAT1G01010.1\t45.0%"""
+
+        gene_ids = parse_gene_ids_from_text(text)
+
+        assert "Mp3g11110.1" in gene_ids
+        assert "Os01g0100100" in gene_ids
+        assert "AT1G01010.1" in gene_ids
+
+    def test_parse_gene_ids_simple_list(self):
+        """Test parsing gene IDs from simple line-by-line list."""
+        from app.core.sequence_utils import parse_gene_ids_from_text
+
+        text = """Mp3g11110.1
+AT1G01010.1
+Os01g0100100"""
+
+        gene_ids = parse_gene_ids_from_text(text)
+
+        assert len(gene_ids) == 3
+        assert "Mp3g11110.1" in gene_ids
+        assert "AT1G01010.1" in gene_ids
+        assert "Os01g0100100" in gene_ids
+
+    def test_parse_gene_ids_removes_duplicates(self):
+        """Test that duplicate gene IDs are removed."""
+        from app.core.sequence_utils import parse_gene_ids_from_text
+
+        text = """Mp3g11110.1
+Mp3g11110.1
+AT1G01010.1"""
+
+        gene_ids = parse_gene_ids_from_text(text)
+
+        # Should have only unique IDs
+        assert len(gene_ids) == 2
+        assert gene_ids.count("Mp3g11110.1") == 1
+
+    def test_extract_sequences_fuzzy_exact_match(self, tmpdir):
+        """Test fuzzy extraction with exact match."""
+        from app.core.sequence_utils import extract_sequences_fuzzy
+
+        # Create test FASTA file
+        source_fasta = str(tmpdir.join("source.fasta"))
+        with open(source_fasta, 'w') as f:
+            f.write(">Mp3g11110.1 description\nATGCATGC\n>Mp3g22220.1\nGGGGGGGG\n")
+
+        result = extract_sequences_fuzzy(source_fasta, ["Mp3g11110.1"])
+
+        assert result['success'] is True
+        assert len(result['sequences']) == 1
+        assert result['sequences'][0][0] == "Mp3g11110.1"
+
+    def test_extract_sequences_fuzzy_case_insensitive(self, tmpdir):
+        """Test fuzzy extraction with case-insensitive matching."""
+        from app.core.sequence_utils import extract_sequences_fuzzy
+
+        source_fasta = str(tmpdir.join("source.fasta"))
+        with open(source_fasta, 'w') as f:
+            f.write(">Mp3g11110.1 description\nATGCATGC\n>Mp3g22220.1\nGGGGGGGG\n")
+
+        # Search with lowercase
+        result = extract_sequences_fuzzy(source_fasta, ["mp3g11110.1"])
+
+        assert result['success'] is True
+        assert len(result['sequences']) == 1
+
+    def test_extract_sequences_fuzzy_version_agnostic(self, tmpdir):
+        """Test fuzzy extraction matching with/without version suffix."""
+        from app.core.sequence_utils import extract_sequences_fuzzy
+
+        source_fasta = str(tmpdir.join("source.fasta"))
+        with open(source_fasta, 'w') as f:
+            f.write(">Mp3g11110.1 description\nATGCATGC\n>Mp3g22220.1\nGGGGGGGG\n")
+
+        # Search without version suffix
+        result = extract_sequences_fuzzy(source_fasta, ["Mp3g11110"])
+
+        assert result['success'] is True
+        assert len(result['sequences']) == 1
+
+    def test_extract_sequences_fuzzy_unmatched(self, tmpdir):
+        """Test fuzzy extraction reports unmatched IDs."""
+        from app.core.sequence_utils import extract_sequences_fuzzy
+
+        source_fasta = str(tmpdir.join("source.fasta"))
+        with open(source_fasta, 'w') as f:
+            f.write(">Mp3g11110.1\nATGCATGC\n")
+
+        result = extract_sequences_fuzzy(source_fasta, ["Mp3g11110.1", "NonExistent123"])
+
+        assert result['success'] is True
+        assert len(result['matched']) == 1
+        assert len(result['unmatched']) == 1
+        assert "NonExistent123" in result['unmatched']
+
+    def test_extract_from_fasta_fuzzy(self, tmpdir):
+        """Test extract_from_fasta with fuzzy matching enabled."""
+        from app.core.blast_wrapper import extract_from_fasta
+
+        source_fasta = str(tmpdir.join("source.fasta"))
+        with open(source_fasta, 'w') as f:
+            f.write(">Mp3g11110.1 description\nATGCATGC\n>Mp3g22220.1\nGGGGGGGG\n>Mp3g33330.1\nCCCCCCCC\n")
+
+        output_file = str(tmpdir.join("output.fasta"))
+        # Search with mixed case and without version
+        hit_ids = ['mp3g11110', 'Mp3g33330']
+
+        success, count = extract_from_fasta(source_fasta, hit_ids, output_file, fuzzy_match=True)
+
+        assert success is True
+        assert count == 2
+
+        with open(output_file, 'r') as f:
+            content = f.read()
+            assert 'Mp3g11110.1' in content
+            assert 'Mp3g33330.1' in content
+
+
+class TestSequenceExtractionRoutes:
+    """Tests for sequence extraction API routes."""
+
+    def test_parse_gene_ids_endpoint(self, client):
+        """Test parse-gene-ids endpoint."""
+        response = client.post('/sequence/parse-gene-ids',
+                              json={'text': 'Mp3g11110.1\nAT1G01010.1'},
+                              content_type='application/json')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is True
+        assert 'gene_ids' in data
+        assert len(data['gene_ids']) >= 1
+
+    def test_parse_gene_ids_empty_text(self, client):
+        """Test parse-gene-ids with empty text."""
+        response = client.post('/sequence/parse-gene-ids',
+                              json={'text': ''},
+                              content_type='application/json')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is False
+
+    def test_extract_by_ids_no_source(self, client):
+        """Test extract-by-ids without source FASTA."""
+        response = client.post('/sequence/extract-by-ids',
+                              json={'gene_ids': ['Mp3g11110.1']},
+                              content_type='application/json')
+        assert response.status_code == 200
+        data = response.get_json()
+        # Should fail because no source FASTA is set
+        assert data['success'] is False
+        assert 'source' in data['error'].lower()
+
+    def test_get_source_fasta_none(self, client):
+        """Test get-source-fasta when none is set."""
+        response = client.get('/sequence/get-source-fasta')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is True
+        assert data['has_source'] is False
+
+
+class TestAlignmentVisualization:
+    """Tests for alignment visualization functionality."""
+
+    def test_check_pymsaviz_available(self):
+        """Test pymsaviz availability check."""
+        from app.core.alignment_tools import check_pymsaviz_available
+        # Should return a boolean
+        result = check_pymsaviz_available()
+        assert isinstance(result, bool)
+
+    def test_export_alignment_visualization_html(self, tmpdir):
+        """Test HTML export fallback."""
+        from app.core.alignment_tools import export_alignment_visualization
+
+        sequences = [
+            ("seq1", "MKVLWAALLVT"),
+            ("seq2", "MKVLWAALLVT"),
+        ]
+
+        output_dir = str(tmpdir)
+        success, output_file, message = export_alignment_visualization(
+            sequences, output_dir, "test_viz", output_format='html'
+        )
+
+        assert success is True
+        assert output_file is not None
+        assert output_file.endswith('.html')
+        assert os.path.exists(output_file)
+
+    def test_check_pymsaviz_endpoint(self, client):
+        """Test check-pymsaviz endpoint."""
+        response = client.get('/alignment/check-pymsaviz')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is True
+        assert 'available' in data

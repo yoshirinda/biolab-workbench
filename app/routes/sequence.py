@@ -1,11 +1,13 @@
 """
 Sequence management routes for BioLab Workbench.
 """
-from flask import Blueprint, render_template, request, jsonify
+import os
+from flask import Blueprint, render_template, request, jsonify, session
 from app.core.sequence_utils import (
     parse_fasta, format_fasta, detect_sequence_type,
     translate_dna, reverse_complement, find_orfs,
-    calculate_sequence_stats, validate_sequence
+    calculate_sequence_stats, validate_sequence,
+    parse_gene_ids_from_text, extract_sequences_fuzzy
 )
 from app.core.project_manager import (
     list_projects, create_project, get_project, update_project, delete_project,
@@ -17,16 +19,21 @@ from app.core.project_manager import (
 )
 from app.utils.file_utils import save_uploaded_file, read_fasta_file
 from app.utils.logger import get_app_logger
+import config
 
 sequence_bp = Blueprint('sequence', __name__)
 logger = get_app_logger()
+
+# Session key for storing source FASTA path
+SOURCE_FASTA_KEY = 'source_fasta_path'
 
 
 @sequence_bp.route('/')
 def sequence_page():
     """Render the sequence management page."""
     projects = list_projects()
-    return render_template('sequence.html', projects=projects)
+    source_fasta = session.get(SOURCE_FASTA_KEY, None)
+    return render_template('sequence.html', projects=projects, source_fasta=source_fasta)
 
 
 @sequence_bp.route('/import', methods=['POST'])
@@ -517,4 +524,172 @@ def remove_feature(project_id, sequence_id, feature_id):
 
     except Exception as e:
         logger.error(f"Delete feature error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+# Sequence Extraction Routes
+
+@sequence_bp.route('/set-source-fasta', methods=['POST'])
+def set_source_fasta():
+    """
+    Set the source FASTA file for sequence extraction.
+    Stores the file path in session for subsequent extraction operations.
+    """
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file uploaded'})
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'success': False, 'error': 'No file selected'})
+
+        # Save the uploaded file
+        filepath = save_uploaded_file(file)
+        
+        # Validate it's a valid FASTA file
+        try:
+            sequences = read_fasta_file(filepath)
+            seq_count = len(sequences)
+        except Exception as e:
+            return jsonify({'success': False, 'error': f'Invalid FASTA file: {e}'})
+        
+        # Store in session
+        session[SOURCE_FASTA_KEY] = filepath
+        
+        logger.info(f"Source FASTA set: {filepath} ({seq_count} sequences)")
+        return jsonify({
+            'success': True,
+            'filepath': filepath,
+            'filename': file.filename,
+            'sequence_count': seq_count,
+            'message': f'Source FASTA set: {seq_count} sequences loaded'
+        })
+
+    except Exception as e:
+        logger.error(f"Set source FASTA error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@sequence_bp.route('/get-source-fasta', methods=['GET'])
+def get_source_fasta():
+    """Get the current source FASTA file information."""
+    try:
+        filepath = session.get(SOURCE_FASTA_KEY)
+        
+        if not filepath or not os.path.exists(filepath):
+            return jsonify({
+                'success': True,
+                'has_source': False,
+                'filepath': None,
+                'filename': None
+            })
+        
+        filename = os.path.basename(filepath)
+        return jsonify({
+            'success': True,
+            'has_source': True,
+            'filepath': filepath,
+            'filename': filename
+        })
+
+    except Exception as e:
+        logger.error(f"Get source FASTA error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@sequence_bp.route('/clear-source-fasta', methods=['POST'])
+def clear_source_fasta():
+    """Clear the source FASTA from session."""
+    try:
+        session.pop(SOURCE_FASTA_KEY, None)
+        return jsonify({'success': True, 'message': 'Source FASTA cleared'})
+    except Exception as e:
+        logger.error(f"Clear source FASTA error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@sequence_bp.route('/parse-gene-ids', methods=['POST'])
+def parse_gene_ids():
+    """
+    Parse gene IDs from text input.
+    Extracts gene IDs from various formats including BLAST result tables.
+    """
+    try:
+        data = request.get_json()
+        text = data.get('text', '')
+        
+        if not text.strip():
+            return jsonify({'success': False, 'error': 'No text provided'})
+        
+        gene_ids = parse_gene_ids_from_text(text)
+        
+        return jsonify({
+            'success': True,
+            'gene_ids': gene_ids,
+            'count': len(gene_ids)
+        })
+
+    except Exception as e:
+        logger.error(f"Parse gene IDs error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@sequence_bp.route('/extract-by-ids', methods=['POST'])
+def extract_by_ids():
+    """
+    Extract sequences from source FASTA by gene IDs.
+    Uses fuzzy matching for flexible ID matching.
+    """
+    try:
+        data = request.get_json()
+        gene_ids = data.get('gene_ids', [])
+        source_fasta = data.get('source_fasta') or session.get(SOURCE_FASTA_KEY)
+        
+        if not gene_ids:
+            return jsonify({'success': False, 'error': 'No gene IDs provided'})
+        
+        if not source_fasta:
+            return jsonify({'success': False, 'error': 'No source FASTA file set. Please upload a source FASTA first.'})
+        
+        if not os.path.exists(source_fasta):
+            return jsonify({'success': False, 'error': 'Source FASTA file not found. Please upload again.'})
+        
+        # Extract sequences with fuzzy matching
+        result = extract_sequences_fuzzy(source_fasta, gene_ids)
+        
+        if not result['success']:
+            return jsonify({'success': False, 'error': result.get('error', 'Extraction failed')})
+        
+        # Format sequences for response
+        formatted_sequences = []
+        for seq_id, seq in result['sequences']:
+            seq_type = detect_sequence_type(seq)
+            formatted_sequences.append({
+                'id': seq_id,
+                'sequence': seq,
+                'length': len(seq),
+                'type': seq_type
+            })
+        
+        # Generate FASTA output
+        fasta_lines = []
+        for seq_data in formatted_sequences:
+            fasta_lines.append(f">{seq_data['id']}")
+            seq = seq_data['sequence']
+            for i in range(0, len(seq), 60):
+                fasta_lines.append(seq[i:i+60])
+        fasta_output = '\n'.join(fasta_lines)
+        
+        return jsonify({
+            'success': True,
+            'sequences': formatted_sequences,
+            'fasta': fasta_output,
+            'matched_count': len(result['matched']),
+            'unmatched_count': len(result['unmatched']),
+            'matched_ids': result['matched'],
+            'unmatched_ids': result['unmatched']
+        })
+
+    except Exception as e:
+        logger.error(f"Extract by IDs error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
