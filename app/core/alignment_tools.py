@@ -523,12 +523,13 @@ def export_alignment_html(sequences, output_file, conservation=None, color_mode=
             ratio = bases.count(most_common) / len(bases)
             return ratio, most_common
         
-        # Build HTML
+        # Build HTML with enhanced styling and download toolbar
+        base_name = os.path.basename(output_file).replace('.html', '')
         html = f'''<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Alignment Visualization</title>
+    <title>Sequence Alignment - {base_name}</title>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{ 
@@ -545,6 +546,41 @@ def export_alignment_html(sequences, output_file, conservation=None, color_mode=
             margin-bottom: 20px;
         }}
         .header h1 {{ font-size: 24px; margin-bottom: 10px; }}
+        .header p {{ margin: 5px 0; opacity: 0.9; }}
+        .toolbar {{
+            background: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }}
+        .toolbar-label {{
+            font-weight: bold;
+            color: #333;
+            margin-right: 10px;
+        }}
+        .toolbar button {{
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s ease;
+        }}
+        .toolbar button:hover {{
+            background: #f0f0f0;
+            border-color: #999;
+        }}
+        .toolbar button.active {{
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }}
         .stats {{ display: flex; gap: 20px; margin-top: 15px; }}
         .stat {{ background: rgba(255,255,255,0.1); padding: 8px 15px; border-radius: 4px; }}
         .alignment-container {{
@@ -574,6 +610,8 @@ def export_alignment_html(sequences, output_file, conservation=None, color_mode=
             text-overflow: ellipsis;
             border-right: 2px solid #ccc;
             margin-right: 10px;
+            word-wrap: break-word;
+            word-break: break-all;
         }}
         .seq-data {{
             display: flex;
@@ -586,6 +624,7 @@ def export_alignment_html(sequences, output_file, conservation=None, color_mode=
             line-height: 18px;
             margin: 0;
             font-size: 12px;
+            font-weight: normal;
         }}
         .conserved {{
             background: #c00000 !important;
@@ -621,21 +660,42 @@ def export_alignment_html(sequences, output_file, conservation=None, color_mode=
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
+            border: 1px solid #e0e0e0;
         }}
         .legend-title {{ width: 100%; font-weight: bold; margin-bottom: 5px; }}
-        .legend-item {{ display: flex; align-items: center; gap: 5px; padding: 3px 8px; background: white; border-radius: 4px; }}
-        .legend-color {{ width: 20px; height: 20px; border-radius: 3px; }}
+        .legend-item {{ display: flex; align-items: center; gap: 5px; padding: 3px 8px; background: white; border-radius: 4px; font-size: 12px; }}
+        .legend-color {{ width: 16px; height: 16px; border-radius: 2px; border: 1px solid #ccc; }}
+        .footer {{
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 11px;
+            color: #666;
+            border-top: 1px solid #e0e0e0;
+        }}
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>🧬 Sequence Alignment Visualization</h1>
+        <h1>🧬 Multiple Sequence Alignment Visualization</h1>
+        <p>File: {base_name}</p>
         <div class="stats">
             <div class="stat">📊 Sequences: {len(names)}</div>
-            <div class="stat">📏 Length: {seq_len}</div>
-            <div class="stat">🎨 Color Mode: {color_mode.capitalize()}</div>
+            <div class="stat">📏 Length: {seq_len} bp</div>
+            <div class="stat">🎨 Mode: {color_mode.capitalize()}</div>
+            <div class="stat">⏰ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>
         </div>
     </div>
+    
+    <div class="toolbar">
+        <span class="toolbar-label">📥 Export As:</span>
+        <button onclick="exportFASTA()">📄 FASTA</button>
+        <button onclick="exportAlignmentText()">📋 Text</button>
+        <button onclick="window.print()">🖨️ Print/PDF</button>
+    </div>
+    
     <div class="alignment-container">
 '''
         
@@ -697,6 +757,7 @@ def export_alignment_html(sequences, output_file, conservation=None, color_mode=
         
         html += '''
     </div>
+    
     <div class="legend">
         <div class="legend-title">📖 Legend</div>
         <div class="legend-item"><div class="legend-color" style="background:#c00000"></div> 100% conserved</div>
@@ -704,8 +765,59 @@ def export_alignment_html(sequences, output_file, conservation=None, color_mode=
         <div class="legend-item"><div class="legend-color" style="background:#f0c000"></div> Hydrophobic</div>
         <div class="legend-item"><div class="legend-color" style="background:#00c000"></div> Polar</div>
         <div class="legend-item"><div class="legend-color" style="background:#0000c0"></div> Positive</div>
-        <div class="legend-item"><div class="legend-color" style="background:#c00000;opacity:0.7"></div> Negative</div>
+        <div class="legend-item"><div class="legend-color" style="background:#c048c0"></div> Negative</div>
     </div>
+    
+    <div class="footer">
+        <p>Generated by BioLab Workbench | Multiple Sequence Alignment Viewer</p>
+    </div>
+    
+    <script>
+        // Store alignment data for export
+        const alignmentData = {
+            sequences: '''
+        
+        # Add sequences data as JSON for export
+        sequences_json = [{"name": name, "seq": seq} for name, seq in zip(names, seqs)]
+        import json
+        html += json.dumps(sequences_json)
+        
+        html += ''',
+            length: ''' + str(seq_len) + '''
+        };
+        
+        function exportFASTA() {
+            let fasta = '';
+            alignmentData.sequences.forEach(seq => {
+                fasta += '>' + seq.name + '\\n';
+                fasta += seq.seq + '\\n';
+            });
+            downloadFile(fasta, 'alignment.fasta', 'text/plain');
+        }
+        
+        function exportAlignmentText() {
+            let text = 'Sequence Alignment\\n';
+            text += 'Generated: ''' + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + '''\\n';
+            text += '\\nSequences: ' + alignmentData.sequences.length + '\\n';
+            text += 'Length: ' + alignmentData.length + '\\n';
+            text += '\\n' + '='.repeat(80) + '\\n\\n';
+            alignmentData.sequences.forEach(seq => {
+                text += seq.name + '\\n';
+                text += seq.seq + '\\n\\n';
+            });
+            downloadFile(text, 'alignment.txt', 'text/plain');
+        }
+        
+        function downloadFile(content, filename, type) {
+            const element = document.createElement('a');
+            element.setAttribute('href', 'data:' + type + ';charset=utf-8,' + encodeURIComponent(content));
+            element.setAttribute('download', filename);
+            element.style.display = 'none';
+            document.body.appendChild(element);
+            element.click();
+            document.body.removeChild(element);
+        }
+    </script>
 </body>
 </html>'''
         

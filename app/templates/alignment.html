@@ -209,8 +209,14 @@
                     <div>
                         <span id="alignInfo" class="text-muted me-3"></span>
                         <div class="btn-group btn-group-sm">
-                            <a id="downloadAlignBtn" class="btn btn-outline-primary d-none" download>
+                            <a id="downloadFastaBtn" class="btn btn-outline-primary d-none" download title="Download as FASTA">
                                 <i class="bi bi-download"></i> FASTA
+                            </a>
+                            <a id="downloadHtmlBtn" class="btn btn-outline-success d-none" download title="Download as HTML">
+                                <i class="bi bi-file-earmark-code"></i> HTML
+                            </a>
+                            <a id="downloadPdfBtn" class="btn btn-outline-danger d-none" href="#" title="Export as PDF (via HTML viewer)">
+                                <i class="bi bi-file-earmark-pdf"></i> PDF
                             </a>
                         </div>
                     </div>
@@ -360,9 +366,28 @@
                 document.getElementById('alignInfo').textContent = `${data.sequence_count} sequences, ${data.alignment_length} positions`;
 
                 if (data.output_file) {
-                    const btn = document.getElementById('downloadAlignBtn');
-                    btn.href = ALIGNMENT_URLS.downloadBase + encodeURIComponent(data.output_file);
-                    btn.classList.remove('d-none');
+                    // FASTA download button
+                    const fastaBtn = document.getElementById('downloadFastaBtn');
+                    fastaBtn.href = ALIGNMENT_URLS.downloadBase + encodeURIComponent(data.output_file);
+                    fastaBtn.download = `alignment.fasta`;
+                    fastaBtn.classList.remove('d-none');
+                    
+                    // HTML download button
+                    const htmlBtn = document.getElementById('downloadHtmlBtn');
+                    if (data.html_file) {
+                        htmlBtn.href = ALIGNMENT_URLS.downloadBase + encodeURIComponent(data.html_file);
+                        htmlBtn.download = `alignment_visualization.html`;
+                        htmlBtn.classList.remove('d-none');
+                    }
+                    
+                    // PDF export button (opens HTML in print dialog)
+                    const pdfBtn = document.getElementById('downloadPdfBtn');
+                    pdfBtn.onclick = function(e) {
+                        e.preventDefault();
+                        const htmlWindow = window.open(ALIGNMENT_URLS.downloadBase + encodeURIComponent(data.html_file), '_blank');
+                        setTimeout(() => htmlWindow.print(), 500);
+                    };
+                    pdfBtn.classList.remove('d-none');
                 }
 
                 // Show alignment statistics
