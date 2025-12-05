@@ -691,3 +691,138 @@ def export_alignment_html(sequences, output_file, conservation=None, color_mode=
     except Exception as e:
         logger.error(f"Failed to export alignment HTML: {e}")
         return False, str(e)
+
+
+def check_pymsaviz_available():
+    """
+    Check if pymsaviz is available for import.
+    
+    Returns:
+        bool: True if pymsaviz is available
+    """
+    try:
+        from pymsaviz import MsaViz
+        return True
+    except ImportError:
+        return False
+
+
+def visualize_alignment_pymsaviz(fasta_path, output_path, output_format='pdf', 
+                                  wrap_length=80, show_count=True, dpi=150):
+    """
+    Generate alignment visualization using pymsaviz.
+    
+    This produces high-quality, publication-ready alignment figures with
+    conservancy coloring similar to standard alignment viewers.
+    
+    Args:
+        fasta_path: Path to aligned FASTA file
+        output_path: Output file path (without extension)
+        output_format: 'pdf', 'png', or 'svg'
+        wrap_length: Number of residues per line (default: 80)
+        show_count: Show position count (default: True)
+        dpi: Resolution for PNG output (default: 150)
+    
+    Returns:
+        (success, output_file_path, message)
+    """
+    if not check_pymsaviz_available():
+        logger.warning("pymsaviz not available, falling back to HTML visualization")
+        return False, None, "pymsaviz not installed. Install with: pip install pymsaviz"
+    
+    try:
+        from pymsaviz import MsaViz
+        
+        # Ensure output directory exists
+        output_dir = os.path.dirname(output_path)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
+        
+        # Generate output filename with extension
+        if not output_path.endswith(f'.{output_format}'):
+            output_file = f"{output_path}.{output_format}"
+        else:
+            output_file = output_path
+        
+        logger.info(f"Generating pymsaviz visualization: {output_file}")
+        
+        # Create visualization
+        mv = MsaViz(fasta_path, wrap_length=wrap_length, show_count=show_count)
+        mv.savefig(output_file, dpi=dpi)
+        
+        logger.info(f"Visualization saved: {output_file}")
+        return True, output_file, f"Visualization saved to {output_file}"
+        
+    except Exception as e:
+        logger.error(f"pymsaviz visualization failed: {e}")
+        return False, None, f"Visualization failed: {str(e)}"
+
+
+def export_alignment_visualization(sequences, output_dir, base_name, 
+                                   output_format='pdf', color_mode='conservation'):
+    """
+    Export alignment visualization to file.
+    
+    Attempts to use pymsaviz for PDF/PNG output, falls back to HTML.
+    
+    Args:
+        sequences: List of (id, sequence) tuples
+        output_dir: Directory to save output
+        base_name: Base filename (without extension)
+        output_format: 'pdf', 'png', 'svg', or 'html'
+        color_mode: 'conservation', 'chemistry', or 'identity'
+    
+    Returns:
+        (success, output_file, message)
+    """
+    # Ensure output directory exists
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+    
+    # For HTML output, use native HTML export
+    if output_format == 'html':
+        output_file = os.path.join(output_dir, f"{base_name}.html")
+        success, message = export_alignment_html(sequences, output_file, color_mode=color_mode)
+        return success, output_file if success else None, message
+    
+    # For PDF/PNG/SVG, try pymsaviz first
+    if output_format in ['pdf', 'png', 'svg']:
+        # First, write sequences to temporary FASTA file
+        temp_fasta = os.path.join(output_dir, f"{base_name}_temp.fasta")
+        try:
+            with open(temp_fasta, 'w', encoding='utf-8') as f:
+                for seq_id, seq in sequences:
+                    f.write(f">{seq_id}\n")
+                    for i in range(0, len(seq), 60):
+                        f.write(seq[i:i+60] + '\n')
+            
+            output_file = os.path.join(output_dir, f"{base_name}.{output_format}")
+            success, result_file, message = visualize_alignment_pymsaviz(
+                temp_fasta, output_file, output_format
+            )
+            
+            # Clean up temp file
+            try:
+                os.remove(temp_fasta)
+            except OSError:
+                pass
+            
+            if success:
+                return True, result_file, message
+            else:
+                # Fall back to HTML
+                logger.info("Falling back to HTML visualization")
+                html_file = os.path.join(output_dir, f"{base_name}.html")
+                html_success, html_message = export_alignment_html(sequences, html_file, color_mode=color_mode)
+                return html_success, html_file if html_success else None, html_message
+                
+        except Exception as e:
+            # Clean up on error
+            try:
+                os.remove(temp_fasta)
+            except OSError:
+                pass
+            logger.error(f"Visualization export failed: {e}")
+            return False, None, str(e)
+    
+    return False, None, f"Unsupported output format: {output_format}"

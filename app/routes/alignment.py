@@ -6,7 +6,8 @@ from flask import Blueprint, render_template, request, jsonify, send_file
 import config
 from app.core.alignment_tools import (
     check_available_tools, run_alignment, parse_alignment,
-    calculate_conservation, generate_alignment_html, export_alignment_html
+    calculate_conservation, generate_alignment_html, export_alignment_html,
+    check_pymsaviz_available, export_alignment_visualization
 )
 from app.utils.file_utils import save_uploaded_file
 from app.utils.logger import get_app_logger
@@ -144,3 +145,73 @@ def download(filepath):
     except Exception as e:
         logger.error(f"Download error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@alignment_bp.route('/check-pymsaviz')
+def check_pymsaviz():
+    """Check if pymsaviz is available."""
+    try:
+        available = check_pymsaviz_available()
+        return jsonify({
+            'success': True,
+            'available': available
+        })
+    except Exception as e:
+        logger.error(f"pymsaviz check error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@alignment_bp.route('/visualize', methods=['POST'])
+def visualize():
+    """
+    Generate alignment visualization.
+    
+    Supports PDF, PNG, SVG, and HTML output formats.
+    Uses pymsaviz for PDF/PNG/SVG when available, falls back to HTML.
+    """
+    try:
+        # Get input - either from file or result directory
+        result_dir = request.form.get('result_dir')
+        output_format = request.form.get('format', 'pdf')
+        color_mode = request.form.get('color_mode', 'conservation')
+        
+        if 'file' in request.files and request.files['file'].filename:
+            file = request.files['file']
+            input_file = save_uploaded_file(file)
+        elif result_dir:
+            # Look for alignment file in result directory
+            alignment_file = os.path.join(result_dir, 'alignment.fasta')
+            if not os.path.exists(alignment_file):
+                return jsonify({'success': False, 'error': 'Alignment file not found'})
+            input_file = alignment_file
+        else:
+            return jsonify({'success': False, 'error': 'No alignment file provided'})
+        
+        # Parse alignment
+        sequences = parse_alignment(input_file)
+        if not sequences:
+            return jsonify({'success': False, 'error': 'No sequences found in alignment file'})
+        
+        # Generate visualization
+        base_name = os.path.splitext(os.path.basename(input_file))[0]
+        output_dir = os.path.dirname(input_file) or config.RESULTS_DIR
+        
+        success, output_file, message = export_alignment_visualization(
+            sequences, output_dir, f"{base_name}_viz", 
+            output_format=output_format, color_mode=color_mode
+        )
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'output_file': output_file,
+                'format': output_format,
+                'message': message,
+                'pymsaviz_used': check_pymsaviz_available() and output_format != 'html'
+            })
+        else:
+            return jsonify({'success': False, 'error': message})
+            
+    except Exception as e:
+        logger.error(f"Visualization error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
