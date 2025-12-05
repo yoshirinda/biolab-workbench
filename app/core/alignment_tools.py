@@ -5,12 +5,19 @@ import os
 import subprocess
 import shlex
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 import config
 from app.utils.logger import get_tools_logger
 from app.utils.file_utils import create_result_dir, save_params
 
 logger = get_tools_logger()
+
+# Cache for tool availability checks
+_TOOLS_CACHE = {
+    'timestamp': None,
+    'data': None,
+    'ttl_hours': 24  # Cache for 24 hours
+}
 
 
 def sanitize_path(path):
@@ -50,7 +57,19 @@ def check_available_tools():
     """
     Check which alignment tools are available.
     Returns dict of tool -> available.
+    Results are cached for 24 hours to avoid repeated subprocess calls.
     """
+    global _TOOLS_CACHE
+    
+    # Check if cache is still valid
+    if _TOOLS_CACHE['data'] is not None and _TOOLS_CACHE['timestamp'] is not None:
+        elapsed = datetime.now() - _TOOLS_CACHE['timestamp']
+        if elapsed < timedelta(hours=_TOOLS_CACHE['ttl_hours']):
+            logger.info("Using cached tool availability data")
+            return _TOOLS_CACHE['data']
+    
+    # Cache miss or expired - perform checks
+    logger.info("Checking available alignment tools...")
     tools = {
         'mafft': False,
         'clustalw': False,
@@ -61,9 +80,15 @@ def check_available_tools():
         try:
             success, _, _ = run_conda_command(f'{tool} --version')
             tools[tool] = success
-        except Exception:
+            logger.info(f"Tool {tool}: {'available' if success else 'not available'}")
+        except Exception as e:
+            logger.error(f"Error checking tool {tool}: {str(e)}")
             pass
 
+    # Update cache
+    _TOOLS_CACHE['data'] = tools
+    _TOOLS_CACHE['timestamp'] = datetime.now()
+    
     return tools
 
 
