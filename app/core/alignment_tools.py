@@ -280,8 +280,8 @@ def calculate_conservation(sequences):
 
 # Display configuration constants
 MAX_SEQ_ID_DISPLAY_LENGTH = 25  # Maximum length for sequence ID display
-BLOCK_SIZE = 60  # Number of residues per alignment block
-SEQ_NAME_TRUNCATE_LENGTH = 22  # Maximum length for sequence name in exported HTML
+BLOCK_SIZE = 50  # Number of residues per alignment block (for better visibility)
+SEQ_NAME_TRUNCATE_LENGTH = 18  # Maximum length for sequence name in exported HTML
 
 # Amino acid color scheme for visualization
 # Based on residue chemical properties as specified in original seq_aligner.py
@@ -599,32 +599,32 @@ def export_alignment_html(sequences, output_file, conservation=None, color_mode=
         }}
         .seq-name {{
             display: inline-block;
-            width: 200px;
-            min-width: 200px;
-            max-width: 200px;
-            padding-right: 15px;
+            width: 150px;
+            min-width: 150px;
+            max-width: 150px;
+            padding-right: 10px;
             text-align: right;
             font-weight: bold;
             color: #333;
             overflow: hidden;
             text-overflow: ellipsis;
-            border-right: 2px solid #ccc;
-            margin-right: 10px;
-            word-wrap: break-word;
-            word-break: break-all;
+            border-right: 2px solid #999;
+            margin-right: 8px;
+            font-size: 11px;
         }}
         .seq-data {{
             display: flex;
         }}
         .base {{
             display: inline-block;
-            width: 14px;
-            height: 18px;
+            width: 15px;
+            height: 20px;
             text-align: center;
-            line-height: 18px;
-            margin: 0;
-            font-size: 12px;
-            font-weight: normal;
+            line-height: 20px;
+            margin: 1px;
+            font-size: 11px;
+            font-weight: bold;
+            border-radius: 2px;
         }}
         .conserved {{
             background: #c00000 !important;

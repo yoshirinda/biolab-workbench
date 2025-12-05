@@ -94,9 +94,67 @@ def run():
         return jsonify({'success': False, 'error': str(e)})
 
 
-@alignment_bp.route('/download/<path:filepath>')
-def download(filepath):
+@alignment_bp.route('/download')
+def download():
     """Download a result file."""
+    try:
+        from urllib.parse import unquote
+        
+        # Get filepath from query parameter instead of path
+        filepath = request.args.get('path', '')
+        if not filepath:
+            logger.warning("Download attempt without path parameter")
+            return jsonify({'success': False, 'error': 'No file path provided'}), 400
+        
+        # URL decode the filepath
+        filepath = unquote(filepath)
+        
+        # Handle both absolute and relative paths
+        if not os.path.isabs(filepath):
+            abs_path = os.path.join(config.RESULTS_DIR, filepath)
+        else:
+            abs_path = filepath
+        
+        abs_path = os.path.abspath(abs_path)
+        results_dir = os.path.abspath(config.RESULTS_DIR)
+        uploads_dir = os.path.abspath(config.UPLOADS_DIR)
+        
+        # Security: Ensure the file is within allowed directories
+        if not (abs_path.startswith(results_dir) or abs_path.startswith(uploads_dir)):
+            logger.warning(f"Attempted path traversal: {filepath}")
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        if os.path.exists(abs_path):
+            # Determine MIME type based on file extension
+            filename = os.path.basename(abs_path)
+            mimetype = None
+            if filename.endswith('.fasta') or filename.endswith('.fa') or filename.endswith('.aln'):
+                mimetype = 'text/plain'
+            elif filename.endswith('.txt') or filename.endswith('.log'):
+                mimetype = 'text/plain'
+            elif filename.endswith('.json'):
+                mimetype = 'application/json'
+            elif filename.endswith('.html'):
+                mimetype = 'text/html'
+            
+            logger.info(f"Downloading file: {abs_path}")
+            return send_file(
+                abs_path, 
+                as_attachment=True,
+                download_name=filename,
+                mimetype=mimetype
+            )
+        else:
+            logger.error(f"File not found: {abs_path}")
+            return jsonify({'success': False, 'error': 'File not found'}), 404
+    except Exception as e:
+        logger.error(f"Download error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@alignment_bp.route('/download/<path:filepath>')
+def download_legacy(filepath):
+    """Legacy download route - redirects to query parameter version."""
     try:
         from urllib.parse import unquote
         

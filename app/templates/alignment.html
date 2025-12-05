@@ -282,7 +282,7 @@
     // Use Flask url_for to generate base URLs for JavaScript
     const ALIGNMENT_URLS = {
         run: '{{ url_for("alignment.run") }}',
-        downloadBase: '{{ url_for("alignment.download", filepath="") }}'
+        download: '{{ url_for("alignment.download") }}'
     };
 
     document.querySelectorAll('input[name="inputType"]').forEach(radio => {
@@ -362,32 +362,37 @@
 
             if (data.success) {
                 document.getElementById('alignmentViewer').classList.remove('d-none');
-                document.getElementById('alignmentViewer').innerHTML = data.alignment_html;
+                // Display alignment HTML
+                displayAlignmentViewer(data);
                 document.getElementById('alignInfo').textContent = `${data.sequence_count} sequences, ${data.alignment_length} positions`;
 
                 if (data.output_file) {
                     // FASTA download button
                     const fastaBtn = document.getElementById('downloadFastaBtn');
-                    fastaBtn.href = ALIGNMENT_URLS.downloadBase + encodeURIComponent(data.output_file);
-                    fastaBtn.download = `alignment.fasta`;
+                    const fastaUrl = ALIGNMENT_URLS.download + '?path=' + encodeURIComponent(data.output_file);
+                    fastaBtn.href = fastaUrl;
+                    fastaBtn.download = 'alignment.fasta';
                     fastaBtn.classList.remove('d-none');
                     
                     // HTML download button
                     const htmlBtn = document.getElementById('downloadHtmlBtn');
                     if (data.html_file) {
-                        htmlBtn.href = ALIGNMENT_URLS.downloadBase + encodeURIComponent(data.html_file);
-                        htmlBtn.download = `alignment_visualization.html`;
+                        const htmlUrl = ALIGNMENT_URLS.download + '?path=' + encodeURIComponent(data.html_file);
+                        htmlBtn.href = htmlUrl;
+                        htmlBtn.download = 'alignment_visualization.html';
                         htmlBtn.classList.remove('d-none');
                     }
                     
                     // PDF export button (opens HTML in print dialog)
                     const pdfBtn = document.getElementById('downloadPdfBtn');
-                    pdfBtn.onclick = function(e) {
-                        e.preventDefault();
-                        const htmlWindow = window.open(ALIGNMENT_URLS.downloadBase + encodeURIComponent(data.html_file), '_blank');
-                        setTimeout(() => htmlWindow.print(), 500);
-                    };
-                    pdfBtn.classList.remove('d-none');
+                    if (data.html_file) {
+                        const pdfUrl = ALIGNMENT_URLS.download + '?path=' + encodeURIComponent(data.html_file);
+                        pdfBtn.onclick = function(e) {
+                            e.preventDefault();
+                            window.open(pdfUrl, '_blank');
+                        };
+                        pdfBtn.classList.remove('d-none');
+                    }
                 }
 
                 // Show alignment statistics
@@ -404,6 +409,13 @@
             showAlert('danger', 'Alignment failed: ' + error.message);
         }
     });
+
+    function displayAlignmentViewer(data) {
+        const viewer = document.getElementById('alignmentViewer');
+        if (data.alignment_html) {
+            viewer.innerHTML = data.alignment_html;
+        }
+    }
 
     function displayAlignmentStats(data) {
         if (data.sequence_count && data.alignment_length) {
