@@ -481,6 +481,7 @@
         const seq = sequences[idx];
         const viewer = document.getElementById('sequenceViewer');
         viewer.innerHTML = renderSequenceWithFeatures(seq);
+        setupSequenceSelection();
 
         // Update annotation field
         document.getElementById('annotationInput').value = seq.annotation || '';
@@ -527,6 +528,16 @@
 
         renderFeatureTable(seq);
         document.getElementById('sequenceViewer').innerHTML = renderSequenceWithFeatures(seq);
+        setupSequenceSelection();
+        
+        // Clear selection and form
+        selectionStart = null;
+        selectionEnd = null;
+        document.getElementById('featureStart').value = '';
+        document.getElementById('featureEnd').value = '';
+        document.getElementById('featureType').value = '';
+        document.getElementById('featureLabel').value = '';
+        
         showAlert('success', 'Feature added');
     }
 
@@ -537,6 +548,9 @@
         seq.features.splice(idx, 1);
         renderFeatureTable(seq);
         document.getElementById('sequenceViewer').innerHTML = renderSequenceWithFeatures(seq);
+        setupSequenceSelection();
+        selectionStart = null;
+        selectionEnd = null;
     }
 
     function renderFeatureTable(seq) {
@@ -557,6 +571,9 @@
         `).join('');
     }
 
+    let selectionStart = null;
+    let selectionEnd = null;
+
     function renderSequenceWithFeatures(seq) {
         const s = seq.sequence || '';
         const features = (seq.features || []).slice().sort((a, b) => a.start - b.start);
@@ -571,6 +588,10 @@
 
         const lineLen = 60;
         let html = `<div class="mb-2"><strong>&gt;${seq.id}</strong> ${seq.description || ''}</div>`;
+        html += `<div class="alert alert-sm alert-info" role="alert" style="font-size: 0.85rem; padding: 0.3rem 0.6rem; margin-bottom: 0.5rem;">
+            <small>💡 Click and drag to select region for feature marking</small>
+        </div>`;
+        
         for (let i = 0; i < s.length; i++) {
             if (i % lineLen === 0) {
                 const idx = (i + 1).toString().padStart(6, ' ');
@@ -578,17 +599,70 @@
             }
             const feat = coverage[i];
             const base = s[i];
+            const basePos = i + 1;
+            const isSelected = selectionStart !== null && selectionEnd !== null && 
+                              basePos >= Math.min(selectionStart, selectionEnd) && 
+                              basePos <= Math.max(selectionStart, selectionEnd);
+            
             if (feat) {
                 const title = `${feat.type || ''} ${feat.label || ''} (${feat.start}-${feat.end}${feat.strand ? ' ' + feat.strand : ''})`;
-                html += `<span class="seq-base" style="background:${feat.color || '#ffcc66'}" title="${title}">${base}</span>`;
+                const bgColor = isSelected ? 'rgba(255, 200, 100, 0.8)' : feat.color || '#ffcc66';
+                html += `<span class="seq-base" data-pos="${basePos}" style="background:${bgColor}; cursor: default;" title="${title}">${base}</span>`;
             } else {
-                html += `<span class="seq-base">${base}</span>`;
+                const bgColor = isSelected ? 'rgba(144, 202, 249, 0.5)' : 'transparent';
+                html += `<span class="seq-base" data-pos="${basePos}" style="background:${bgColor}; cursor: default;" title="Position ${basePos}">${base}</span>`;
             }
             if ((i + 1) % lineLen === 0 || i === s.length - 1) {
                 html += '</div>';
             }
         }
         return html;
+    }
+
+    function setupSequenceSelection() {
+        const viewer = document.getElementById('sequenceViewer');
+        if (!viewer) return;
+
+        let isSelecting = false;
+        let tempStart = null;
+
+        viewer.addEventListener('mousedown', (e) => {
+            if (e.target.classList.contains('seq-base')) {
+                isSelecting = true;
+                tempStart = parseInt(e.target.dataset.pos, 10);
+                selectionStart = tempStart;
+                selectionEnd = tempStart;
+                updateSelectionDisplay();
+            }
+        });
+
+        viewer.addEventListener('mousemove', (e) => {
+            if (isSelecting && e.target.classList.contains('seq-base')) {
+                selectionEnd = parseInt(e.target.dataset.pos, 10);
+                updateSelectionDisplay();
+            }
+        });
+
+        viewer.addEventListener('mouseup', () => {
+            isSelecting = false;
+            if (selectionStart !== null && selectionEnd !== null) {
+                const start = Math.min(selectionStart, selectionEnd);
+                const end = Math.max(selectionStart, selectionEnd);
+                document.getElementById('featureStart').value = start;
+                document.getElementById('featureEnd').value = end;
+                showAlert('info', `Selected region: ${start}-${end}`);
+            }
+        });
+
+        viewer.addEventListener('mouseleave', () => {
+            isSelecting = false;
+        });
+    }
+
+    function updateSelectionDisplay() {
+        if (selectedSequence === null) return;
+        const seq = sequences[selectedSequence];
+        document.getElementById('sequenceViewer').innerHTML = renderSequenceWithFeatures(seq);
     }
 
     function deleteSequence(idx) {
