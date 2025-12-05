@@ -336,15 +336,15 @@
     });
 
     function displayAlignmentViewer(data) {
-        // Display HTML using iframe instead of direct insertion
+        // Prefer the exported HTML file (styled output) to display in iframe
         const iframe = document.getElementById('alignmentIframe');
-        if (data.alignment_html) {
-            // Use srcdoc to embed HTML directly in iframe
-            iframe.srcdoc = data.alignment_html;
-        } else if (data.html_file) {
-            // Load from HTML file if available
+        if (data.html_file) {
             const htmlUrl = ALIGNMENT_URLS.download + '?path=' + encodeURIComponent(data.html_file);
+            iframe.removeAttribute('srcdoc');
             iframe.src = htmlUrl;
+        } else if (data.alignment_html) {
+            // Fallback: inline HTML string
+            iframe.srcdoc = data.alignment_html;
         }
     }
 
