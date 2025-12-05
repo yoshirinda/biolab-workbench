@@ -249,20 +249,14 @@
 
         // Add tool-specific parameters
         if (tool === 'mafft') {
-            formData.append('maxiterate', document.getElementById('maxiterate').value);
-            formData.append('auto', document.getElementById('autoMode').checked);
             formData.append('algorithm', document.getElementById('mafftAlgorithm').value);
-            formData.append('gapopen', document.getElementById('gapOpenPenalty').value);
-            formData.append('gapextend', document.getElementById('gapExtendPenalty').value);
+            if (document.getElementById('autoMode').checked) {
+                formData.append('auto', '1');
+            }
         } else if (tool === 'clustalw') {
             formData.append('matrix', document.getElementById('clustalwMatrix').value);
-            formData.append('gapopen', document.getElementById('clustalwGapOpen').value);
-            formData.append('gapextend', document.getElementById('clustalwGapExt').value);
-            formData.append('output_format', document.getElementById('clustalwOutput').value);
         } else if (tool === 'muscle') {
-            formData.append('maxiters', document.getElementById('muscleMaxIters').value);
-            formData.append('diags', document.getElementById('muscleDiags').checked);
-            formData.append('quiet', document.getElementById('muscleQuiet').checked);
+            // MUSCLE uses defaults; no additional parameters required
         }
 
         document.getElementById('loadingSpinner').classList.remove('d-none');

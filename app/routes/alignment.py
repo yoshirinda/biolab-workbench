@@ -19,7 +19,8 @@ logger = get_app_logger()
 @alignment_bp.route('/')
 def alignment_page():
     """Render the alignment page."""
-    tools = check_available_tools()
+    force_refresh = request.args.get('refresh') == '1'
+    tools = check_available_tools(force=force_refresh)
     return render_template('alignment.html', available_tools=tools)
 
 
@@ -27,7 +28,8 @@ def alignment_page():
 def get_tools():
     """Get list of available alignment tools."""
     try:
-        tools = check_available_tools()
+        force_refresh = request.args.get('refresh') == '1'
+        tools = check_available_tools(force=force_refresh)
         return jsonify({'success': True, 'tools': tools})
     except Exception as e:
         logger.error(f"Tool check error: {str(e)}")
@@ -62,6 +64,10 @@ def run():
             options['maxiterate'] = int(request.form.get('maxiterate'))
         if request.form.get('auto'):
             options['auto'] = True
+        if request.form.get('algorithm'):
+            options['algorithm'] = request.form.get('algorithm')
+        if request.form.get('matrix'):
+            options['matrix'] = request.form.get('matrix')
 
         success, result_dir, output_file, command = run_alignment(input_file, tool, options)
 

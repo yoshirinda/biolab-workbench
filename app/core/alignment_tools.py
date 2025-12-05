@@ -16,7 +16,8 @@ logger = get_tools_logger()
 _TOOLS_CACHE = {
     'timestamp': None,
     'data': None,
-    'ttl_hours': 24  # Cache for 24 hours
+    # Shorter TTL to avoid stale availability info when tools are installed later
+    'ttl_hours': 1  # Cache for 1 hour
 }
 
 
@@ -53,7 +54,7 @@ def run_conda_command(command, timeout=3600):
         return False, '', str(e)
 
 
-def check_available_tools():
+def check_available_tools(force: bool = False):
     """
     Check which alignment tools are available.
     Returns dict of tool -> available.
@@ -62,7 +63,7 @@ def check_available_tools():
     global _TOOLS_CACHE
     
     # Check if cache is still valid
-    if _TOOLS_CACHE['data'] is not None and _TOOLS_CACHE['timestamp'] is not None:
+    if not force and _TOOLS_CACHE['data'] is not None and _TOOLS_CACHE['timestamp'] is not None:
         elapsed = datetime.now() - _TOOLS_CACHE['timestamp']
         if elapsed < timedelta(hours=_TOOLS_CACHE['ttl_hours']):
             logger.info("Using cached tool availability data")
@@ -120,7 +121,16 @@ def run_mafft(input_file, output_file, options=None):
             cmd_opts.append(f"--maxiterate {maxiterate}")
         except (ValueError, TypeError):
             pass
-    if options.get('auto'):
+    algorithm = options.get('algorithm')
+    if algorithm == 'linsi':
+        cmd_opts.append('--linsi')
+    elif algorithm == 'ginsi':
+        cmd_opts.append('--ginsi')
+    elif options.get('auto'):
+        # Keep auto as a fallback when no explicit strategy was chosen
+        cmd_opts.append('--auto')
+
+    if options.get('auto') and not cmd_opts:
         cmd_opts.append('--auto')
 
     opts_str = ' '.join(cmd_opts)
@@ -152,7 +162,9 @@ def run_clustalw(input_file, output_file, options=None):
     except ValueError as e:
         return False, str(e), None
 
-    command = f'clustalw -INFILE={shlex.quote(input_file)} -OUTFILE={shlex.quote(output_file)} -OUTPUT=FASTA'
+    matrix = options.get('matrix')
+    matrix_opt = f" -MATRIX={shlex.quote(matrix)}" if matrix else ''
+    command = f'clustalw -INFILE={shlex.quote(input_file)} -OUTFILE={shlex.quote(output_file)} -OUTPUT=FASTA{matrix_opt}'
 
     # Full command for display
     full_command = f"conda run -n {config.CONDA_ENV} {command}"
