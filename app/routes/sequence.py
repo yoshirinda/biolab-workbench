@@ -2,6 +2,9 @@
 Sequence management routes for BioLab Workbench.
 """
 import os
+import json
+from uuid import uuid4
+from datetime import datetime
 from flask import Blueprint, render_template, request, jsonify, session
 from app.core.sequence_utils import (
     parse_fasta, format_fasta, detect_sequence_type,
@@ -26,6 +29,24 @@ logger = get_app_logger()
 
 # Session key for storing source FASTA path
 SOURCE_FASTA_KEY = 'source_fasta_path'
+SOURCE_FASTA_ID_KEY = 'source_fasta_id'
+SOURCE_FASTA_LIBRARY_FILE = os.path.join(config.UPLOADS_DIR, 'source_fasta_library.json')
+
+
+def _load_source_fasta_library():
+    if os.path.exists(SOURCE_FASTA_LIBRARY_FILE):
+        try:
+            with open(SOURCE_FASTA_LIBRARY_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+
+def _save_source_fasta_library(entries):
+    os.makedirs(os.path.dirname(SOURCE_FASTA_LIBRARY_FILE), exist_ok=True)
+    with open(SOURCE_FASTA_LIBRARY_FILE, 'w', encoding='utf-8') as f:
+        json.dump(entries, f, ensure_ascii=False, indent=2)
 
 
 @sequence_bp.route('/')
@@ -543,7 +564,9 @@ def set_source_fasta():
         if file.filename == '':
             return jsonify({'success': False, 'error': 'No file selected'})
 
-        # Save the uploaded file
+        label = request.form.get('label', '').strip() or file.filename
+
+        # Save the uploaded file (file_utils handles safe path + unique naming)
         filepath = save_uploaded_file(file)
         
         # Validate it's a valid FASTA file
@@ -553,8 +576,23 @@ def set_source_fasta():
         except Exception as e:
             return jsonify({'success': False, 'error': f'Invalid FASTA file: {e}'})
         
-        # Store in session
+        # Persist in library
+        entries = _load_source_fasta_library()
+        entry_id = str(uuid4())
+        entry = {
+            'id': entry_id,
+            'label': label,
+            'filename': file.filename,
+            'filepath': filepath,
+            'sequence_count': seq_count,
+            'uploaded_at': datetime.utcnow().isoformat() + 'Z'
+        }
+        entries.insert(0, entry)
+        _save_source_fasta_library(entries)
+
+        # Store current selection in session
         session[SOURCE_FASTA_KEY] = filepath
+        session[SOURCE_FASTA_ID_KEY] = entry_id
         
         logger.info(f"Source FASTA set: {filepath} ({seq_count} sequences)")
         return jsonify({
@@ -562,6 +600,8 @@ def set_source_fasta():
             'filepath': filepath,
             'filename': file.filename,
             'sequence_count': seq_count,
+            'entry': entry,
+            'library': entries,
             'message': f'Source FASTA set: {seq_count} sequences loaded'
         })
 
@@ -575,13 +615,18 @@ def get_source_fasta():
     """Get the current source FASTA file information."""
     try:
         filepath = session.get(SOURCE_FASTA_KEY)
-        
+        entry_id = session.get(SOURCE_FASTA_ID_KEY)
+        entries = _load_source_fasta_library()
+        entry = next((e for e in entries if e.get('id') == entry_id), None)
+
         if not filepath or not os.path.exists(filepath):
             return jsonify({
                 'success': True,
                 'has_source': False,
                 'filepath': None,
-                'filename': None
+                'filename': None,
+                'entry_id': None,
+                'library': entries
             })
         
         filename = os.path.basename(filepath)
@@ -589,7 +634,10 @@ def get_source_fasta():
             'success': True,
             'has_source': True,
             'filepath': filepath,
-            'filename': filename
+            'filename': filename,
+            'entry_id': entry_id,
+            'entry': entry,
+            'library': entries
         })
 
     except Exception as e:
@@ -602,9 +650,48 @@ def clear_source_fasta():
     """Clear the source FASTA from session."""
     try:
         session.pop(SOURCE_FASTA_KEY, None)
+        session.pop(SOURCE_FASTA_ID_KEY, None)
         return jsonify({'success': True, 'message': 'Source FASTA cleared'})
     except Exception as e:
         logger.error(f"Clear source FASTA error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@sequence_bp.route('/source-fasta-library', methods=['GET'])
+def source_fasta_library():
+    """List stored source FASTA entries."""
+    try:
+        entries = _load_source_fasta_library()
+        return jsonify({'success': True, 'library': entries})
+    except Exception as e:
+        logger.error(f"Source FASTA library error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@sequence_bp.route('/use-source-fasta', methods=['POST'])
+def use_source_fasta():
+    """Select an existing source FASTA from the library."""
+    try:
+        data = request.get_json()
+        entry_id = data.get('id')
+        if not entry_id:
+            return jsonify({'success': False, 'error': 'No source FASTA id provided'})
+
+        entries = _load_source_fasta_library()
+        entry = next((e for e in entries if e.get('id') == entry_id), None)
+        if not entry:
+            return jsonify({'success': False, 'error': 'Source FASTA not found'})
+
+        filepath = entry.get('filepath')
+        if not filepath or not os.path.exists(filepath):
+            return jsonify({'success': False, 'error': 'Source FASTA file is missing on disk. Please re-upload.'})
+
+        session[SOURCE_FASTA_KEY] = filepath
+        session[SOURCE_FASTA_ID_KEY] = entry_id
+
+        return jsonify({'success': True, 'entry': entry})
+    except Exception as e:
+        logger.error(f"Use source FASTA error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 
@@ -643,7 +730,16 @@ def extract_by_ids():
     try:
         data = request.get_json()
         gene_ids = data.get('gene_ids', [])
+        source_fasta_id = data.get('source_fasta_id')
         source_fasta = data.get('source_fasta') or session.get(SOURCE_FASTA_KEY)
+        entries = None
+        if source_fasta_id:
+            entries = _load_source_fasta_library()
+            entry = next((e for e in entries if e.get('id') == source_fasta_id), None)
+            if entry:
+                source_fasta = entry.get('filepath')
+                session[SOURCE_FASTA_KEY] = source_fasta
+                session[SOURCE_FASTA_ID_KEY] = source_fasta_id
         
         if not gene_ids:
             return jsonify({'success': False, 'error': 'No gene IDs provided'})
