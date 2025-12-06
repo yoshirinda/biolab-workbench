@@ -63,46 +63,25 @@
                             <label class="form-check-label" for="showBootstrap">Show Bootstrap Values</label>
                         </div>
 
-                        <div class="mb-3">
-                            <label for="highlightGenes" class="form-label">Highlight Genes:</label>
-                            <textarea class="form-control" id="highlightGenes" rows="2"
-                                placeholder="Gene1, Gene2, Gene3..."></textarea>
-                            <small class="form-text text-muted">Comma-separated list of genes to highlight</small>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="fixedBranch">
+                            <label class="form-check-label" for="fixedBranch">Fixed Branch Length</label>
                         </div>
 
                         <hr>
                         <h6><i class="bi bi-diagram-2"></i> Clade Extraction</h6>
                         <div class="mb-3">
-                            <label for="targetGene" class="form-label">Target Gene:</label>
-                            <input type="text" class="form-control" id="targetGene" placeholder="Gene to center clade on" list="geneList">
+                            <label for="targetGene" class="form-label">Target Gene: <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="targetGene" placeholder="Enter gene name" list="geneList" required>
+                            <datalist id="geneList"></datalist>
                         </div>
                         <div class="mb-3">
                             <label for="levelsUp" class="form-label">Levels Up:</label>
-                            <input type="number" class="form-control" id="levelsUp" value="2" min="1" max="10">
+                            <input type="number" class="form-control" id="levelsUp" value="5" min="1" max="10">
                             <small class="form-text text-muted">向上追溯祖先层数</small>
                         </div>
-                        <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="fixedBranch">
-                            <label class="form-check-label" for="fixedBranch">Fixed Branch Length</label>
-                        </div>
-                        <button type="button" class="btn btn-outline-secondary w-100 mb-3" id="extractCladeBtn">
-                            <i class="bi bi-scissors"></i> Extract Clade
-                        </button>
-                        <hr>
 
-                        <div class="mb-3">
-                            <label for="centerGene" class="form-label">Center Gene (optional):</label>
-                            <input type="text" class="form-control" id="centerGene" placeholder="Gene ID to center view" list="geneList">
-                            <small class="form-text text-muted">搜索基因名称（仅限叶子节点），向上扩大半径</small>
-                        </div>
-                        <datalist id="geneList"></datalist>
-                        <div class="mb-3">
-                            <label for="radiusEdges" class="form-label">Radius (edges, 默认3):</label>
-                            <input type="number" class="form-control" id="radiusEdges" value="3" min="1" max="20">
-                            <small class="form-text text-muted">如果提示"No leaves within radius"，请增大此值</small>
-                        </div>
-
-                        <h6 class="mt-3">Species Colors:</h6>
+                        <h6 class="mt-3">Species to Highlight:</h6>
                         <small class="text-muted d-block mb-2">
                             <i class="bi bi-check-square"></i> 勾选物种以高亮显示其所有基因
                         </small>
@@ -110,8 +89,8 @@
                             <p class="text-muted">Load a tree to see species</p>
                         </div>
 
-                        <button type="submit" class="btn btn-secondary w-100" id="visualizeBtn">
-                            <i class="bi bi-eye"></i> Visualize Tree
+                        <button type="button" class="btn btn-secondary w-100" id="extractCladeBtn">
+                            <i class="bi bi-scissors"></i> Extract Clade
                         </button>
                     </form>
                 </div>
@@ -258,79 +237,6 @@
             }
         });
     }
-
-    document.getElementById('visualizeForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-
-        // Collect species colors
-        const colorInputs = document.querySelectorAll('#speciesColorList input[type="color"]');
-        const coloredSpecies = {};
-        colorInputs.forEach(input => {
-            coloredSpecies[input.dataset.species] = input.value;
-        });
-
-        // Collect highlighted species (checked checkboxes)
-        const highlightChecks = document.querySelectorAll('#speciesColorList input[type="checkbox"]:checked');
-        const highlightSpecies = Array.from(highlightChecks).map(cb => cb.dataset.species);
-
-        const data = {
-            tree_file: document.getElementById('treePath').value,
-            layout: document.getElementById('layout').value,
-            font_size: document.getElementById('fontSize').value,
-            v_scale: document.getElementById('vScale').value,
-            show_bootstrap: document.getElementById('showBootstrap').checked,
-            highlighted_genes: document.getElementById('highlightGenes').value,
-            colored_species: coloredSpecies,
-            highlight_species: highlightSpecies,
-            center_gene: document.getElementById('centerGene').value,
-            radius_edges: document.getElementById('radiusEdges').value
-        };
-
-        document.getElementById('loadingSpinner').classList.remove('d-none');
-        document.getElementById('treeContainer').innerHTML = '';
-        document.getElementById('visualizeBtn').disabled = true;
-
-        try {
-            const response = await fetch(TREE_URLS.visualize, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(data)
-            });
-            const result = await response.json();
-
-            document.getElementById('loadingSpinner').classList.add('d-none');
-            document.getElementById('visualizeBtn').disabled = false;
-
-            if (result.success) {
-                // Display SVG with zoom controls
-                const container = document.getElementById('treeContainer');
-                container.innerHTML = `
-                    <div class="mb-2 text-center">
-                        <button class="btn btn-sm btn-outline-secondary" onclick="zoomTree(0.8)"><i class="bi bi-zoom-out"></i></button>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="zoomTree(1.0)">100%</button>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="zoomTree(1.2)"><i class="bi bi-zoom-in"></i></button>
-                        <span class="ms-2 text-muted" id="zoomLevel">100%</span>
-                    </div>
-                    <div style="overflow: auto; max-height: 800px; border: 1px solid #ddd; padding: 10px;">
-                        <img id="treeImage" src="${TREE_URLS.viewBase + result.output_file}" style="display: block; margin: 0 auto; max-width: none; width: 100%;">
-                    </div>
-                `;
-
-                // Show download button
-                const btn = document.getElementById('downloadSvgBtn');
-                btn.href = TREE_URLS.downloadBase + result.output_file;
-                btn.classList.remove('d-none');
-
-                showAlert('success', 'Tree visualization completed');
-            } else {
-                document.getElementById('treeContainer').innerHTML = `<div class="alert alert-danger">${result.error}</div>`;
-            }
-        } catch (error) {
-            document.getElementById('loadingSpinner').classList.add('d-none');
-            document.getElementById('visualizeBtn').disabled = false;
-                showAlert('danger', 'Visualization failed: ' + error.message);
-        }
-    });
 
     // Clade extraction handler
     document.getElementById('extractCladeBtn').addEventListener('click', async function() {
