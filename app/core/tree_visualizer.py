@@ -105,7 +105,8 @@ def get_species_from_tree(tree_string):
 def visualize_tree(tree_file, output_file=None, layout='rectangular',
                    colored_species=None, highlighted_genes=None,
                    show_bootstrap=True, font_size=10, v_scale=1.0,
-                   center_gene=None, radius_edges=3):
+                   center_gene=None, radius_edges=3,
+                   max_width=1200, max_height=800):
     """
     Visualize a phylogenetic tree.
 
@@ -118,6 +119,8 @@ def visualize_tree(tree_file, output_file=None, layout='rectangular',
         show_bootstrap: Whether to show bootstrap values
         font_size: Font size for labels
         v_scale: Vertical scale factor
+        max_width: Maximum width of output SVG in pixels
+        max_height: Maximum height of output SVG in pixels
 
     Returns:
         (success, result_dir, output_file, message)
@@ -236,8 +239,14 @@ def visualize_tree(tree_file, output_file=None, layout='rectangular',
                     support_face.fgcolor = '#666666'
                     node.add_face(support_face, column=0, position='branch-top')
 
-        # Render tree
-        tree.render(output_file, tree_style=ts, w=1200, units='px')
+        # Render tree with size constraints
+        try:
+            max_w = int(max_width) if max_width else 1200
+            max_h = int(max_height) if max_height else 800
+        except (ValueError, TypeError):
+            max_w, max_h = 1200, 800
+        
+        tree.render(output_file, tree_style=ts, w=max_w, h=max_h, units='px')
 
         logger.info(f"Tree visualization saved to {output_file}")
         # Return relative path from results directory for proper web serving

@@ -92,6 +92,9 @@ def visualize():
             else:
                 highlighted_genes = [g.strip() for g in data.get('highlighted_genes').split(',') if g.strip()]
 
+        max_width = int(data.get('max_width', 1200))
+        max_height = int(data.get('max_height', 800))
+
         success, result_dir, output_file, message = visualize_tree(
             tree_file=tree_file,
             layout=layout,
@@ -101,7 +104,9 @@ def visualize():
             font_size=font_size,
             v_scale=v_scale,
             center_gene=center_gene,
-            radius_edges=radius_edges
+            radius_edges=radius_edges,
+            max_width=max_width,
+            max_height=max_height
         )
 
         if success:
