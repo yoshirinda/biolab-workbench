@@ -187,17 +187,22 @@
                 <form id="blastForm">
                     <div class="mb-3">
                         <label class="form-label">BLAST数据库:</label>
-                        <input type="file" class="form-control" id="blastDbFile" accept=".fasta,.fa,.faa">
-                        <small class="text-muted">或使用 HMM 搜索结果</small>
+                        <select class="form-select" id="blastDbSelect">
+                            <option value="">选择数据库...</option>
+                            {% for db in blast_databases %}
+                            <option value="{{ db.path }}">{{ db.name }} ({{ db.type }})</option>
+                            {% endfor %}
+                        </select>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">数据库基名路径:</label>
-                        <input type="text" class="form-control" id="blastDbPath" placeholder="/path/to/db/base">
-                        <small class="text-muted">例如 /data/db/mydb (无需扩展名)</small>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">查询序列路径 (可选):</label>
-                        <input type="text" class="form-control" id="blastQueryPath" placeholder="默认使用 HMM 输出或上传文件">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">上传查询序列:</label>
+                            <input type="file" class="form-control" id="blastQueryFile" accept=".fasta,.fa,.faa">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">或输入路径:</label>
+                            <input type="text" class="form-control" id="blastQueryPath" placeholder="默认使用上一步输出">
+                        </div>
                     </div>
                     
                     <div class="row">
@@ -260,8 +265,13 @@
                         </div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">BLAST 数据库路径:</label>
-                        <input type="text" class="form-control" id="blastFilterDbPath" placeholder="/mnt/e/databases/protein_db">
+                        <label class="form-label">BLAST 数据库:</label>
+                        <select class="form-select" id="blastFilterDbSelect">
+                            <option value="">选择数据库...</option>
+                            {% for db in blast_databases %}
+                            <option value="{{ db.path }}">{{ db.name }} ({{ db.type }})</option>
+                            {% endfor %}
+                        </select>
                     </div>
                     <div class="row">
                         <div class="col-md-4">
@@ -624,15 +634,15 @@
     // Step 2: BLAST
     document.getElementById('blastForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const fd = getInputForStep('blastDbFile', 'blastQueryPath', pipelineData.hmmOutput);
+        const fd = getInputForStep('blastQueryFile', 'blastQueryPath', pipelineData.hmmOutput);
         if (!fd) {
             alert('请提供查询序列文件或路径');
             return;
         }
 
-        const dbPath = document.getElementById('blastDbPath').value.trim();
+        const dbPath = document.getElementById('blastDbSelect').value;
         if (!dbPath) {
-            alert('请填写数据库基名路径');
+            alert('请选择 BLAST 数据库');
             return;
         }
         fd.append('database', dbPath);
@@ -667,9 +677,9 @@
             alert('请选择 Gold Standard List');
             return;
         }
-        const dbPath = document.getElementById('blastFilterDbPath').value.trim();
+        const dbPath = document.getElementById('blastFilterDbSelect').value;
         if (!dbPath) {
-            alert('请填写 BLAST 数据库路径');
+            alert('请选择 BLAST 数据库');
             return;
         }
         

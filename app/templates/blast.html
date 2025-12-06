@@ -86,6 +86,30 @@
                 </div>
             </div>
 
+            <!-- Manage Databases -->
+            <div class="card shadow-sm mt-4">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-database-gear"></i> Manage Databases</h5>
+                    <span class="badge bg-light text-dark">{{ databases|length }} databases</span>
+                </div>
+                <div class="card-body" style="max-height: 200px; overflow-y: auto;">
+                    {% if databases %}
+                    <ul class="list-group list-group-flush">
+                        {% for db in databases %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center py-2">
+                            <span class="text-truncate" style="max-width: 200px;" title="{{ db.path }}">{{ db.name }}</span>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteDatabase('{{ db.path }}', '{{ db.name }}')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="text-muted mb-0">No databases found</p>
+                    {% endif %}
+                </div>
+            </div>
+
             <!-- Create Database -->
             <div class="card shadow-sm mt-4">
                 <div class="card-header bg-secondary text-white">
@@ -253,7 +277,7 @@
 
                 if (data.output_files && data.output_files.main) {
                     const btn = document.getElementById('downloadResultBtn');
-                    btn.href = BLAST_URLS. downloadBase + '?path=' + encodeURIComponent(data.output_files.main);
+                    btn.href = BLAST_URLS.downloadBase + '?path=' + encodeURIComponent(data.output_files.main);
                     btn.classList.remove('d-none');
                 }
 
@@ -342,7 +366,7 @@
 
             if (data.success) {
                 showAlert('success', data.message);
-                window.open(BLAST_URLS.downloadBase +'?path=' + encodeURIComponent(data. output_file), '_blank');
+                window.open(BLAST_URLS.downloadBase + '?path=' + encodeURIComponent(data.output_file), '_blank');
             } else {
                 showAlert('danger', data.error);
             }
@@ -354,5 +378,27 @@
     document.getElementById('selectAllHits').addEventListener('change', function() {
         document.querySelectorAll('.hit-checkbox').forEach(cb => cb.checked = this.checked);
     });
+
+    async function deleteDatabase(dbPath, dbName) {
+        if (!confirm(`确定要删除数据库 "${dbName}" 吗？此操作不可撤销。`)) {
+            return;
+        }
+        try {
+            const response = await fetch('/blast/delete-database', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ db_path: dbPath })
+            });
+            const data = await response.json();
+            if (data.success) {
+                showAlert('success', '数据库已删除');
+                location.reload();
+            } else {
+                showAlert('danger', '删除失败: ' + data.error);
+            }
+        } catch (error) {
+            showAlert('danger', '删除失败: ' + error.message);
+        }
+    }
 </script>
 {% endblock %}
