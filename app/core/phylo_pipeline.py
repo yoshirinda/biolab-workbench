@@ -13,6 +13,7 @@ from datetime import datetime
 import config
 from app.utils.logger import get_tools_logger
 from app.utils.file_utils import create_result_dir, save_params, read_fasta_file, write_fasta_file
+from app.utils.path_utils import windows_to_wsl
 from app.core.sequence_utils import clean_fasta_headers
 
 logger = get_tools_logger()
@@ -29,6 +30,40 @@ def sanitize_path(path):
     if '..' in path:
         raise ValueError(f"Directory traversal not allowed: {path}")
     return path
+
+
+BLAST_DB_EXTENSIONS = ('.pin', '.psq', '.phr', '.nin', '.nsq', '.nhr')
+
+
+def _resolve_blast_db_path(blast_db_path):
+    """Validate and resolve a BLAST database base path, supporting Windows/WSL inputs."""
+    if not blast_db_path or not str(blast_db_path).strip():
+        raise ValueError("BLAST database path is required")
+
+    normalized = windows_to_wsl(str(blast_db_path).strip())
+    normalized = os.path.expanduser(normalized)
+    normalized = os.path.normpath(normalized)
+
+    base, ext = os.path.splitext(normalized)
+    if ext in BLAST_DB_EXTENSIONS:
+        normalized = base
+
+    candidates = []
+    if os.path.isabs(normalized):
+        candidates.append(normalized)
+    else:
+        candidates.append(os.path.abspath(normalized))
+        candidates.append(os.path.abspath(os.path.join(config.DATABASES_DIR, normalized)))
+
+    seen = []
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.append(candidate)
+        if any(os.path.exists(candidate + ext) for ext in BLAST_DB_EXTENSIONS):
+            return candidate
+
+    raise FileNotFoundError(f"BLAST database not found at: {blast_db_path}")
 
 
 def run_conda_command(command, timeout=7200):
@@ -245,72 +280,182 @@ def step2_hmmsearch_multiple(input_file, hmm_files, output_dir, cut_ga=True):
 
 
 def step2_5_blast_filter(input_file, gold_list_file, output_dir,
-                         pident_threshold=30, qcovs_threshold=50):
+                         pident_threshold=30, qcovs_threshold=50,
+                         blast_db_path=None, evalue=1e-5, max_target_seqs=5,
+                         threads=None):
     """
-    Step 2.5: Filter sequences using BLAST against gold standard list.
-    Returns detailed statistics like the original script.
+    Step 2.5: Filter sequences using BLAST against a gold standard database.
+    Runs blastp, writes raw TSV output and a verbose filter log, and returns stats.
     """
     output_file = os.path.join(output_dir, 'step2_5_filtered.fasta')
+    raw_output_file = os.path.join(output_dir, 'step2_5_blast_raw.tsv')
     log_file = os.path.join(output_dir, 'step2_5_blast_filter.log')
 
-    # Read gold standard IDs
+    try:
+        input_file = sanitize_path(input_file)
+        gold_list_file = sanitize_path(gold_list_file)
+        output_dir = sanitize_path(output_dir)
+    except ValueError as e:
+        return False, None, str(e), None, None
+
+    if not os.path.exists(input_file):
+        return False, None, f"Input file not found: {input_file}", None, None
+    if not os.path.exists(gold_list_file):
+        return False, None, f"Gold list file not found: {gold_list_file}", None, None
+    os.makedirs(output_dir, exist_ok=True)
+
+    if blast_db_path is None or str(blast_db_path).strip() == '':
+        return False, None, "BLAST database path is required for step 2.5", None, None
+
+    try:
+        evalue = float(evalue)
+        pident_threshold = float(pident_threshold)
+        qcovs_threshold = float(qcovs_threshold)
+    except (ValueError, TypeError) as e:
+        return False, None, f"Invalid threshold value: {e}", None, None
+
+    try:
+        max_target_seqs = max(1, int(max_target_seqs))
+    except (ValueError, TypeError):
+        return False, None, "Invalid max_target_seqs value", None, None
+
+    if threads is None or str(threads).strip() == '':
+        threads = config.DEFAULT_THREADS
+    try:
+        threads = max(1, int(threads))
+    except (ValueError, TypeError):
+        return False, None, "Invalid threads value", None, None
+
+    try:
+        resolved_db_path = _resolve_blast_db_path(blast_db_path)
+    except (ValueError, FileNotFoundError) as e:
+        return False, None, str(e), None, None
+
     gold_ids = set()
-    with open(gold_list_file, 'r') as f:
-        for line in f:
+    with open(gold_list_file, 'r', encoding='utf-8') as handle:
+        for line in handle:
             line = line.strip()
-            if line and not line.startswith('#'):
-                gold_ids.add(line.split()[0])
+            if not line or line.startswith('#'):
+                continue
+            clean_id = line.split()[0]
+            clean_id = clean_id.split('.')[0].upper()
+            gold_ids.add(clean_id)
 
-    # Read input sequences
+    if not gold_ids:
+        logger.warning(f"Gold list {gold_list_file} contains no IDs")
+
+    outfmt = shlex.quote('6 qseqid sseqid pident qcovs')
+    blast_command = (
+        f"blastp -query {shlex.quote(input_file)} "
+        f"-db {shlex.quote(resolved_db_path)} "
+        f"-evalue {evalue} "
+        f"-max_target_seqs {max_target_seqs} "
+        f"-outfmt {outfmt} "
+        f"-num_threads {threads}"
+    )
+    display_command = f"conda run -n {config.CONDA_ENV} {blast_command}"
+
+    success, stdout, stderr = run_conda_command(blast_command, timeout=7200)
+    if not success:
+        logger.error(f"Step 2.5 BLAST failed: {stderr}")
+        return False, None, stderr or stdout or "BLASTP failed", None, display_command
+
+    stdout = stdout or ''
+    with open(raw_output_file, 'w', encoding='utf-8') as raw_f:
+        raw_f.write("qseqid\tsseqid\tpident\tqcovs\n")
+        if stdout:
+            raw_f.write(stdout if stdout.endswith('\n') else stdout + '\n')
+
+    valid_query_ids = set()
+    total_hits = 0
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        parts = line.split('\t')
+        if len(parts) < 4:
+            continue
+        total_hits += 1
+        qseqid = parts[0].strip()
+        sseqid_clean = parts[1].split('.')[0].upper()
+        try:
+            pident = float(parts[2])
+            qcovs = float(parts[3])
+        except (ValueError, TypeError):
+            continue
+
+        if (
+            sseqid_clean in gold_ids and
+            pident >= pident_threshold and
+            qcovs >= qcovs_threshold
+        ):
+            valid_query_ids.add(qseqid)
+
     sequences = read_fasta_file(input_file)
-    all_ids = set([header.split()[0] for header, _ in sequences])
-
-    # Filter sequences present in gold list
     filtered = []
-    kept_ids = set()
+    all_ids = []
     for header, seq in sequences:
         seq_id = header.split()[0]
-        if seq_id in gold_ids:
+        all_ids.append(seq_id)
+        if seq_id in valid_query_ids:
             filtered.append((header, seq))
-            kept_ids.add(seq_id)
-
-    deleted_ids = all_ids - kept_ids
 
     write_fasta_file(output_file, filtered)
 
-    # Generate detailed log like original script (lines 323-351)
-    log_lines = []
-    log_lines.append(f"--- BLAST Filter Summary ---")
-    log_lines.append(f"Filters: Min P-Ident >= {pident_threshold}% | Min Q-Covs >= {qcovs_threshold}%")
-    log_lines.append(f"Total sequences in: {len(all_ids)}")
-    log_lines.append(f"Sequences Kept (passed all filters): {len(kept_ids)}")
-    log_lines.append(f"Sequences Deleted (failed filters): {len(deleted_ids)}")
+    deleted_ids = [seq_id for seq_id in all_ids if seq_id not in valid_query_ids]
+    deleted_unique = sorted(set(deleted_ids))
+    deleted_preview = deleted_unique[:50]
 
-    if deleted_ids:
-        log_lines.append("\n--- Deleted Sequences (no match in gold list OR failed quality check) ---")
-        deleted_list = sorted(list(deleted_ids))
-        for i, deleted_id in enumerate(deleted_list):
+    log_lines = [
+        "--- BLAST Filter Summary ---",
+        f"Database: {resolved_db_path}",
+        f"Gold list entries: {len(gold_ids)}",
+        ("Filters: E-value <= {0} | Min P-Ident >= {1}% | Min Q-Covs >= {2}% | "
+         "Max target seqs: {3}").format(evalue, pident_threshold, qcovs_threshold, max_target_seqs),
+        f"Threads: {threads}",
+        f"Total sequences in: {len(all_ids)}",
+        f"Sequences Kept (passed all filters): {len(filtered)}",
+        f"Sequences Deleted (failed filters): {len(all_ids) - len(filtered)}",
+        f"BLAST hits parsed: {total_hits}",
+    ]
+    if not stdout.strip():
+        log_lines.append("BLAST returned zero hits.")
+
+    if deleted_unique:
+        log_lines.append("\n--- Deleted Sequences (no gold match or failed quality) ---")
+        for idx, deleted_id in enumerate(deleted_preview):
             log_lines.append(f"  {deleted_id}")
-            if i >= 50 and len(deleted_ids) > 51:
-                log_lines.append(f"  ... and {len(deleted_ids) - i - 1} more.")
-                break
+        if len(deleted_unique) > len(deleted_preview):
+            log_lines.append(f"  ... and {len(deleted_unique) - len(deleted_preview)} more.")
 
-    with open(log_file, 'w', encoding='utf-8') as f:
+    with open(log_file, 'w', encoding='utf-8') as log_f:
         for line in log_lines:
-            f.write(line + '\n')
+            log_f.write(line + '\n')
 
-    logger.info(f"Step 2.5: Filtered to {len(filtered)} sequences (from {len(sequences)})")
-    
-    # Return statistics dict for display
+    kept_count = len(filtered)
+    total_sequences = len(all_ids)
+    message = f"BLAST filter kept {kept_count} of {total_sequences} sequences"
+    if kept_count == 0:
+        message = "No sequences passed BLAST filter"
+
     stats = {
-        'total_in': len(all_ids),
-        'kept': len(kept_ids),
-        'deleted': len(deleted_ids),
-        'deleted_ids': deleted_list[:50] if deleted_ids else [],
-        'log_file': log_file
+        'total_in': total_sequences,
+        'kept': kept_count,
+        'deleted': total_sequences - kept_count,
+        'deleted_ids': deleted_preview,
+        'log_file': log_file,
+        'raw_output_file': raw_output_file,
+        'database': resolved_db_path,
+        'pident_threshold': pident_threshold,
+        'qcovs_threshold': qcovs_threshold,
+        'evalue': evalue,
+        'max_target_seqs': max_target_seqs,
+        'threads': threads,
+        'total_hits': total_hits,
     }
-    
-    return True, output_file, f"Filtered to {len(filtered)} sequences (from {len(sequences)})", stats
+
+    logger.info(f"Step 2.5: Filtered {kept_count} sequences (from {total_sequences})")
+    return True, output_file, message, stats, display_command
 
 
 def step2_7_length_stats(input_file, output_dir):
@@ -617,14 +762,45 @@ def run_full_pipeline(input_file, hmm_files=None, gold_list_file=None, options=N
 
     # Step 2.5: BLAST filter (optional)
     if gold_list_file and os.path.exists(gold_list_file):
-        success, output, message = step2_5_blast_filter(
-            current_file, gold_list_file, result_dir,
+        blast_db_path = (options.get('blast_db_path') or '').strip()
+        if not blast_db_path:
+            results['steps']['step2_5'] = {
+                'success': False,
+                'output': None,
+                'message': 'BLAST database path is required for step 2.5',
+                'stats': None,
+                'command': None,
+                'raw_output': None,
+                'log_file': None
+            }
+            return False, results
+
+        success, output, message, stats, command = step2_5_blast_filter(
+            current_file,
+            gold_list_file,
+            result_dir,
             pident_threshold=options.get('pident', 30),
-            qcovs_threshold=options.get('qcovs', 50)
+            qcovs_threshold=options.get('qcovs', 50),
+            blast_db_path=blast_db_path,
+            evalue=options.get('blast_evalue', 1e-5),
+            max_target_seqs=options.get('blast_max_target_seqs', 5),
+            threads=options.get('blast_threads', config.DEFAULT_THREADS)
         )
-        results['steps']['step2_5'] = {'success': success, 'output': output, 'message': message}
+        results['steps']['step2_5'] = {
+            'success': success,
+            'output': output,
+            'message': message,
+            'stats': stats,
+            'command': command,
+            'raw_output': stats.get('raw_output_file') if stats else None,
+            'log_file': stats.get('log_file') if stats else None
+        }
+        if command:
+            results['commands'].append({'step': 'step2_5', 'name': 'BLAST Filter', 'command': command})
         if success:
             current_file = output
+        else:
+            return False, results
 
     # Step 2.7: Length stats
     success, output, message = step2_7_length_stats(current_file, result_dir)

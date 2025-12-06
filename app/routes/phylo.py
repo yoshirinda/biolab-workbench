@@ -70,6 +70,10 @@ def run_full():
             'cut_ga': request.form.get('cut_ga', 'true').lower() == 'true',
             'pident': float(request.form.get('pident', 30)),
             'qcovs': float(request.form.get('qcovs', 50)),
+            'blast_db_path': (request.form.get('blast_db_path') or '').strip(),
+            'blast_evalue': float(request.form.get('blast_evalue') or 1e-5),
+            'blast_max_target_seqs': int(request.form.get('blast_max_target_seqs') or 5),
+            'blast_threads': int(request.form.get('blast_threads') or config.DEFAULT_THREADS),
             'min_length': int(request.form.get('min_length', 50)),
             'maxiterate': int(request.form.get('maxiterate', 1000)),
             'clipkit_mode': request.form.get('clipkit_mode', 'kpic-gappy'),
@@ -78,6 +82,9 @@ def run_full():
             'threads': int(request.form.get('threads', config.DEFAULT_THREADS)),
             'bnni': request.form.get('bnni', 'true').lower() == 'true',
         }
+
+        if gold_list_file and not options['blast_db_path']:
+            return jsonify({'success': False, 'error': 'BLAST database path is required when using a gold standard list'})
 
         success, results = run_full_pipeline(input_file, hmm_files, gold_list_file, options)
 
@@ -109,6 +116,7 @@ def run_step(step):
         commands = None
         output = None
         message = None
+        stats = None
 
         if step == 'step1':
             success, output, message = step1_clean_fasta(input_file, output_dir)
@@ -136,19 +144,33 @@ def run_step(step):
             success, output, message, commands = step2_hmmsearch_multiple(input_file, hmm_files, output_dir, cut_ga)
 
         elif step == 'step2_5':
-            gold_file = request.form.get('gold_list_file')
-            if gold_file:
-                gold_file = os.path.join(config.GOLD_LISTS_DIR, gold_file)
+            gold_name = request.form.get('gold_list_file') or request.form.get('gold_list')
+            if gold_name:
+                gold_file = os.path.join(config.GOLD_LISTS_DIR, gold_name)
             else:
                 return jsonify({'success': False, 'error': 'Gold standard list is required for step 2.5'})
-            pident = float(request.form.get('pident', 30))
-            qcovs = float(request.form.get('qcovs', 50))
-            result = step2_5_blast_filter(input_file, gold_file, output_dir, pident, qcovs)
-            if len(result) == 4:
-                success, output, message, stats = result
-            else:
-                success, output, message = result
-                stats = None
+
+            blast_db_path = request.form.get('blast_db_path') or request.form.get('blast_db')
+            if not blast_db_path:
+                return jsonify({'success': False, 'error': 'BLAST database path is required for step 2.5'})
+
+            pident = float(request.form.get('pident') or 30)
+            qcovs = float(request.form.get('qcovs') or 50)
+            blast_evalue = float(request.form.get('blast_evalue') or 1e-5)
+            max_target = int(request.form.get('blast_max_target_seqs') or 5)
+            blast_threads = int(request.form.get('blast_threads') or config.DEFAULT_THREADS)
+
+            success, output, message, stats, command = step2_5_blast_filter(
+                input_file,
+                gold_file,
+                output_dir,
+                pident_threshold=pident,
+                qcovs_threshold=qcovs,
+                blast_db_path=blast_db_path,
+                evalue=blast_evalue,
+                max_target_seqs=max_target,
+                threads=blast_threads
+            )
 
         elif step == 'step2_7':
             success, output, message = step2_7_length_stats(input_file, output_dir)
@@ -204,8 +226,14 @@ def run_step(step):
             'output': output,
             'message': message,
             'result_dir': output_dir,
-            'stats': stats if 'stats' in locals() else None
+            'stats': stats
         }
+        
+        if stats:
+            if stats.get('raw_output_file'):
+                response_data['raw_output'] = stats['raw_output_file']
+            if stats.get('log_file'):
+                response_data['log_file'] = stats['log_file']
         
         if commands:
             response_data['commands'] = commands

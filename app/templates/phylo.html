@@ -76,6 +76,25 @@
                                 <input type="number" class="form-control" id="qcovs" value="50" min="0" max="100">
                             </div>
                         </div>
+                        <div class="mb-3">
+                            <label for="blastDbPath" class="form-label">BLAST Database Path:</label>
+                            <input type="text" class="form-control" id="blastDbPath" placeholder="/mnt/e/databases/protein_db">
+                            <small class="text-muted">Provide the BLAST protein database base name (without .pin/.psq extension).</small>
+                        </div>
+                        <div class="row">
+                            <div class="col-4 mb-3">
+                                <label for="blastEvalue" class="form-label">E-value cutoff:</label>
+                                <input type="number" class="form-control" id="blastEvalue" value="1e-5" step="any">
+                            </div>
+                            <div class="col-4 mb-3">
+                                <label for="blastMaxTarget" class="form-label">Max target seqs:</label>
+                                <input type="number" class="form-control" id="blastMaxTarget" value="5" min="1">
+                            </div>
+                            <div class="col-4 mb-3">
+                                <label for="blastThreads" class="form-label">BLAST threads:</label>
+                                <input type="number" class="form-control" id="blastThreads" value="4" min="1">
+                            </div>
+                        </div>
 
                         <hr>
                         <h6>Step 2.8: Length Filter</h6>
@@ -224,6 +243,24 @@
                                         <div class="col-6 mb-3">
                                             <label for="stepQcovs" class="form-label">Min Coverage (%):</label>
                                             <input type="number" class="form-control" id="stepQcovs" value="50" min="0" max="100">
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="stepBlastDbPath" class="form-label">BLAST Database Path:</label>
+                                        <input type="text" class="form-control" id="stepBlastDbPath" placeholder="/mnt/e/databases/protein_db">
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-4 mb-3">
+                                        <label for="stepBlastEvalue" class="form-label">E-value cutoff:</label>
+                                            <input type="number" class="form-control" id="stepBlastEvalue" value="1e-5" step="any">
+                                        </div>
+                                        <div class="col-4 mb-3">
+                                            <label for="stepBlastMaxTarget" class="form-label">Max target seqs:</label>
+                                            <input type="number" class="form-control" id="stepBlastMaxTarget" value="5" min="1">
+                                        </div>
+                                        <div class="col-4 mb-3">
+                                            <label for="stepBlastThreads" class="form-label">BLAST threads:</label>
+                                            <input type="number" class="form-control" id="stepBlastThreads" value="4" min="1">
                                         </div>
                                     </div>
                                     <button class="btn btn-primary w-100" onclick="runSingleStep('step2_5')">
@@ -602,7 +639,18 @@
         const selectedHmm = Array.from(hmmSelect.selectedOptions).map(opt => opt.value);
         selectedHmm.forEach(hmm => formData.append('hmm_files[]', hmm));
         
-        formData.append('gold_list_file', document.getElementById('goldListFile').value);
+        const goldListValue = document.getElementById('goldListFile').value;
+        const blastDbPath = document.getElementById('blastDbPath').value.trim();
+        if (goldListValue && !blastDbPath) {
+            alert('Please provide a BLAST database path for the BLAST filter step.');
+            return;
+        }
+        
+        formData.append('gold_list_file', goldListValue);
+        formData.append('blast_db_path', blastDbPath);
+        formData.append('blast_evalue', document.getElementById('blastEvalue').value);
+        formData.append('blast_max_target_seqs', document.getElementById('blastMaxTarget').value);
+        formData.append('blast_threads', document.getElementById('blastThreads').value);
         formData.append('cut_ga', document.getElementById('cutGa').checked);
         formData.append('pident', document.getElementById('pident').value);
         formData.append('qcovs', document.getElementById('qcovs').value);
@@ -721,9 +769,18 @@
                 showAlert('warning', 'Please select a gold standard list');
                 return;
             }
+            const blastDbPath = document.getElementById('stepBlastDbPath').value.trim();
+            if (!blastDbPath) {
+                showAlert('warning', 'Please provide a BLAST database path');
+                return;
+            }
             formData.append('gold_list_file', goldList);
+            formData.append('blast_db_path', blastDbPath);
             formData.append('pident', document.getElementById('stepPident').value);
             formData.append('qcovs', document.getElementById('stepQcovs').value);
+            formData.append('blast_evalue', document.getElementById('stepBlastEvalue').value);
+            formData.append('blast_max_target_seqs', document.getElementById('stepBlastMaxTarget').value);
+            formData.append('blast_threads', document.getElementById('stepBlastThreads').value);
         } else if (step === 'step2_8') {
             formData.append('min_length', document.getElementById('stepMinLength').value);
         } else if (step === 'step3') {

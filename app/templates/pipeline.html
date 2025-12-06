@@ -61,9 +61,7 @@
     <h2 class="mb-4">
         <i class="bi bi-diagram-3 text-primary"></i>
         Phylogenetic Analysis Pipeline
-        <a href="/docs/phylo" class="btn btn-sm btn-outline-info float-end" target="_blank">
-            <i class="bi bi-question-circle"></i> Help
-        </a>
+        <a href="{{ url_for('docs.phylo_docs') }}" class="help-btn ms-2" title="Help"><i class="bi bi-question-lg"></i></a>
     </h2>
     
     <div class="alert alert-info">
@@ -140,6 +138,11 @@
                                 <small class="text-muted">Ctrl+Click 选择多个</small>
                             </div>
                         </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">或已有文件路径:</label>
+                        <input type="text" class="form-control" id="hmmExistingPath" placeholder="/path/to/cleaned.fasta">
                     </div>
                     
                     <div class="row">
@@ -250,6 +253,24 @@
                         <div class="col-md-6">
                             <label class="form-label">最小 Coverage (%):</label>
                             <input type="number" class="form-control" id="blastQcovs" value="50" min="0" max="100">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">BLAST 数据库路径:</label>
+                        <input type="text" class="form-control" id="blastFilterDbPath" placeholder="/mnt/e/databases/protein_db">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label class="form-label">E-value:</label>
+                            <input type="number" class="form-control" id="blastFilterEvalue" value="1e-5" step="any">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Max Target:</label>
+                            <input type="number" class="form-control" id="blastFilterMaxTarget" value="5" min="1">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">线程数:</label>
+                            <input type="number" class="form-control" id="blastFilterThreads" value="4" min="1">
                         </div>
                     </div>
                     
@@ -443,10 +464,6 @@
                             <div class="form-check">
                                 <input type="checkbox" class="form-check-input" id="iqtreeAlrt" checked>
                                 <label class="form-check-label" for="iqtreeAlrt">SH-aLRT test</label>
-                        <div class="mb-3">
-                            <label class="form-label">或已有文件路径:</label>
-                            <input type="text" class="form-control" id="hmmExistingPath" placeholder="/path/to/cleaned.fasta">
-                        </div>
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -496,6 +513,7 @@
         cleaned: null,
         hmmOutput: null,
         blastOutput: null,
+        blastFiltered: null,
         filteredSeqs: null,
         alignment: null,
         trimmedAlignment: null,
@@ -645,6 +663,11 @@
             alert('请选择 Gold Standard List');
             return;
         }
+        const dbPath = document.getElementById('blastFilterDbPath').value.trim();
+        if (!dbPath) {
+            alert('请填写 BLAST 数据库路径');
+            return;
+        }
         
         const fd = new FormData();
         const inputPath = document.getElementById('blastFilterInputPath').value.trim() || pipelineData.blastOutput;
@@ -655,12 +678,16 @@
         
         fd.append('step', 'step2_5');
         fd.append('file_path', inputPath);
-        fd.append('gold_list', goldList);
+        fd.append('gold_list_file', goldList);
+        fd.append('blast_db_path', dbPath);
         fd.append('pident', document.getElementById('blastPident').value);
         fd.append('qcovs', document.getElementById('blastQcovs').value);
+        fd.append('blast_evalue', document.getElementById('blastFilterEvalue').value);
+        fd.append('blast_max_target_seqs', document.getElementById('blastFilterMaxTarget').value);
+        fd.append('blast_threads', document.getElementById('blastFilterThreads').value);
 
         try {
-            const res = await fetch('/phylo/run-step', { method: 'POST', body: fd });
+            const res = await fetch('/phylo/run-step/step2_5', { method: 'POST', body: fd });
             const result = await res.json();
             if (result.success) {
                 pipelineData.blastFiltered = result.output;
@@ -692,6 +719,8 @@
                 
                 statsHtml += `</div>
                     <a class="btn btn-sm btn-outline-primary" href="${downloadLink(result.output)}">下载过滤后 FASTA</a>
+                    ${stats.raw_output_file ? `<a class="btn btn-sm btn-outline-secondary ms-2" href="${downloadLink(stats.raw_output_file)}">下载原始 BLAST TSV</a>` : ''}
+                    ${stats.log_file ? `<a class="btn btn-sm btn-outline-secondary ms-2" href="${downloadLink(stats.log_file)}">下载过滤日志</a>` : ''}
                 `;
                 
                 document.getElementById('blastFilterResults').innerHTML = statsHtml;
