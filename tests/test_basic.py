@@ -559,6 +559,119 @@ seq3                       -          PF00001.1
         assert success is False
         assert 'No HMM files' in message
 
+    def test_step2_5_blast_filter_runs_command_and_filters(self, monkeypatch, tmpdir):
+        """Ensure step2_5_blast_filter runs blastp and filters sequences by gold list."""
+        from app.core import phylo_pipeline
+
+        input_fasta = tmpdir.join('input.fasta')
+        input_fasta.write(
+            '>seq1 description\nMKTAYIAKQRQISFVKSH\n>seq2 other\nAAAAAAAAAAAA\n'
+        )
+        gold_file = tmpdir.join('gold.txt')
+        gold_file.write('GOLD.ID.1\n')
+
+        db_base = tmpdir.join('mock_db')
+        for ext in ('.pin', '.psq', '.phr'):
+            tmpdir.join(f'mock_db{ext}').write('')
+
+        captured = []
+
+        def fake_run(cmd, shell, capture_output, text, timeout):
+            captured.append(cmd)
+            class Dummy:
+                returncode = 0
+                stdout = 'seq1\tGOLD.ID.1\t80\t90\nseq2\tOTHER\t50\t10\n'
+                stderr = ''
+            return Dummy()
+
+        monkeypatch.setattr(phylo_pipeline.subprocess, 'run', fake_run)
+
+        success, output, message, stats, command = phylo_pipeline.step2_5_blast_filter(
+            str(input_fasta),
+            str(gold_file),
+            str(tmpdir),
+            pident_threshold=60,
+            qcovs_threshold=60,
+            blast_db_path=str(db_base),
+            evalue=1e-6,
+            max_target_seqs=10,
+            threads=8
+        )
+
+        assert captured, 'blastp command was not invoked'
+        assert 'blastp' in captured[0]
+        assert '-outfmt' in captured[0]
+        assert success is True
+        assert 'blastp' in command
+        assert '-max_target_seqs 10' in command
+        assert '-num_threads 8' in command
+        assert os.path.exists(stats['raw_output_file'])
+        with open(stats['raw_output_file'], 'r') as fh:
+            header = fh.readline().strip()
+            assert header == 'qseqid\tsseqid\tpident\tqcovs'
+        with open(output, 'r') as fh:
+            data = fh.read()
+            assert '>seq1' in data
+            assert '>seq2' not in data
+        assert stats['kept'] == 1
+        assert stats['deleted'] == 1
+        assert stats['database'].endswith('mock_db')
+
+    def test_step2_5_blast_filter_missing_db(self, tmpdir):
+        """Missing BLAST database should return a graceful error."""
+        from app.core import phylo_pipeline
+
+        input_fasta = tmpdir.join('input.fasta')
+        input_fasta.write('>seq1\nMKTAYIAKQRQISFVKSH\n')
+        gold_file = tmpdir.join('gold.txt')
+        gold_file.write('SEQ1\n')
+
+        success, output, message, stats, command = phylo_pipeline.step2_5_blast_filter(
+            str(input_fasta),
+            str(gold_file),
+            str(tmpdir),
+            blast_db_path=str(tmpdir.join('missing_db'))
+        )
+
+        assert success is False
+        assert 'blast database' in message.lower()
+        assert stats is None
+
+    def test_step2_5_blast_filter_zero_hits(self, monkeypatch, tmpdir):
+        """When BLAST returns zero hits, the function should succeed with zero kept sequences."""
+        from app.core import phylo_pipeline
+
+        input_fasta = tmpdir.join('input.fasta')
+        input_fasta.write('>seq1\nMKTAYIAKQRQISFVKSH\n')
+        gold_file = tmpdir.join('gold.txt')
+        gold_file.write('SEQ1\n')
+        db_base = tmpdir.join('mock_db_zero')
+        for ext in ('.pin', '.psq', '.phr'):
+            tmpdir.join(f'mock_db_zero{ext}').write('')
+
+        def fake_run(cmd, shell, capture_output, text, timeout):
+            class Dummy:
+                returncode = 0
+                stdout = ''
+                stderr = ''
+            return Dummy()
+
+        monkeypatch.setattr(phylo_pipeline.subprocess, 'run', fake_run)
+
+        success, output, message, stats, command = phylo_pipeline.step2_5_blast_filter(
+            str(input_fasta),
+            str(gold_file),
+            str(tmpdir),
+            blast_db_path=str(db_base)
+        )
+
+        assert success is True
+        assert stats['kept'] == 0
+        assert stats['deleted'] == 1
+        assert stats['total_hits'] == 0
+        assert os.path.exists(stats['log_file'])
+        assert 'No sequences' in message or '0' in message
+
     def test_conda_env_config(self):
         """Test that CONDA_ENV configuration uses fallback correctly."""
         import config
