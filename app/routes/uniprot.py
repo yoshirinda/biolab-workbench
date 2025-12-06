@@ -2,9 +2,10 @@
 UniProt routes for BioLab Workbench.
 """
 import os
+import json
 from flask import Blueprint, render_template, request, jsonify, send_file
 import config
-from app.core.uniprot_client import search_uniprot, download_sequences, get_entry
+from app.core.uniprot_client import search_uniprot, download_sequences, download_selected_sequences, get_entry
 from app.utils.logger import get_app_logger
 
 uniprot_bp = Blueprint('uniprot', __name__)
@@ -69,21 +70,48 @@ def download():
     try:
         data = request.get_json() or request.form
 
-        query = data.get('query')
-        if not query:
-            return jsonify({'success': False, 'error': 'No query provided'})
-
-        taxonomy_id = data.get('taxonomy_id')
-        if taxonomy_id:
-            taxonomy_id = int(taxonomy_id)
-
-        database_type = data.get('database_type', 'all')
-        limit = int(data.get('limit', 500))
         header_format = data.get('header_format', 'gene_species_id')
+        
+        # Normalize selected IDs payload
+        raw_selected_ids = data.get('selected_ids')
+        selected_ids = []
+        if raw_selected_ids:
+            if isinstance(raw_selected_ids, str):
+                trimmed = raw_selected_ids.strip()
+                if trimmed.startswith('[') and trimmed.endswith(']'):
+                    try:
+                        parsed = json.loads(trimmed)
+                        raw_selected_ids = parsed if isinstance(parsed, list) else [trimmed]
+                    except ValueError:
+                        raw_selected_ids = [part.strip() for part in trimmed.split(',') if part.strip()]
+                else:
+                    raw_selected_ids = [part.strip() for part in trimmed.split(',') if part.strip()]
+            if isinstance(raw_selected_ids, (list, tuple)):
+                selected_ids = [str(acc).strip() for acc in raw_selected_ids if str(acc).strip()]
+        
+        if selected_ids:
+            # Download only selected sequences using batch API
+            logger.info(f"Downloading {len(selected_ids)} selected sequences")
+            
+            success, result_dir, fasta_file, count = download_selected_sequences(
+                selected_ids, header_format
+            )
+        else:
+            # Fall back to query-based download
+            query = data.get('query')
+            if not query:
+                return jsonify({'success': False, 'error': 'No query or selection provided'})
 
-        success, result_dir, fasta_file, count = download_sequences(
-            query, taxonomy_id, database_type, limit, header_format
-        )
+            taxonomy_id = data.get('taxonomy_id')
+            if taxonomy_id:
+                taxonomy_id = int(taxonomy_id)
+
+            database_type = data.get('database_type', 'all')
+            limit = int(data.get('limit', 500))
+
+            success, result_dir, fasta_file, count = download_sequences(
+                query, taxonomy_id, database_type, limit, header_format
+            )
 
         if success and fasta_file:
             return jsonify({
