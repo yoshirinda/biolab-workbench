@@ -1,6 +1,7 @@
 """
 UniProt API client for BioLab Workbench.
 """
+import re
 import requests
 from urllib.parse import urlencode
 import time
@@ -175,3 +176,157 @@ def batch_retrieve(accessions):
             results.append(entry)
         time.sleep(0.1)  # Rate limiting
     return results
+
+
+FASTA_SPECIES_PATTERN = re.compile(r'OS=([^=]+?)(?:\sOX=|\sGN=|\sPE=|\sSV=|$)')
+FASTA_GENE_PATTERN = re.compile(r'GN=([^\s=]+)')
+ACCESSION_PATTERN = re.compile(r'^[^|]+\|([^|]+)\|')
+
+
+def _chunked(items, size):
+    for idx in range(0, len(items), size):
+        yield items[idx:idx + size]
+
+
+def _iter_fasta_records(fasta_text):
+    header = None
+    sequence_lines = []
+    for raw_line in fasta_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith('>'):
+            if header:
+                yield header, ''.join(sequence_lines)
+            header = line[1:].strip()
+            sequence_lines = []
+        else:
+            sequence_lines.append(line)
+    if header:
+        yield header, ''.join(sequence_lines)
+
+
+def _parse_fasta_header(header):
+    accession_match = ACCESSION_PATTERN.match(header)
+    if accession_match:
+        accession = accession_match.group(1)
+    else:
+        accession = header.split(' ')[0]
+
+    species_match = FASTA_SPECIES_PATTERN.search(header)
+    species = species_match.group(1).strip() if species_match else None
+
+    gene_match = FASTA_GENE_PATTERN.search(header)
+    gene = gene_match.group(1).strip() if gene_match else None
+
+    return {
+        'accession': accession,
+        'species': species,
+        'gene': gene,
+        'original_header': header
+    }
+
+
+def _clean_species_name(species):
+    if not species:
+        return 'Unknown'
+    cleaned = species.split(' (')[0].strip()
+    cleaned = cleaned.replace(' ', '_').replace('.', '')
+    return cleaned or 'Unknown'
+
+
+def _clean_gene_name(gene, accession):
+    if not gene:
+        return accession
+    cleaned = gene.strip()
+    if not cleaned or cleaned.lower() == 'unknown':
+        return accession
+    return cleaned
+
+
+def _build_curated_header(metadata, header_format):
+    if header_format == 'gene_species_id':
+        accession = metadata.get('accession', '')
+        gene = _clean_gene_name(metadata.get('gene'), accession)
+        species = _clean_species_name(metadata.get('species'))
+        return f"{gene}_{species}_{accession}"
+    return metadata.get('original_header') or metadata.get('accession', '')
+
+
+def fetch_curated_sequences(accessions, header_format='gene_species_id', batch_size=100):
+    if not accessions:
+        return []
+
+    stream_url = f"{UNIPROT_API_BASE}/stream"
+    order_map = {acc: idx for idx, acc in enumerate(accessions)}
+    collected = {}
+
+    for batch_index, batch in enumerate(_chunked(accessions, batch_size)):
+        query = " OR ".join([f"accession:{acc}" for acc in batch])
+        logger.info(f"Fetching curated batch {batch_index + 1}: {len(batch)} accessions")
+
+        try:
+            response = requests.get(
+                stream_url,
+                params={'query': query, 'format': 'fasta'},
+                timeout=120
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            logger.error(f"Curated UniProt batch failed: {exc}")
+            raise
+
+        for header, sequence in _iter_fasta_records(response.text):
+            if not sequence:
+                continue
+            metadata = _parse_fasta_header(header)
+            accession = metadata.get('accession')
+            if not accession or accession not in order_map or accession in collected:
+                continue
+            collected[accession] = {
+                'accession': accession,
+                'header': _build_curated_header(metadata, header_format),
+                'sequence': sequence
+            }
+
+        if len(accessions) > batch_size:
+            time.sleep(0.2)
+
+    ordered_records = [collected[acc] for acc in accessions if acc in collected]
+    return ordered_records
+
+
+def download_selected_sequences(accessions, header_format='gene_species_id'):
+    """Download curated sequences for a list of accessions."""
+    if not accessions:
+        return False, None, None, "No selected accessions provided"
+
+    result_dir = create_result_dir('uniprot', 'curated')
+    params = {
+        'selected_ids': accessions,
+        'count': len(accessions),
+        'header_format': header_format,
+        'timestamp': datetime.now().isoformat()
+    }
+    save_params(result_dir, params)
+
+    try:
+        curated_records = fetch_curated_sequences(accessions, header_format=header_format)
+    except requests.RequestException as exc:
+        return False, result_dir, None, str(exc)
+
+    if not curated_records:
+        return False, result_dir, None, "No sequences retrieved for selected accessions"
+
+    fasta_file = os.path.join(result_dir, 'curated_sequences.fasta')
+    with open(fasta_file, 'w') as handle:
+        for record in curated_records:
+            sequence = record.get('sequence', '')
+            if not sequence:
+                continue
+            handle.write(f">{record['header']}\n")
+            for i in range(0, len(sequence), 60):
+                handle.write(sequence[i:i+60] + '\n')
+
+    logger.info(f"Downloaded {len(curated_records)} curated sequences to {fasta_file}")
+    return True, result_dir, fasta_file, len(curated_records)
