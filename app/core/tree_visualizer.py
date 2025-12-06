@@ -1,6 +1,6 @@
 """
 Tree visualization module for BioLab Workbench.
-Uses ETE3 for tree visualization.
+Uses Biopython Phylo + Matplotlib for stable rendering without Qt dependencies.
 """
 import os
 import re
@@ -9,13 +9,9 @@ from datetime import datetime
 import config
 from app.utils.logger import get_tools_logger
 from app.utils.file_utils import create_result_dir, save_params
+from app.core.phylo_renderer import PhyloRenderer
 
 logger = get_tools_logger()
-
-# Set QT_QPA_PLATFORM for headless rendering and suppress Qt warnings
-os.environ['QT_QPA_PLATFORM'] = 'offscreen'
-os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.*=false'
-os.environ['QT_DEBUG_PLUGINS'] = '0'
 
 
 def detect_tree_format(filepath):
@@ -341,7 +337,7 @@ def extract_clade(tree_file, target_gene, levels_up=2, output_file=None,
                   highlight_species=None):
     """
     Extract and visualize a clade around a target gene.
-    Goes 'levels_up' ancestors from the target gene.
+    Uses Biopython Phylo + Matplotlib for stable rendering.
     
     Args:
         tree_file: Path to tree file
@@ -349,19 +345,14 @@ def extract_clade(tree_file, target_gene, levels_up=2, output_file=None,
         levels_up: Number of ancestor levels to go up (default 2)
         layout: 'circular' or 'rectangular'
         colored_species: Dict of {species_prefix: color}
-        show_bootstrap: Show bootstrap values
-        font_size: Font size for labels
-        fixed_branch_length: If True, use uniform branch lengths
-        highlight_species: List of species prefixes to highlight with background
+        show_bootstrap: Show bootstrap values (ignored in this implementation)
+        font_size: Font size for labels (ignored in this implementation)
+        fixed_branch_length: If True, use uniform branch lengths (ignored)
+        highlight_species: List of species prefixes to highlight
     
     Returns:
         (success, result_dir, output_file, message, clade_info)
     """
-    try:
-        from ete3 import Tree, TreeStyle, NodeStyle, TextFace
-    except ImportError:
-        return False, None, None, "ETE3 not installed", None
-
     result_dir = create_result_dir('tree', 'clade')
     
     if colored_species is None:
@@ -370,111 +361,48 @@ def extract_clade(tree_file, target_gene, levels_up=2, output_file=None,
         highlight_species = []
 
     try:
+        # Detect and normalize tree format
+        tree_format = detect_tree_format(tree_file)
         normalized_tree = normalize_tree_file(tree_file)
-        tree = Tree(normalized_tree, format=1)
         
-        # Find target node
-        target_nodes = tree.search_nodes(name=target_gene)
-        if not target_nodes:
+        # Initialize renderer
+        renderer = PhyloRenderer(normalized_tree, format=tree_format)
+        
+        # Get clade info before rendering (approximate)
+        subtree = renderer.extract_subtree(target_gene, levels_up)
+        if not subtree:
             return False, result_dir, None, f"Gene not found: {target_gene}", None
-        target = target_nodes[0]
-        
-        # Go up 'levels_up' ancestors
-        ancestor = target
-        actual_levels = 0
-        for i in range(levels_up):
-            if ancestor.up:
-                ancestor = ancestor.up
-                actual_levels += 1
-            else:
-                break
-        
-        # Get clade info
-        clade_leaves = [leaf.name for leaf in ancestor.get_leaves()]
+            
+        clade_leaves = [leaf.name for leaf in subtree.get_terminals()]
         clade_info = {
             'target_gene': target_gene,
-            'levels_up': actual_levels,
+            'levels_up': levels_up,
             'leaf_count': len(clade_leaves),
             'leaves': clade_leaves
         }
         
-        # Create subtree copy
-        display_tree = ancestor.copy()
-        
-        # Apply fixed branch length if requested
-        if fixed_branch_length:
-            for n in display_tree.traverse():
-                n.dist = 1.0
-        
-        # Style nodes
-        for node in display_tree.traverse():
-            if node.is_leaf():
-                nstyle = NodeStyle()
-                nstyle['size'] = 0
-                
-                prefix = extract_species_prefix(node.name)
-                
-                # Highlight by species (light background)
-                if prefix in highlight_species:
-                    nstyle['bgcolor'] = '#ffffcc'
-                
-                # Color by species (as border/text color) - only for node markers
-                if prefix in colored_species:
-                    nstyle['fgcolor'] = colored_species[prefix]
-                
-                # Highlight target gene (strongest highlight)
-                if node.name == target_gene:
-                    nstyle['bgcolor'] = '#ffff00'
-                
-                node.set_style(nstyle)
-                
-                # Add name face
-                face_text = f"→ {node.name}" if node.name == target_gene else node.name
-                face = TextFace(face_text, fsize=font_size, bold=(node.name == target_gene))
-                
-                # Only color text for highlighted species, others stay black
-                if prefix in highlight_species and prefix in colored_species:
-                    face.fgcolor = colored_species[prefix]
-                else:
-                    face.fgcolor = '#000000'  # Black for non-highlighted species
-                    
-                node.add_face(face, column=0, position='branch-right')
-            
-            elif show_bootstrap and node.name:
-                # Show bootstrap values
-                try:
-                    val = float(node.name.split('/')[0])
-                    if 0 <= val <= 1:
-                        val = int(val * 100)
-                    face = TextFace(str(int(val)), fsize=font_size-2, fgcolor='#666')
-                    node.add_face(face, column=0, position='branch-top')
-                except (ValueError, IndexError):
-                    pass
-        
-        # Tree style
-        ts = TreeStyle()
-        ts.mode = 'c' if layout == 'circular' else 'r'
-        ts.show_leaf_name = False
-        ts.show_branch_support = False
-        ts.branch_vertical_margin = 15
-        
-        # Add legend
-        if colored_species:
-            ts.legend.add_face(TextFace("Species Legend", bold=True, fsize=12), column=0)
-            for sp, color in colored_species.items():
-                ts.legend.add_face(TextFace(f"  {sp}", fgcolor=color, fsize=10), column=0)
-        
         # Output file
         if output_file is None:
-            output_file = os.path.join(result_dir, f'{target_gene}_L{actual_levels}_{layout}.svg')
+            output_file = os.path.join(result_dir, f'{target_gene}_L{levels_up}_{layout}.svg')
         
-        # Render with adaptive width
-        width = max(800, min(2400, len(clade_leaves) * 15))
-        display_tree.render(output_file, tree_style=ts, w=width, units='px')
+        # Render subtree
+        success = renderer.render_subtree(
+            output_file,
+            target_gene,
+            levels_up,
+            highlighted_species=highlight_species,
+            layout=layout,
+            label_colors=colored_species
+        )
+        
+        if not success:
+            return False, result_dir, None, "Rendering failed", None
         
         rel_path = os.path.relpath(output_file, config.RESULTS_DIR)
         return True, result_dir, rel_path, f"Clade extracted: {len(clade_leaves)} leaves", clade_info
         
     except Exception as e:
         logger.error(f"Clade extraction failed: {e}")
+        import traceback
+        traceback.print_exc()
         return False, result_dir, None, str(e), None
