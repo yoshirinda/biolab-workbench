@@ -1,0 +1,894 @@
+{% extends "base.html" %}
+
+{% block title %}Phylogenetic Pipeline - BioLab Workbench{% endblock %}
+
+{% block extra_css %}
+<style>
+    .pipeline-step {
+        border-left: 3px solid #dee2e6;
+        padding-left: 20px;
+        margin-bottom: 30px;
+        position: relative;
+    }
+    
+    .pipeline-step.active {
+        border-left-color: #0d6efd;
+    }
+    
+    .pipeline-step.completed {
+        border-left-color: #198754;
+    }
+    
+    .step-number {
+        position: absolute;
+        left: -15px;
+        top: 0;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: #dee2e6;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+    }
+    
+    .pipeline-step.active .step-number {
+        background: #0d6efd;
+    }
+    
+    .pipeline-step.completed .step-number {
+        background: #198754;
+    }
+    
+    .step-result {
+        display: none;
+        margin-top: 15px;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 5px;
+    }
+    
+    .step-result.show {
+        display: block;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h2 class="mb-4">
+        <i class="bi bi-diagram-3 text-primary"></i>
+        Phylogenetic Analysis Pipeline
+    </h2>
+    
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle"></i>
+        <strong>完整流程:</strong> HMM搜索 → BLAST比对 → 长度过滤 → 多序列比对 → ClipKIT修剪 → IQ-TREE建树 → 树可视化
+    </div>
+
+    <div class="alert alert-secondary">
+        <i class="bi bi-journal-text"></i>
+        <strong>使用说明:</strong>
+        <ul class="mb-0 mt-2">
+            <li>每一步都可独立运行: 上传文件或填写现有路径即可, 无需从头开始。</li>
+            <li>点击“清理序列头”预处理 FASTA, 避免特殊字符导致下游工具失败。</li>
+            <li>参数建议: HMM e-value 1e-5; BLAST e-value 1e-3, Max target 100; ClipKIT kpic-gappy; IQ-TREE 模型 MFP + UFBoot 1000。</li>
+            <li>所有结果都会给出独立下载链接; 如浏览器阻止, 复制链接在新标签打开。</li>
+        </ul>
+    </div>
+    
+    <!-- Pipeline Steps -->
+    <div class="row">
+        <div class="col-lg-12">
+            
+            <!-- Step 0: Clean Headers -->
+            <div class="pipeline-step active" id="step0" data-step="0">
+                <div class="step-number">0</div>
+                <h4>Preprocess: Clean FASTA Headers</h4>
+                <p class="text-muted">移除空格和特殊字符, 生成安全的唯一序列名</p>
+                <form id="cleanForm">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label">上传 FASTA (可选):</label>
+                            <input type="file" class="form-control" id="cleanFile" accept=".fasta,.fa,.faa">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">或已有文件路径:</label>
+                            <input type="text" class="form-control" id="cleanPath" placeholder="/path/to/input.fasta">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary mt-3">
+                        <i class="bi bi-broom"></i> 清理序列头
+                    </button>
+                </form>
+                <div class="step-result" id="result0">
+                    <h6>清理结果:</h6>
+                    <div id="cleanResults"></div>
+                    <button class="btn btn-success btn-sm mt-2" onclick="nextStep(1)">
+                        <i class="bi bi-arrow-right"></i> 继续 HMM 搜索
+                    </button>
+                </div>
+            </div>
+
+            <!-- Step 1: HMM Search -->
+            <div class="pipeline-step" id="step1" data-step="1">
+                <div class="step-number">1</div>
+                <h4>HMM Domain Search</h4>
+                <p class="text-muted">使用 HMMER 搜索蛋白质结构域</p>
+                
+                <form id="hmmForm">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">序列数据库 (FASTA):</label>
+                                <input type="file" class="form-control" id="hmmSeqFile" accept=".fasta,.fa,.faa" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">HMM Profiles:</label>
+                                <select class="form-select" id="hmmProfiles" multiple size="3">
+                                    <option value="PF03171">PF03171 - 2OG-FeII_Oxy</option>
+                                    <option value="PF13532">PF13532 - AlkB</option>
+                                    <option value="PF14226">PF14226 - DIOX_N</option>
+                                </select>
+                                <small class="text-muted">Ctrl+Click 选择多个</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">E-value阈值:</label>
+                                <input type="number" class="form-control" id="hmmEvalue" value="0.00001" step="0.000001">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3 form-check mt-4">
+                                <input type="checkbox" class="form-check-input" id="hmmCutGA">
+                                <label class="form-check-label" for="hmmCutGA">使用 GA 阈值</label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-search"></i> 运行 HMM 搜索
+                    </button>
+                </form>
+                
+                <div class="step-result" id="result1">
+                    <h6>HMM搜索结果:</h6>
+                    <div id="hmmResults"></div>
+                    <button class="btn btn-success btn-sm mt-2" onclick="nextStep(2)">
+                        <i class="bi bi-arrow-right"></i> 继续 BLAST
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Step 2: BLAST -->
+            <div class="pipeline-step" id="step2" data-step="2">
+                <div class="step-number">2</div>
+                <h4>BLAST Search</h4>
+                <p class="text-muted">使用 BLAST 进一步筛选同源序列</p>
+                
+                <form id="blastForm">
+                    <div class="mb-3">
+                        <label class="form-label">BLAST数据库:</label>
+                        <input type="file" class="form-control" id="blastDbFile" accept=".fasta,.fa,.faa">
+                        <small class="text-muted">或使用 HMM 搜索结果</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">数据库基名路径:</label>
+                        <input type="text" class="form-control" id="blastDbPath" placeholder="/path/to/db/base">
+                        <small class="text-muted">例如 /data/db/mydb (无需扩展名)</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">查询序列路径 (可选):</label>
+                        <input type="text" class="form-control" id="blastQueryPath" placeholder="默认使用 HMM 输出或上传文件">
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label class="form-label">E-value:</label>
+                            <input type="number" class="form-control" id="blastEvalue" value="0.001" step="0.0001">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Max Target Seqs:</label>
+                            <input type="number" class="form-control" id="blastMaxTargets" value="100">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">线程数:</label>
+                            <input type="number" class="form-control" id="blastThreads" value="4">
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary mt-3">
+                        <i class="bi bi-search"></i> 运行 BLAST
+                    </button>
+                </form>
+                
+                <div class="step-result" id="result2">
+                    <h6>BLAST结果:</h6>
+                    <div id="blastResults"></div>
+                    <button class="btn btn-success btn-sm mt-2" onclick="nextStep(2.5)">
+                        <i class="bi bi-arrow-right"></i> 继续 BLAST 过滤
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Step 2.5: BLAST Filter -->
+            <div class="pipeline-step" id="step2_5" data-step="2.5">
+                <div class="step-number">2.5</div>
+                <h4>BLAST Quality Filter</h4>
+                <p class="text-muted">根据 Gold Standard List 过滤 BLAST 结果</p>
+                
+                <form id="blastFilterForm">
+                    <div class="mb-3">
+                        <label class="form-label">Gold Standard List:</label>
+                        <select class="form-select" id="goldListSelect">
+                            <option value="">选择 Gold List 文件...</option>
+                            {% for gold in gold_files %}
+                            <option value="{{ gold }}">{{ gold }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">输入序列路径 (可选):</label>
+                        <input type="text" class="form-control" id="blastFilterInputPath" placeholder="默认使用 BLAST 输出">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label">最小 Identity (%):</label>
+                            <input type="number" class="form-control" id="blastPident" value="30" min="0" max="100">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">最小 Coverage (%):</label>
+                            <input type="number" class="form-control" id="blastQcovs" value="50" min="0" max="100">
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary mt-3">
+                        <i class="bi bi-funnel"></i> 应用 BLAST 过滤
+                    </button>
+                </form>
+                
+                <div class="step-result" id="result2_5">
+                    <h6>BLAST Filter 结果:</h6>
+                    <div id="blastFilterResults"></div>
+                    <button class="btn btn-success btn-sm mt-2" onclick="nextStep(3)">
+                        <i class="bi bi-arrow-right"></i> 继续长度过滤
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Step 3: Length Filter -->
+            <div class="pipeline-step" id="step3" data-step="3">
+                <div class="step-number">3</div>
+                <h4>Sequence Length Filter</h4>
+                <p class="text-muted">过滤掉长度异常的序列</p>
+                
+                <form id="filterForm">
+                    <div class="mb-3">
+                        <label class="form-label">上传 FASTA (可选):</label>
+                        <input type="file" class="form-control" id="filterFile" accept=".fasta,.fa,.faa">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label">最小长度 (aa):</label>
+                            <input type="number" class="form-control" id="minLength" value="200">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">最大长度 (aa):</label>
+                            <input type="number" class="form-control" id="maxLength" value="1000">
+                        </div>
+                    </div>
+                    <div class="mb-3 mt-3">
+                        <label class="form-label">输入 FASTA 路径 (可选):</label>
+                        <input type="text" class="form-control" id="filterInputPath" placeholder="默认使用 BLAST 输出">
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary mt-3">
+                        <i class="bi bi-funnel"></i> 应用过滤
+                    </button>
+                </form>
+                
+                <div class="step-result" id="result3">
+                    <h6>过滤结果:</h6>
+                    <div id="filterResults"></div>
+                    <button class="btn btn-success btn-sm mt-2" onclick="nextStep(4)">
+                        <i class="bi bi-arrow-right"></i> 继续多序列比对
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Step 4: Alignment -->
+            <div class="pipeline-step" id="step4" data-step="4">
+                <div class="step-number">4</div>
+                <h4>Multiple Sequence Alignment</h4>
+                <p class="text-muted">使用 MAFFT/ClustalW/MUSCLE 进行多序列比对</p>
+                
+                <form id="alignForm">
+                    <div class="mb-3">
+                        <label class="form-label">上传 FASTA (可选):</label>
+                        <input type="file" class="form-control" id="alignFileInput" accept=".fasta,.fa,.faa">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label">比对工具:</label>
+                            <select class="form-select" id="alignTool">
+                                <option value="mafft">MAFFT (推荐)</option>
+                                <option value="clustalw">ClustalW</option>
+                                <option value="muscle">MUSCLE</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">MAFFT算法:</label>
+                            <select class="form-select" id="mafftAlgorithm">
+                                <option value="auto">Auto (默认)</option>
+                                <option value="linsi">L-INS-i (最准确)</option>
+                                <option value="ginsi">G-INS-i (全局)</option>
+                                <option value="einsi">E-INS-i (考虑扩展)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3 mt-3">
+                        <label class="form-label">输入 FASTA 路径 (可选):</label>
+                        <input type="text" class="form-control" id="alignInputPath" placeholder="默认使用过滤后的 FASTA">
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary mt-3">
+                        <i class="bi bi-align-middle"></i> 运行比对
+                    </button>
+                </form>
+                
+                <div class="step-result" id="result4">
+                    <h6>比对结果:</h6>
+                    <div id="alignResults"></div>
+                    <button class="btn btn-success btn-sm mt-2" onclick="nextStep(5)">
+                        <i class="bi bi-arrow-right"></i> 继续 ClipKIT
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Step 5: ClipKIT -->
+            <div class="pipeline-step" id="step5" data-step="5">
+                <div class="step-number">5</div>
+                <h4>ClipKIT Trimming</h4>
+                <p class="text-muted">修剪比对中保守性差的区域</p>
+                
+                <form id="clipkitForm">
+                    <div class="mb-3">
+                        <label class="form-label">上传比对文件 (可选):</label>
+                        <input type="file" class="form-control" id="clipkitFileInput" accept=".fasta,.fa,.faa,.aln,.phy">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label">修剪模式:</label>
+                            <select class="form-select" id="clipkitMode">
+                                <option value="kpic-gappy">kpic-gappy (推荐)</option>
+                                <option value="kpic">kpic</option>
+                                <option value="kpi-gappy">kpi-gappy</option>
+                                <option value="kpi">kpi</option>
+                                <option value="gappy">gappy</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Gap阈值:</label>
+                            <input type="number" class="form-control" id="clipkitGaps" value="0.9" step="0.1" min="0" max="1">
+                        </div>
+                    </div>
+                    <div class="mb-3 mt-3">
+                        <label class="form-label">输入比对路径 (可选):</label>
+                        <input type="text" class="form-control" id="clipkitInputPath" placeholder="默认使用上一步比对结果">
+                    </div>
+                    
+                    <button type="button" class="btn btn-secondary mt-3" onclick="suggestClipKitMode()">
+                        <i class="bi bi-lightbulb"></i> 自动推荐模式
+                    </button>
+                    <button type="submit" class="btn btn-primary mt-3">
+                        <i class="bi bi-scissors"></i> 运行 ClipKIT
+                    </button>
+                </form>
+                
+                <div class="step-result" id="result5">
+                    <h6>ClipKIT结果:</h6>
+                    <div id="clipkitResults"></div>
+                    <button class="btn btn-success btn-sm mt-2" onclick="nextStep(6)">
+                        <i class="bi bi-arrow-right"></i> 继续建树
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Step 6: IQ-TREE -->
+            <div class="pipeline-step" id="step6" data-step="6">
+                <div class="step-number">6</div>
+                <h4>IQ-TREE Phylogenetic Inference</h4>
+                <p class="text-muted">构建系统发育树</p>
+                
+                <form id="iqtreeForm">
+                    <div class="mb-3">
+                        <label class="form-label">上传比对文件 (可选):</label>
+                        <input type="file" class="form-control" id="iqtreeFileInput" accept=".fasta,.fa,.faa,.aln,.phy">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label class="form-label">替换模型:</label>
+                            <input type="text" class="form-control" id="iqtreeModel" value="MFP" placeholder="MFP (自动选择)">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Bootstrap次数:</label>
+                            <input type="number" class="form-control" id="iqtreeBootstrap" value="1000">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Bootstrap类型:</label>
+                            <select class="form-select" id="iqtreeBootstrapType">
+                                <option value="ufboot">UFBoot (快速)</option>
+                                <option value="boot">Standard Bootstrap</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3 mt-3">
+                        <label class="form-label">输入比对路径 (可选):</label>
+                        <input type="text" class="form-control" id="iqtreeInputPath" placeholder="默认使用 ClipKIT 输出">
+                    </div>
+                    
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="iqtreeAlrt" checked>
+                                <label class="form-check-label" for="iqtreeAlrt">SH-aLRT test</label>
+                        <div class="mb-3">
+                            <label class="form-label">或已有文件路径:</label>
+                            <input type="text" class="form-control" id="hmmExistingPath" placeholder="/path/to/cleaned.fasta">
+                        </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="iqtreeBnni" checked>
+                                <label class="form-check-label" for="iqtreeBnni">减少分支长度相关性</label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button type="button" class="btn btn-secondary mt-3" onclick="runModelFinder()">
+                        <i class="bi bi-cpu"></i> 运行 ModelFinder
+                    </button>
+                    <button type="submit" class="btn btn-primary mt-3">
+                        <i class="bi bi-tree"></i> 构建树
+                    </button>
+                </form>
+                
+                <div class="step-result" id="result6">
+                    <h6>IQ-TREE结果:</h6>
+                    <div id="iqtreeResults"></div>
+                    <button class="btn btn-success btn-sm mt-2" onclick="nextStep(7)">
+                        <i class="bi bi-arrow-right"></i> 树可视化
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Step 7: Visualization -->
+            <div class="pipeline-step" id="step7" data-step="7">
+                <div class="step-number">7</div>
+                <h4>Tree Visualization</h4>
+                <p class="text-muted">可视化系统发育树</p>
+                
+                <div id="treeVizContainer">
+                    <p class="text-muted">完成前面步骤后自动跳转到树可视化页面</p>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const pipelineData = {
+        cleaned: null,
+        hmmOutput: null,
+        blastOutput: null,
+        filteredSeqs: null,
+        alignment: null,
+        trimmedAlignment: null,
+        tree: null
+    };
+
+    function nextStep(stepNum) {
+        const currentStep = document.querySelector('.pipeline-step.active');
+        if (currentStep) {
+            currentStep.classList.remove('active');
+            currentStep.classList.add('completed');
+        }
+        const next = document.getElementById(`step${stepNum}`);
+        if (next) {
+            next.classList.add('active');
+            next.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }
+
+    function getInputForStep(fileId, pathId, fallbackPath) {
+        const fd = new FormData();
+        const fileEl = document.getElementById(fileId);
+        const pathEl = document.getElementById(pathId);
+        const pathVal = pathEl ? pathEl.value.trim() : '';
+
+        if (fileEl && fileEl.files && fileEl.files.length > 0) {
+            fd.append('file', fileEl.files[0]);
+            return fd;
+        }
+        if (pathVal) {
+            fd.append('file_path', pathVal);
+            return fd;
+        }
+        if (fallbackPath) {
+            fd.append('file_path', fallbackPath);
+            return fd;
+        }
+        return null;
+    }
+
+    function downloadLink(path) {
+        return `/phylo/download?path=${encodeURIComponent(path)}`;
+    }
+
+    // Step 0: Clean headers
+    document.getElementById('cleanForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = getInputForStep('cleanFile', 'cleanPath');
+        if (!fd) {
+            alert('请上传 FASTA 或提供路径');
+            return;
+        }
+        try {
+            const res = await fetch('/pipeline/clean-headers', { method: 'POST', body: fd });
+            const result = await res.json();
+            if (result.success) {
+                pipelineData.cleaned = result.output_file;
+                document.getElementById('cleanResults').innerHTML = `
+                    <p class="text-success"><i class="bi bi-check-circle"></i> 清理完成, 共 ${result.count} 条序列</p>
+                    <a class="btn btn-sm btn-outline-primary" href="${downloadLink(result.output_file)}">下载清理后的 FASTA</a>
+                `;
+                document.getElementById('result0').classList.add('show');
+            } else {
+                alert('清理失败: ' + result.error);
+            }
+        } catch (err) {
+            alert('错误: ' + err.message);
+        }
+    });
+
+    // Step 1: HMM Search
+    document.getElementById('hmmForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = getInputForStep('hmmSeqFile', 'hmmExistingPath', pipelineData.cleaned);
+        if (!fd) {
+            alert('请上传序列或填写路径');
+            return;
+        }
+        const profiles = Array.from(document.getElementById('hmmProfiles').selectedOptions)
+            .map(opt => opt.value);
+        profiles.forEach(p => fd.append('hmm_files[]', p + '.hmm'));
+        fd.append('evalue', document.getElementById('hmmEvalue').value);
+        fd.append('cut_ga', document.getElementById('hmmCutGA').checked);
+
+        try {
+            const res = await fetch('/phylo/hmm-search', { method: 'POST', body: fd });
+            const result = await res.json();
+            if (result.success) {
+                const outputFiles = result.output_files || {};
+                pipelineData.hmmOutput = outputFiles.hits || outputFiles.hits_fasta || outputFiles.fasta || outputFiles.main || null;
+                document.getElementById('hmmResults').innerHTML = `
+                    <p class="text-success"><i class="bi bi-check-circle"></i> 找到 ${result.hit_count} 条匹配</p>
+                    ${pipelineData.hmmOutput ? `<a class="btn btn-sm btn-outline-primary" href="${downloadLink(pipelineData.hmmOutput)}">下载匹配序列</a>` : ''}
+                `;
+                document.getElementById('result1').classList.add('show');
+            } else {
+                alert('HMM 搜索失败: ' + result.error);
+            }
+        } catch (err) {
+            alert('错误: ' + err.message);
+        }
+    });
+
+    // Step 2: BLAST
+    document.getElementById('blastForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = getInputForStep('blastDbFile', 'blastQueryPath', pipelineData.hmmOutput);
+        if (!fd) {
+            alert('请提供查询序列文件或路径');
+            return;
+        }
+
+        const dbPath = document.getElementById('blastDbPath').value.trim();
+        if (!dbPath) {
+            alert('请填写数据库基名路径');
+            return;
+        }
+        fd.append('database', dbPath);
+        fd.append('evalue', document.getElementById('blastEvalue').value);
+        fd.append('max_hits', document.getElementById('blastMaxTargets').value);
+        fd.append('num_threads', document.getElementById('blastThreads').value);
+
+        try {
+            const res = await fetch('/blast/search', { method: 'POST', body: fd });
+            const result = await res.json();
+            if (result.success) {
+                const outputFiles = result.output_files || {};
+                pipelineData.blastOutput = outputFiles.main || outputFiles.fasta || null;
+                document.getElementById('blastResults').innerHTML = `
+                    <p class="text-success"><i class="bi bi-check-circle"></i> BLAST 完成 (${result.total_hits} 条命中)</p>
+                    ${pipelineData.blastOutput ? `<a class="btn btn-sm btn-outline-primary" href="${downloadLink(pipelineData.blastOutput)}">下载结果</a>` : ''}
+                `;
+                document.getElementById('result2').classList.add('show');
+            } else {
+                alert('BLAST 失败: ' + result.error);
+            }
+        } catch (err) {
+            alert('错误: ' + err.message);
+        }
+    });
+
+    // Step 2.5: BLAST Filter
+    document.getElementById('blastFilterForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const goldList = document.getElementById('goldListSelect').value;
+        if (!goldList) {
+            alert('请选择 Gold Standard List');
+            return;
+        }
+        
+        const fd = new FormData();
+        const inputPath = document.getElementById('blastFilterInputPath').value.trim() || pipelineData.blastOutput;
+        if (!inputPath) {
+            alert('请提供输入序列路径或先运行 BLAST');
+            return;
+        }
+        
+        fd.append('step', 'step2_5');
+        fd.append('file_path', inputPath);
+        fd.append('gold_list', goldList);
+        fd.append('pident', document.getElementById('blastPident').value);
+        fd.append('qcovs', document.getElementById('blastQcovs').value);
+
+        try {
+            const res = await fetch('/phylo/run-step', { method: 'POST', body: fd });
+            const result = await res.json();
+            if (result.success) {
+                pipelineData.blastFiltered = result.output;
+                const stats = result.stats || {};
+                let statsHtml = `
+                    <p class="text-success"><i class="bi bi-check-circle"></i> BLAST 过滤完成</p>
+                    <div class="alert alert-info mt-2">
+                        <strong>--- BLAST Filter Summary ---</strong><br>
+                        过滤器: Min P-Ident >= ${document.getElementById('blastPident').value}% | Min Q-Covs >= ${document.getElementById('blastQcovs').value}%<br>
+                        输入总数: ${stats.total_in || 'N/A'}<br>
+                        保留序列: <span class="text-success">${stats.kept || 'N/A'}</span><br>
+                        删除序列: <span class="text-danger">${stats.deleted || 'N/A'}</span>
+                `;
+                
+                if (stats.log_file) {
+                    statsHtml += `<br><small class="text-muted">详细日志: ${stats.log_file}</small>`;
+                }
+                
+                if (stats.deleted_ids && stats.deleted_ids.length > 0) {
+                    statsHtml += '<br><br><strong>删除的序列 ID (前10条):</strong><br><code style="font-size:11px;">';
+                    stats.deleted_ids.slice(0, 10).forEach(id => {
+                        statsHtml += `${id}<br>`;
+                    });
+                    if (stats.deleted_ids.length > 10) {
+                        statsHtml += `... 还有 ${stats.deleted_ids.length - 10} 条<br>`;
+                    }
+                    statsHtml += '</code>';
+                }
+                
+                statsHtml += `</div>
+                    <a class="btn btn-sm btn-outline-primary" href="${downloadLink(result.output)}">下载过滤后 FASTA</a>
+                `;
+                
+                document.getElementById('blastFilterResults').innerHTML = statsHtml;
+                document.getElementById('result2_5').classList.add('show');
+            } else {
+                alert('BLAST 过滤失败: ' + result.error);
+            }
+        } catch (err) {
+            alert('错误: ' + err.message);
+        }
+    });
+
+    // Step 3: Length Filter
+    document.getElementById('filterForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        // Use BLAST filter output if available, otherwise fall back to BLAST output
+        const fd = getInputForStep('filterFile', 'filterInputPath', pipelineData.blastFiltered || pipelineData.blastOutput);
+        if (!fd) {
+            alert('请提供 FASTA 路径或先运行 BLAST');
+            return;
+        }
+        fd.append('min_length', document.getElementById('minLength').value);
+        fd.append('max_length', document.getElementById('maxLength').value);
+
+        try {
+            const res = await fetch('/pipeline/filter-length', { method: 'POST', body: fd });
+            const result = await res.json();
+            if (result.success) {
+                pipelineData.filteredSeqs = result.output_file;
+                const stats = result.stats || {};
+                let statsHtml = `
+                    <p class="text-success"><i class="bi bi-check-circle"></i> 长度过滤完成</p>
+                    <div class="alert alert-info mt-2">
+                        <strong>--- Length Filter Summary ---</strong><br>
+                        阈值: 移除序列 < ${stats.threshold} aa<br>
+                        输入总数: ${stats.total_in || result.kept + result.removed}<br>
+                        保留序列: <span class="text-success">${result.kept}</span><br>
+                        删除序列: <span class="text-danger">${result.removed}</span>
+                `;
+                
+                if (stats.log_file) {
+                    statsHtml += `<br><small class="text-muted">详细日志: ${stats.log_file}</small>`;
+                }
+                
+                if (stats.deleted_with_lengths && stats.deleted_with_lengths.length > 0) {
+                    statsHtml += '<br><br><strong>删除的序列 (前10条):</strong><br><code style="font-size:11px;">';
+                    stats.deleted_with_lengths.slice(0, 10).forEach(([id, len]) => {
+                        statsHtml += `${id} (长度: ${len} aa)<br>`;
+                    });
+                    if (stats.deleted_with_lengths.length > 10) {
+                        statsHtml += `... 还有 ${stats.deleted_with_lengths.length - 10} 条<br>`;
+                    }
+                    statsHtml += '</code>';
+                }
+                
+                statsHtml += `</div>
+                    <a class="btn btn-sm btn-outline-primary" href="${downloadLink(result.output_file)}">下载过滤后 FASTA</a>
+                `;
+                
+                document.getElementById('filterResults').innerHTML = statsHtml;
+                document.getElementById('result3').classList.add('show');
+            } else {
+                alert('过滤失败: ' + result.error);
+            }
+        } catch (err) {
+            alert('错误: ' + err.message);
+        }
+    });
+
+    // Step 4: Alignment
+    document.getElementById('alignForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = getInputForStep('alignFileInput', 'alignInputPath', pipelineData.filteredSeqs);
+        if (!fd) {
+            alert('请提供输入 FASTA');
+            return;
+        }
+        fd.append('tool', document.getElementById('alignTool').value);
+        fd.append('mafft_algorithm', document.getElementById('mafftAlgorithm').value);
+        fd.append('threads', 4);
+
+        try {
+            const res = await fetch('/alignment/align-multi', { method: 'POST', body: fd });
+            const result = await res.json();
+            if (result.success) {
+                pipelineData.alignment = result.output_file;
+                document.getElementById('alignResults').innerHTML = `
+                    <p class="text-success"><i class="bi bi-check-circle"></i> 比对完成</p>
+                    <p>序列数: ${result.stats.num_sequences}, 比对长度: ${result.stats.alignment_length}</p>
+                    <a class="btn btn-sm btn-outline-primary" href="${downloadLink(result.output_file)}">下载比对</a>
+                `;
+                document.getElementById('result4').classList.add('show');
+            } else {
+                alert('比对失败: ' + (result.error || '未知错误'));
+            }
+        } catch (err) {
+            alert('错误: ' + err.message);
+        }
+    });
+
+    // Step 5: ClipKIT
+    async function suggestClipKitMode() {
+        const fd = getInputForStep('clipkitFileInput', 'clipkitInputPath', pipelineData.alignment);
+        if (!fd) {
+            alert('请先提供比对文件');
+            return;
+        }
+        try {
+            const res = await fetch('/phylo/suggest-clipkit-mode', { method: 'POST', body: fd });
+            const result = await res.json();
+            if (result.success) {
+                document.getElementById('clipkitMode').value = result.suggested_mode;
+                alert('推荐模式: ' + result.suggested_mode + '\n原因: ' + result.reason);
+            }
+        } catch (err) {
+            alert('错误: ' + err.message);
+        }
+    }
+
+    document.getElementById('clipkitForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = getInputForStep('clipkitFileInput', 'clipkitInputPath', pipelineData.alignment);
+        if (!fd) {
+            alert('请提供比对文件');
+            return;
+        }
+        fd.append('mode', document.getElementById('clipkitMode').value);
+        fd.append('gaps', document.getElementById('clipkitGaps').value);
+
+        try {
+            const res = await fetch('/phylo/clipkit-trim', { method: 'POST', body: fd });
+            const result = await res.json();
+            if (result.success) {
+                pipelineData.trimmedAlignment = result.output_file;
+                document.getElementById('clipkitResults').innerHTML = `
+                    <p class="text-success"><i class="bi bi-check-circle"></i> ClipKIT 完成</p>
+                    <p>保留位置: ${result.stats.kept_sites} / ${result.stats.total_sites} (${result.stats.percentage_kept}%)</p>
+                    <a class="btn btn-sm btn-outline-primary" href="${downloadLink(result.output_file)}">下载修剪结果</a>
+                `;
+                document.getElementById('result5').classList.add('show');
+            } else {
+                alert('ClipKIT 失败: ' + result.error);
+            }
+        } catch (err) {
+            alert('错误: ' + err.message);
+        }
+    });
+
+    // Step 6: IQ-TREE
+    async function runModelFinder() {
+        const fd = getInputForStep('iqtreeFileInput', 'iqtreeInputPath', pipelineData.trimmedAlignment);
+        if (!fd) {
+            alert('请提供比对文件');
+            return;
+        }
+        try {
+            const res = await fetch('/phylo/modelfinder', { method: 'POST', body: fd });
+            const result = await res.json();
+            if (result.success) {
+                document.getElementById('iqtreeModel').value = result.best_model;
+                alert('最佳模型: ' + result.best_model);
+            } else {
+                alert('ModelFinder 失败: ' + result.error);
+            }
+        } catch (err) {
+            alert('错误: ' + err.message);
+        }
+    }
+
+    document.getElementById('iqtreeForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = getInputForStep('iqtreeFileInput', 'iqtreeInputPath', pipelineData.trimmedAlignment);
+        if (!fd) {
+            alert('请提供比对文件');
+            return;
+        }
+        fd.append('model', document.getElementById('iqtreeModel').value);
+        fd.append('bootstrap', document.getElementById('iqtreeBootstrap').value);
+        fd.append('bootstrap_type', document.getElementById('iqtreeBootstrapType').value);
+        fd.append('alrt', document.getElementById('iqtreeAlrt').checked);
+        fd.append('bnni', document.getElementById('iqtreeBnni').checked);
+
+        try {
+            const res = await fetch('/phylo/iqtree-infer', { method: 'POST', body: fd });
+            const result = await res.json();
+            if (result.success) {
+                const treefile = result.output_files.treefile;
+                pipelineData.tree = treefile;
+                document.getElementById('iqtreeResults').innerHTML = `
+                    <p class="text-success"><i class="bi bi-check-circle"></i> 建树完成</p>
+                    <p>Bootstrap 支持率均值: ${result.support_stats.mean_support || 'N/A'}%</p>
+                    ${treefile ? `<a class="btn btn-sm btn-outline-primary" href="${downloadLink(treefile)}">下载树文件</a>` : ''}
+                `;
+                document.getElementById('result6').classList.add('show');
+            } else {
+                alert('IQ-TREE 失败: ' + result.error);
+            }
+        } catch (err) {
+            alert('错误: ' + err.message);
+        }
+    });
+</script>
+{% endblock %}

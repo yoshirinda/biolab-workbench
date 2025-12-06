@@ -33,16 +33,16 @@ AA_ONLY_CHARS = set('EFILPQ')
 # Pattern examples: Mp3g11110.1, AT1G01010.1, Os01g0100100, Zm00001d002345, etc.
 GENE_ID_PATTERN = re.compile(
     r'\b('
-    r'[A-Za-z]{2,4}\d+g\d+(?:\.\d+)?|'  # Mp3g11110.1, AT1G01010.1
-    r'[A-Za-z]{2,4}\d{5,}(?:\.\d+)?|'    # Zm00001d002345
-    r'Os\d{2}g\d{7}|'                     # Os01g0100100 (Rice)
-    r'LOC_Os\d{2}g\d{5}(?:\.\d+)?|'       # LOC_Os01g01010.1
-    r'GRMZM\d+G\d+(?:_[A-Z]\d+)?|'        # GRMZM2G001000 (Maize)
-    r'Solyc\d{2}g\d{6}(?:\.\d+)?|'        # Solyc01g001000.1 (Tomato)
+    r'[A-Za-z]{2,4}\d+g\d+(?:\.\d+)?|'   # Mp3g11110.1, AT1G01010.1
+    r'[A-Za-z]{2,10}\d{2,}(?:\.\d+)?|'      # ATCG00280.1, generic letters+digits(+version)
+    r'Os\d{2}g\d{7}|'                        # Os01g0100100 (Rice)
+    r'LOC_Os\d{2}g\d{5}(?:\.\d+)?|'        # LOC_Os01g01010.1
+    r'GRMZM\d+G\d+(?:_[A-Z]\d+)?|'          # GRMZM2G001000 (Maize)
+    r'Solyc\d{2}g\d{6}(?:\.\d+)?|'         # Solyc01g001000.1 (Tomato)
     r'Potri\.\d{3}G\d{6}(?:\.\d+)?|'      # Potri.001G001000.1 (Poplar)
-    r'Pp\d+s\d+(?:\.\d+)?|'               # Pp3c1_12345 (Physcomitrella)
-    r'[A-Za-z]\d+\.\d+|'                  # Generic: A12345.1
-    r'[A-Za-z]{1,6}_[A-Za-z0-9]+|'        # Gene_Name format
+    r'Pp\d+s\d+(?:\.\d+)?|'                # Pp3c1_12345 (Physcomitrella)
+    r'[A-Za-z]\d+\.\d+|'                    # Generic: A12345.1
+    r'[A-Za-z]{1,6}_[A-Za-z0-9]+|'             # Gene_Name format
     r'[A-Z][a-z]{0,4}\d+[gG]\d+(?:\.\d+)?' # General gene format
     r')\b'
 )
@@ -319,38 +319,49 @@ def parse_gene_ids_from_text(text):
     gene_ids = []
     
     lines = text.strip().split('\n')
-    
-    for line in lines:
-        line = line.strip()
+
+    for raw_line in lines:
+        line = raw_line.strip().lstrip('>')  # accept FASTA headers directly
         if not line or line.startswith('#'):
             continue
-        
-        # Try tab-separated format first (BLAST output style)
+
+        # Collect IDs from key=value pairs first
+        kv_pairs = re.findall(r'(\w+)=([\w.:-]+)', line)
+        for key, val in kv_pairs:
+            if key.lower() in ['id', 'locus', 'gene', 'transcript', 'mrna', 'protein', 'pacid']:
+                match = GENE_ID_PATTERN.search(val)
+                if match:
+                    gene_ids.append(match.group(1))
+                elif re.match(r'^[\w.-]+$', val):
+                    gene_ids.append(val)
+
+        # Try tab-separated (BLAST-like) second column
         fields = line.split('\t')
-        
         if len(fields) >= 2:
-            # BLAST format: query_id<tab>subject_id<tab>...
-            # Try to extract gene ID from the second field (subject/hit)
             potential_id = fields[1].strip()
-            
-            # Check if it looks like a gene ID
             match = GENE_ID_PATTERN.search(potential_id)
             if match:
                 gene_ids.append(match.group(1))
-                continue
-            
-            # If the whole field looks valid, use it
-            if potential_id and re.match(r'^[\w.-]+$', potential_id):
+            elif potential_id and re.match(r'^[\w.-]+$', potential_id):
                 gene_ids.append(potential_id)
-                continue
-        
-        # Try to find gene IDs in the whole line
+
+        # Find any gene-like IDs across the full line
         matches = GENE_ID_PATTERN.findall(line)
         if matches:
             gene_ids.extend(matches)
-        elif len(fields) == 1 and re.match(r'^[\w.-]+$', fields[0]):
-            # Simple single ID per line
-            gene_ids.append(fields[0])
+            continue
+
+        # Fallback: split by whitespace or comma and test tokens
+        tokens = re.split(r'[\s,;|]+', line)
+        for token in tokens:
+            token = token.strip()
+            if not token:
+                continue
+            match = GENE_ID_PATTERN.search(token)
+            if match:
+                gene_ids.append(match.group(1))
+            elif re.match(r'^[\w.-]+$', token):
+                gene_ids.append(token)
     
     # Remove duplicates while preserving order
     seen = set()
@@ -371,6 +382,7 @@ def extract_sequences_fuzzy(source_fasta, gene_ids, output_file=None):
     - Exact match
     - Case-insensitive matching
     - Version suffix agnostic matching (Mp3g11110 matches Mp3g11110.1)
+    - Matching against common identifiers in the header (locus, id, gene, pacid, transcript)
     
     Args:
         source_fasta: Path to source FASTA file
@@ -395,7 +407,7 @@ def extract_sequences_fuzzy(source_fasta, gene_ids, output_file=None):
             'unmatched': []
         }
     
-    # Build fuzzy index
+    # Build fuzzy index for requested gene IDs
     fuzzy_index = {}
     original_ids = set(gene_ids)
     for gid in gene_ids:
@@ -412,40 +424,58 @@ def extract_sequences_fuzzy(source_fasta, gene_ids, output_file=None):
             current_header = None
             current_seq = []
             
+            def process_sequence():
+                if current_header is None:
+                    return
+
+                # Extract all possible IDs from the header
+                header_ids = set()
+                parts = current_header.split(None, 1)
+                primary_id = parts[0]
+                header_ids.add(primary_id)
+
+                tail = parts[1] if len(parts) > 1 else ''
+                # Key=value pairs
+                for key, value in re.findall(r'(\w+)=([\w.:-]+)', tail):
+                    if key.lower() in ['locus', 'id', 'gene', 'pacid', 'transcript', 'mrna', 'protein']:
+                        header_ids.add(value)
+
+                # Also split tail into tokens for plain IDs (handles headers like ">id desc")
+                for token in re.split(r'[\s,;|]+', tail):
+                    token = token.strip()
+                    if not token:
+                        continue
+                    # Strip trailing commas/semicolons
+                    token = token.strip(',;')
+                    if GENE_ID_PATTERN.search(token):
+                        header_ids.add(token)
+
+                # Check for a match
+                for hid in header_ids:
+                    # Exact match
+                    if hid in original_ids:
+                        extracted.append((current_header, ''.join(current_seq)))
+                        matched_ids.add(hid)
+                        return
+                    # Fuzzy match
+                    norm_hid, _ = normalize_gene_id(hid)
+                    if norm_hid in fuzzy_index:
+                        extracted.append((current_header, ''.join(current_seq)))
+                        matched_ids.add(fuzzy_index[norm_hid])
+                        return
+
             for line in f:
                 line = line.strip()
                 if line.startswith('>'):
-                    # Save previous sequence if it matches
-                    if current_header is not None:
-                        seq_id = current_header.split()[0]
-                        
-                        # Check exact match
-                        if seq_id in original_ids:
-                            extracted.append((current_header, ''.join(current_seq)))
-                            matched_ids.add(seq_id)
-                        else:
-                            # Try fuzzy match
-                            norm_seq_id, _ = normalize_gene_id(seq_id)
-                            if norm_seq_id in fuzzy_index:
-                                extracted.append((current_header, ''.join(current_seq)))
-                                matched_ids.add(fuzzy_index[norm_seq_id])
-                    
+                    process_sequence()
                     current_header = line[1:]
                     current_seq = []
                 elif line:
                     current_seq.append(line)
             
             # Handle last sequence
-            if current_header is not None:
-                seq_id = current_header.split()[0]
-                if seq_id in original_ids:
-                    extracted.append((current_header, ''.join(current_seq)))
-                    matched_ids.add(seq_id)
-                else:
-                    norm_seq_id, _ = normalize_gene_id(seq_id)
-                    if norm_seq_id in fuzzy_index:
-                        extracted.append((current_header, ''.join(current_seq)))
-                        matched_ids.add(fuzzy_index[norm_seq_id])
+            process_sequence()
+
     except Exception as e:
         return {
             'success': False,
@@ -477,7 +507,7 @@ def extract_sequences_fuzzy(source_fasta, gene_ids, output_file=None):
     
     return {
         'success': True,
-        'sequences': [(h.split()[0], s) for h, s in extracted],
+        'sequences': [(h.split(None, 1)[0], s) for h, s in extracted],
         'matched': list(matched_ids),
         'unmatched': unmatched,
         'output_file': output_file if output_file else None

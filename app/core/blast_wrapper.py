@@ -68,29 +68,81 @@ def list_blast_databases(db_dir=None):
     if not os.path.exists(db_dir):
         return databases
 
-    # Walk through directories looking for BLAST database files
+    # Collect candidate db paths and types
+    db_candidates = {}
+    nucleotide_exts = {'.nin', '.nhr', '.nsq'}
+    protein_exts = {'.pin', '.phr', '.psq'}
+
     for root, dirs, files in os.walk(db_dir):
-        # Look for .nin (nucleotide) or .pin (protein) files
         for f in files:
-            if f.endswith('.nin') or f.endswith('.pin'):
-                db_name = f.rsplit('.', 2)[0]
-                db_path = os.path.join(root, db_name)
-                db_type = 'nucleotide' if f.endswith('.nin') else 'protein'
+            base, ext = os.path.splitext(f)
+            db_path = os.path.join(root, base)
 
-                # Get relative path from databases dir
-                rel_path = os.path.relpath(root, db_dir)
-                if rel_path == '.':
-                    display_name = db_name
-                else:
-                    display_name = os.path.join(rel_path, db_name)
+            db_type = None
+            if ext in nucleotide_exts:
+                db_type = 'nucleotide'
+            elif ext in protein_exts:
+                db_type = 'protein'
 
-                databases.append({
-                    'name': display_name,
-                    'path': db_path,
-                    'type': db_type
-                })
+            if db_type:
+                # Prefer an already detected type if exists
+                if db_path not in db_candidates:
+                    db_candidates[db_path] = db_type
+
+    for db_path, db_type in db_candidates.items():
+        # Prefer metadata-informed type when available
+        db_type = get_db_type(db_path)
+        rel_path = os.path.relpath(os.path.dirname(db_path), db_dir)
+        db_name = os.path.basename(db_path)
+        display_name = db_name if rel_path == '.' else os.path.join(rel_path, db_name)
+
+        databases.append({
+            'name': display_name,
+            'path': db_path,
+            'type': db_type
+        })
 
     return databases
+
+
+def delete_blast_database(db_path: str):
+    """Delete a BLAST database (all index files and metadata)."""
+    try:
+        base = db_path
+        if not os.path.isabs(base):
+            base = os.path.join(config.DATABASES_DIR, db_path)
+        base = os.path.abspath(base)
+
+        # Safety: only allow deletion inside DATABASES_DIR
+        allowed_root = os.path.abspath(config.DATABASES_DIR)
+        if not base.startswith(allowed_root):
+            return False, 'Access denied: outside database directory'
+
+        exts = ['.nin', '.nhr', '.nsq', '.pin', '.phr', '.psq', '.pog', '.pog.idx', '.ndb', '.not', '.nto', '.ntf', '.nal', '.pal', '.meta.json']
+        removed = []
+        for ext in exts:
+            candidate = base + ext
+            if os.path.exists(candidate):
+                os.remove(candidate)
+                removed.append(os.path.basename(candidate))
+
+        # Also remove mask files if present
+        mask_file = base + '.msk'
+        if os.path.exists(mask_file):
+            os.remove(mask_file)
+            removed.append(os.path.basename(mask_file))
+
+        # Remove base file if plain fasta copy exists
+        if os.path.exists(base):
+            os.remove(base)
+            removed.append(os.path.basename(base))
+
+        if removed:
+            return True, f"Removed: {', '.join(removed)}"
+        return True, 'Database files not found (nothing to delete)'
+    except Exception as e:
+        logger.error(f"Failed to delete database {db_path}: {e}")
+        return False, str(e)
 
 
 def save_database_metadata(db_path, source_fasta, db_type, title):
@@ -132,6 +184,40 @@ def get_source_fasta(database):
         logger.warning(f"Failed to read database metadata: {e}")
     
     return None
+
+
+def get_db_type(database):
+    """
+    Determine database type using metadata or file extensions.
+    Returns 'nucleotide' or 'protein' (default nucleotide if unknown).
+    """
+    # Try metadata first
+    metadata_file = database + '.meta.json'
+    if os.path.exists(metadata_file):
+        try:
+            with open(metadata_file, 'r', encoding='utf-8') as f:
+                meta = json.load(f)
+            db_type = meta.get('db_type')
+            if db_type == 'nucl':
+                return 'nucleotide'
+            if db_type == 'prot':
+                return 'protein'
+            if db_type in ['nucleotide', 'protein']:
+                return db_type
+        except Exception as e:
+            logger.warning(f"Failed to read db metadata for type: {e}")
+
+    # Fallback to file extension detection
+    nucleotide_exts = ['.nin', '.nhr', '.nsq']
+    protein_exts = ['.pin', '.phr', '.psq']
+    for ext in nucleotide_exts:
+        if os.path.exists(f"{database}{ext}"):
+            return 'nucleotide'
+    for ext in protein_exts:
+        if os.path.exists(f"{database}{ext}"):
+            return 'protein'
+
+    return 'nucleotide'
 
 
 def build_fuzzy_id_index(hit_ids):
@@ -363,16 +449,11 @@ def run_blast(query_file, database, output_format='tsv', evalue=1e-5,
         sample_seq = ''.join(seq_lines)[:500]
         query_type = detect_sequence_type(sample_seq)
 
-    # Determine database type from files
-    if os.path.exists(f"{database}.nin"):
-        db_type = 'nucleotide'
-    elif os.path.exists(f"{database}.pin"):
-        db_type = 'protein'
-    else:
-        # Try to find db files with extensions
-        db_type = 'nucleotide'  # Default
+    # Determine database type from metadata or file extensions
+    db_type = get_db_type(database)
 
-    # Select BLAST program
+    # Normalize and select BLAST program
+    program = program or None
     if program is None:
         program = select_blast_program(query_type, db_type)
 

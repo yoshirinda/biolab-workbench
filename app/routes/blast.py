@@ -6,7 +6,7 @@ from flask import Blueprint, render_template, request, jsonify, send_file
 import config
 from app.core.blast_wrapper import (
     list_blast_databases, create_blast_database, run_blast,
-    extract_sequences, parse_blast_tsv
+    extract_sequences, parse_blast_tsv, delete_blast_database
 )
 from app.utils.file_utils import save_uploaded_file
 from app.utils.logger import get_app_logger
@@ -63,6 +63,22 @@ def create_database():
         return jsonify({'success': False, 'error': str(e)})
 
 
+@blast_bp.route('/delete-database', methods=['POST'])
+def delete_database():
+    """Delete a BLAST database by base path or name."""
+    try:
+        data = request.get_json() or request.form
+        db_path = data.get('db_path') or data.get('database')
+        if not db_path:
+            return jsonify({'success': False, 'error': 'No database specified'})
+
+        success, message = delete_blast_database(db_path)
+        return jsonify({'success': success, 'message': message})
+    except Exception as e:
+        logger.error(f"Database deletion error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
 @blast_bp.route('/search', methods=['POST'])
 def search():
     """Run BLAST search."""
@@ -89,7 +105,9 @@ def search():
         output_format = request.form.get('output_format', 'tsv')
         evalue = float(request.form.get('evalue', 1e-5))
         max_hits = int(request.form.get('max_hits', 500))
-        program = request.form.get('program')  # None for auto-detect
+        # Treat empty/auto as None so backend auto-detect kicks in
+        program_raw = request.form.get('program')
+        program = (program_raw or '').strip() or None
 
         success, result_dir, output_files, command = run_blast(
             query_file=query_file,

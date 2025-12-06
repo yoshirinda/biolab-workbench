@@ -3,6 +3,7 @@ Sequence management routes for BioLab Workbench.
 """
 import os
 import json
+import sys
 from uuid import uuid4
 from datetime import datetime
 from flask import Blueprint, render_template, request, jsonify, session
@@ -13,8 +14,8 @@ from app.core.sequence_utils import (
     parse_gene_ids_from_text, extract_sequences_fuzzy
 )
 from app.core.project_manager import (
-    list_projects, create_project, get_project, update_project, delete_project,
-    add_sequences_to_project, remove_sequence_from_project,
+    list_projects, create_project, get_project, update_project, delete_project, create_folder,
+    add_sequences_to_project, remove_sequence_from_project, update_sequence_in_project,
     update_sequence_annotation, export_project_sequences,
     save_collection, load_collection,
     add_sequence_feature, update_sequence_feature, delete_sequence_feature,
@@ -61,9 +62,10 @@ def import_sequences():
     Import sequences from file or text and add them to a project.
     """
     try:
-        project_id = request.form.get('project_id')
-        if not project_id:
-            return jsonify({'success': False, 'error': 'Project ID is required'}), 400
+        project_path = request.form.get('project_path')
+        print(f"!!! DEBUG: Received import request for project_path: '{project_path}'", file=sys.stderr)
+        if not project_path:
+            return jsonify({'success': False, 'error': 'Project path is required'}), 400
 
         source = request.form.get('source', 'text')
         sequences_to_parse = []
@@ -75,7 +77,6 @@ def import_sequences():
             if file.filename == '':
                 return jsonify({'success': False, 'error': 'No file selected'}), 400
             
-            # Read content from file stream directly
             text_content = file.read().decode('utf-8')
             sequences_to_parse = parse_fasta(text_content)
 
@@ -88,7 +89,6 @@ def import_sequences():
         if not sequences_to_parse:
             return jsonify({'success': False, 'error': 'No valid FASTA sequences found in the input.'}), 400
 
-        # Format sequences for the project manager
         formatted_sequences = []
         for seq_id, desc, seq in sequences_to_parse:
             seq_type = detect_sequence_type(seq)
@@ -99,13 +99,12 @@ def import_sequences():
                 'type': seq_type
             })
 
-        # Add sequences to the project
-        success, updated_project, message = add_sequences_to_project(project_id, formatted_sequences)
+        success, updated_project, message = add_sequences_to_project(project_path, formatted_sequences)
 
         if not success:
             return jsonify({'success': False, 'error': message}), 500
 
-        logger.info(f"Imported {len(formatted_sequences)} sequences to project {project_id}")
+        logger.info(f"Imported {len(formatted_sequences)} sequences to project {project_path}")
         return jsonify({
             'success': True, 
             'project': updated_project,
@@ -269,13 +268,18 @@ def create_new_project():
     """Create a new project."""
     try:
         data = request.get_json()
-        name = data.get('name', '').strip()
+        path = (data.get('path') or '').strip()
+        parent_path = (data.get('parent_path') or '').strip()
+        name = (data.get('name') or '').strip()
         description = data.get('description', '')
 
-        if not name:
+        if not path and not name:
             return jsonify({'success': False, 'error': 'Project name is required'})
 
-        success, project_data, message = create_project(name, description)
+        success, project_data, message = create_project(path=path or None,
+                                                       description=description,
+                                                       parent_path=parent_path or None,
+                                                       name=name or None)
 
         return jsonify({
             'success': success,
@@ -288,11 +292,32 @@ def create_new_project():
         return jsonify({'success': False, 'error': str(e)})
 
 
-@sequence_bp.route('/projects/<project_id>', methods=['GET'])
-def get_project_by_id(project_id):
-    """Get a project by ID."""
+@sequence_bp.route('/folders', methods=['POST'])
+def create_new_folder():
+    """Create a new folder."""
     try:
-        success, project_data, message = get_project(project_id)
+        data = request.get_json()
+        path = (data.get('path') or '').strip()
+        parent_path = (data.get('parent_path') or '').strip()
+        name = (data.get('name') or '').strip()
+
+        if not path and not name:
+            return jsonify({'success': False, 'error': 'Folder name is required'})
+
+        success, message = create_folder(path=path or None,
+                                         parent_path=parent_path or None,
+                                         name=name or None)
+        return jsonify({'success': success, 'message': message})
+    except Exception as e:
+        logger.error(f"Folder creation error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@sequence_bp.route('/projects/<path:path>', methods=['GET'])
+def get_project_by_path(path):
+    """Get a project by its path."""
+    try:
+        success, project_data, message = get_project(path)
 
         return jsonify({
             'success': success,
@@ -305,15 +330,15 @@ def get_project_by_id(project_id):
         return jsonify({'success': False, 'error': str(e)})
 
 
-@sequence_bp.route('/projects/<project_id>', methods=['PUT'])
-def update_project_by_id(project_id):
+@sequence_bp.route('/projects/<path:path>', methods=['PUT'])
+def update_project_by_path(path):
     """Update a project."""
     try:
         data = request.get_json()
         name = data.get('name')
         description = data.get('description')
 
-        success, project_data, message = update_project(project_id, name, description)
+        success, project_data, message = update_project(path, name, description)
 
         return jsonify({
             'success': success,
@@ -326,11 +351,11 @@ def update_project_by_id(project_id):
         return jsonify({'success': False, 'error': str(e)})
 
 
-@sequence_bp.route('/projects/<project_id>', methods=['DELETE'])
-def delete_project_by_id(project_id):
+@sequence_bp.route('/projects/<path:path>', methods=['DELETE'])
+def delete_project_by_path(path):
     """Delete a project."""
     try:
-        success, message = delete_project(project_id)
+        success, message = delete_project(path)
 
         return jsonify({
             'success': success,
@@ -342,8 +367,8 @@ def delete_project_by_id(project_id):
         return jsonify({'success': False, 'error': str(e)})
 
 
-@sequence_bp.route('/projects/<project_id>/sequences', methods=['POST'])
-def add_sequences(project_id):
+@sequence_bp.route('/projects/<path:path>/sequences', methods=['POST'])
+def add_sequences(path):
     """Add sequences to a project."""
     try:
         data = request.get_json()
@@ -352,7 +377,7 @@ def add_sequences(project_id):
         if not sequences:
             return jsonify({'success': False, 'error': 'No sequences provided'})
 
-        success, project_data, message = add_sequences_to_project(project_id, sequences)
+        success, project_data, message = add_sequences_to_project(path, sequences)
 
         return jsonify({
             'success': success,
@@ -365,11 +390,11 @@ def add_sequences(project_id):
         return jsonify({'success': False, 'error': str(e)})
 
 
-@sequence_bp.route('/projects/<project_id>/sequences/<sequence_id>', methods=['DELETE'])
-def remove_sequence(project_id, sequence_id):
+@sequence_bp.route('/projects/<path:path>/sequences/<sequence_id>', methods=['DELETE'])
+def remove_sequence(path, sequence_id):
     """Remove a sequence from a project."""
     try:
-        success, project_data, message = remove_sequence_from_project(project_id, sequence_id)
+        success, project_data, message = remove_sequence_from_project(path, sequence_id)
 
         return jsonify({
             'success': success,
@@ -382,16 +407,32 @@ def remove_sequence(project_id, sequence_id):
         return jsonify({'success': False, 'error': str(e)})
 
 
-@sequence_bp.route('/projects/<project_id>/sequences/<sequence_id>/annotation', methods=['PUT'])
-def update_annotation(project_id, sequence_id):
+@sequence_bp.route('/projects/<path:path>/sequences/<sequence_id>', methods=['PUT'])
+def update_sequence_in_project_route(path, sequence_id):
+    """Update a sequence's details."""
+    try:
+        data = request.get_json()
+        success, project_data, message = update_sequence_in_project(path, sequence_id, data)
+
+        return jsonify({
+            'success': success,
+            'project': project_data,
+            'message': message
+        })
+
+    except Exception as e:
+        logger.error(f"Update sequence error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@sequence_bp.route('/projects/<path:path>/sequences/<sequence_id>/annotation', methods=['PUT'])
+def update_annotation(path, sequence_id):
     """Update the annotation for a sequence."""
     try:
         data = request.get_json()
         annotation = data.get('annotation', '')
 
-        success, project_data, message = update_sequence_annotation(
-            project_id, sequence_id, annotation
-        )
+        success, project_data, message = update_sequence_annotation(path, sequence_id, annotation)
 
         return jsonify({
             'success': success,
@@ -404,12 +445,12 @@ def update_annotation(project_id, sequence_id):
         return jsonify({'success': False, 'error': str(e)})
 
 
-@sequence_bp.route('/projects/<project_id>/export', methods=['GET'])
-def export_project(project_id):
+@sequence_bp.route('/projects/<path:path>/export', methods=['GET'])
+def export_project(path):
     """Export all sequences from a project as FASTA."""
     try:
         format_type = request.args.get('format', 'fasta')
-        success, result, count = export_project_sequences(project_id, format_type)
+        success, result, count = export_project_sequences(path, format_type)
 
         if success:
             return jsonify({
@@ -456,13 +497,12 @@ def save_seq_collection():
         return jsonify({'success': False, 'error': str(e)})
 
 
-@sequence_bp.route('/collections/<project_id>/load', methods=['GET'])
-def load_seq_collection(project_id):
+@sequence_bp.route('/collections/<path:path>/load', methods=['GET'])
+def load_seq_collection(path):
     """Load sequences from a project/collection."""
     try:
-        success, sequences, message = load_collection(project_id)
+        success, sequences, message = load_collection(path)
 
-        # Ensure we always return proper JSON with Content-Type header
         response = jsonify({
             'success': success,
             'sequences': sequences if success else [],
@@ -491,8 +531,8 @@ def get_feature_type_list():
         return jsonify({'success': False, 'error': str(e)})
 
 
-@sequence_bp.route('/projects/<project_id>/sequences/<sequence_id>/features', methods=['POST'])
-def add_feature(project_id, sequence_id):
+@sequence_bp.route('/projects/<path:path>/sequences/<sequence_id>/features', methods=['POST'])
+def add_feature(path, sequence_id):
     """Add a feature annotation to a sequence."""
     try:
         data = request.get_json()
@@ -510,7 +550,7 @@ def add_feature(project_id, sequence_id):
             'qualifiers': data.get('qualifiers', {})
         }
 
-        success, project_data, message = add_sequence_feature(project_id, sequence_id, feature)
+        success, project_data, message = add_sequence_feature(path, sequence_id, feature)
 
         return jsonify({
             'success': success,
@@ -523,14 +563,13 @@ def add_feature(project_id, sequence_id):
         return jsonify({'success': False, 'error': str(e)})
 
 
-@sequence_bp.route('/projects/<project_id>/sequences/<sequence_id>/features/<feature_id>', methods=['PUT'])
-def update_feature(project_id, sequence_id, feature_id):
+@sequence_bp.route('/projects/<path:path>/sequences/<sequence_id>/features/<feature_id>', methods=['PUT'])
+def update_feature(path, sequence_id, feature_id):
     """Update a feature annotation."""
     try:
         data = request.get_json()
-
         success, project_data, message = update_sequence_feature(
-            project_id, sequence_id, feature_id, data
+            path, sequence_id, feature_id, data
         )
 
         return jsonify({
@@ -544,12 +583,12 @@ def update_feature(project_id, sequence_id, feature_id):
         return jsonify({'success': False, 'error': str(e)})
 
 
-@sequence_bp.route('/projects/<project_id>/sequences/<sequence_id>/features/<feature_id>', methods=['DELETE'])
-def remove_feature(project_id, sequence_id, feature_id):
+@sequence_bp.route('/projects/<path:path>/sequences/<sequence_id>/features/<feature_id>', methods=['DELETE'])
+def remove_feature(path, sequence_id, feature_id):
     """Delete a feature annotation."""
     try:
         success, project_data, message = delete_sequence_feature(
-            project_id, sequence_id, feature_id
+            path, sequence_id, feature_id
         )
 
         return jsonify({
@@ -680,6 +719,51 @@ def source_fasta_library():
         return jsonify({'success': True, 'library': entries})
     except Exception as e:
         logger.error(f"Source FASTA library error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@sequence_bp.route('/delete-source-fasta', methods=['POST'])
+def delete_source_fasta():
+    """Delete a stored source FASTA entry and optionally the file."""
+    try:
+        data = request.get_json() or request.form
+        entry_id = data.get('id')
+        remove_file = str(data.get('remove_file', '')).lower() == 'true'
+
+        if not entry_id:
+            return jsonify({'success': False, 'error': 'No source FASTA id provided'})
+
+        entries = _load_source_fasta_library()
+        remaining = []
+        removed_entry = None
+        for e in entries:
+            if e.get('id') == entry_id:
+                removed_entry = e
+            else:
+                remaining.append(e)
+
+        if not removed_entry:
+            return jsonify({'success': False, 'error': 'Source FASTA not found'})
+
+        # Remove file if requested and exists
+        if remove_file:
+            filepath = removed_entry.get('filepath')
+            if filepath and os.path.exists(filepath):
+                try:
+                    os.remove(filepath)
+                except Exception as e:
+                    logger.warning(f"Failed to delete FASTA file {filepath}: {e}")
+
+        _save_source_fasta_library(remaining)
+
+        # Clear session if current selection deleted
+        if session.get(SOURCE_FASTA_ID_KEY) == entry_id:
+            session.pop(SOURCE_FASTA_KEY, None)
+            session.pop(SOURCE_FASTA_ID_KEY, None)
+
+        return jsonify({'success': True, 'library': remaining, 'removed': removed_entry})
+    except Exception as e:
+        logger.error(f"Delete source FASTA error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 

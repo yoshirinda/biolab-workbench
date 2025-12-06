@@ -72,6 +72,8 @@ def visualize():
 
         font_size = int(data.get('font_size', 10))
         v_scale = float(data.get('v_scale', 1.0))
+        center_gene = (data.get('center_gene') or '').strip() or None
+        radius_edges = int(data.get('radius_edges', 3))
 
         # Parse colored species
         colored_species = {}
@@ -97,7 +99,9 @@ def visualize():
             highlighted_genes=highlighted_genes,
             show_bootstrap=show_bootstrap,
             font_size=font_size,
-            v_scale=v_scale
+            v_scale=v_scale,
+            center_gene=center_gene,
+            radius_edges=radius_edges
         )
 
         if success:
@@ -121,22 +125,19 @@ def download(filepath):
     try:
         from urllib.parse import unquote
         
-        # URL decode the filepath for port-forwarding scenarios
+        # URL decode the filepath
         filepath = unquote(filepath)
         
         # Security: Ensure the file is within allowed directories
-        abs_path = os.path.abspath(filepath)
+        abs_path = os.path.abspath(os.path.join(config.RESULTS_DIR, filepath))
         results_dir = os.path.abspath(config.RESULTS_DIR)
-        uploads_dir = os.path.abspath(config.UPLOADS_DIR)
         
-        # Only allow downloads from results or uploads directories
-        if not (abs_path.startswith(results_dir + os.sep) or 
-                abs_path.startswith(uploads_dir + os.sep)):
+        # Only allow downloads from results directory
+        if not abs_path.startswith(results_dir + os.sep):
             logger.warning(f"Attempted path traversal: {filepath}")
             return jsonify({'success': False, 'error': 'Access denied'}), 403
         
         if os.path.exists(abs_path):
-            # Determine MIME type based on file extension
             filename = os.path.basename(abs_path)
             mimetype = None
             if filename.endswith('.svg'):
@@ -145,10 +146,6 @@ def download(filepath):
                 mimetype = 'image/png'
             elif filename.endswith('.pdf'):
                 mimetype = 'application/pdf'
-            elif filename.endswith('.nwk') or filename.endswith('.treefile'):
-                mimetype = 'text/plain'
-            elif filename.endswith('.json'):
-                mimetype = 'application/json'
             
             return send_file(
                 abs_path, 
@@ -169,17 +166,15 @@ def view(filepath):
     try:
         from urllib.parse import unquote
         
-        # URL decode the filepath for port-forwarding scenarios
+        # URL decode the filepath
         filepath = unquote(filepath)
         
         # Security: Ensure the file is within allowed directories
-        abs_path = os.path.abspath(filepath)
+        abs_path = os.path.abspath(os.path.join(config.RESULTS_DIR, filepath))
         results_dir = os.path.abspath(config.RESULTS_DIR)
-        uploads_dir = os.path.abspath(config.UPLOADS_DIR)
         
-        # Only allow viewing from results or uploads directories
-        if not (abs_path.startswith(results_dir + os.sep) or 
-                abs_path.startswith(uploads_dir + os.sep)):
+        # Only allow viewing from results directory
+        if not abs_path.startswith(results_dir + os.sep):
             logger.warning(f"Attempted path traversal: {filepath}")
             return jsonify({'success': False, 'error': 'Access denied'}), 403
         

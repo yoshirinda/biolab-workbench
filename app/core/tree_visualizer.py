@@ -15,12 +15,64 @@ logger = get_tools_logger()
 os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 
 
+def detect_tree_format(filepath):
+    """
+    Heuristically detect tree format by extension/content.
+    Returns one of: 'newick', 'nexus', 'phyloxml'.
+    Defaults to newick.
+    """
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext in ['.nexus', '.nex']:
+        return 'nexus'
+    if ext in ['.xml', '.phyloxml']:
+        return 'phyloxml'
+
+    try:
+        with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+            head = f.read(2048)
+            if '#NEXUS' in head.upper():
+                return 'nexus'
+            if '<phyloxml' in head.lower():
+                return 'phyloxml'
+    except Exception:
+        pass
+
+    return 'newick'
+
+
+def normalize_tree_file(filepath):
+    """
+    Normalize various tree formats to a Newick file for downstream rendering.
+    Returns the path to a Newick file (original if already Newick).
+    """
+    fmt = detect_tree_format(filepath)
+    if fmt == 'newick':
+        return filepath
+
+    try:
+        from Bio import Phylo
+    except ImportError:
+        logger.warning("Biopython not installed; cannot convert non-Newick tree")
+        return filepath
+
+    try:
+        tree = Phylo.read(filepath, fmt)
+        # Write to a normalized Newick file alongside the original
+        normalized = filepath + '.normalized.nwk'
+        Phylo.write(tree, normalized, 'newick')
+        return normalized
+    except Exception as e:
+        logger.warning(f"Failed to normalize tree ({fmt}): {e}")
+        return filepath
+
+
 def read_newick(filepath):
     """
-    Read a Newick tree file.
+    Read a tree file (any supported format) as text.
     Returns tree string.
     """
-    with open(filepath, 'r') as f:
+    normalized = normalize_tree_file(filepath)
+    with open(normalized, 'r') as f:
         return f.read().strip()
 
 
@@ -52,7 +104,8 @@ def get_species_from_tree(tree_string):
 
 def visualize_tree(tree_file, output_file=None, layout='rectangular',
                    colored_species=None, highlighted_genes=None,
-                   show_bootstrap=True, font_size=10, v_scale=1.0):
+                   show_bootstrap=True, font_size=10, v_scale=1.0,
+                   center_gene=None, radius_edges=3):
     """
     Visualize a phylogenetic tree.
 
@@ -98,9 +151,47 @@ def visualize_tree(tree_file, output_file=None, layout='rectangular',
     if output_file is None:
         output_file = os.path.join(result_dir, 'tree.svg')
 
+    # Normalize tree file (handles nexus/phyloxml -> newick)
+    normalized_tree = normalize_tree_file(tree_file)
+
     try:
         # Load tree
-        tree = Tree(tree_file, format=1)
+        tree = Tree(normalized_tree, format=1)
+
+        # If a center gene is provided, prune to a neighborhood around it
+        if center_gene:
+            # Search for the center node in both leaves and internal nodes
+            target_nodes = tree.search_nodes(name=center_gene)
+            if not target_nodes:
+                return False, result_dir, None, f"Center gene not found: {center_gene}"
+            target = target_nodes[0]
+
+            # Collect leaves within radius_edges
+            # Use branch distance for better results
+            leaves_to_keep = []
+            try:
+                for leaf in tree.get_leaves():
+                    # Get distance in number of branches (count_leaves gives leaf count in subtree, not distance)
+                    # Use get_distance which returns branch length by default
+                    dist = target.get_distance(leaf, topology_only=True)  # topology_only counts branches
+                    if dist <= max(1, int(radius_edges)):
+                        leaves_to_keep.append(leaf.name)
+            except Exception as e:
+                logger.warning(f"Distance calculation error: {e}, trying leaf-based approach")
+                # Fallback: keep all leaves descended from target
+                for leaf in tree.get_leaves():
+                    if leaf in target:
+                        leaves_to_keep.append(leaf.name)
+
+            if not leaves_to_keep:
+                return False, result_dir, None, f"No leaves within radius {radius_edges} of {center_gene}. Try increasing radius or ensure gene name is exact."
+
+            # Prune and set outgroup
+            tree.prune(leaves_to_keep, preserve_branch_length=True)
+            try:
+                tree.set_outgroup(center_gene)
+            except Exception:
+                pass
 
         # Create tree style
         ts = TreeStyle()
@@ -149,7 +240,9 @@ def visualize_tree(tree_file, output_file=None, layout='rectangular',
         tree.render(output_file, tree_style=ts, w=1200, units='px')
 
         logger.info(f"Tree visualization saved to {output_file}")
-        return True, result_dir, output_file, "Tree visualization completed"
+        # Return relative path from results directory for proper web serving
+        rel_path = os.path.relpath(output_file, config.RESULTS_DIR)
+        return True, result_dir, rel_path, "Tree visualization completed"
 
     except Exception as e:
         logger.error(f"Tree visualization failed: {str(e)}")
@@ -159,6 +252,7 @@ def visualize_tree(tree_file, output_file=None, layout='rectangular',
 def get_tree_info(tree_file):
     """
     Get basic information about a tree.
+    Returns species, leaves, and all nodes for center-gene search.
     """
     try:
         from ete3 import Tree
@@ -169,13 +263,17 @@ def get_tree_info(tree_file):
         return {
             'species': species,
             'leaf_count': None,
-            'has_support': None
+            'has_support': None,
+            'leaves': [],
+            'all_nodes': []
         }
 
     try:
-        tree = Tree(tree_file, format=1)
+        normalized_tree = normalize_tree_file(tree_file)
+        tree = Tree(normalized_tree, format=1)
 
         leaves = [leaf.name for leaf in tree.get_leaves()]
+        all_nodes = [node.name for node in tree.traverse()]
         species = set()
         for name in leaves:
             prefix = extract_species_prefix(name)
@@ -189,7 +287,8 @@ def get_tree_info(tree_file):
             'species': sorted(species),
             'leaf_count': len(leaves),
             'has_support': has_support,
-            'leaves': leaves[:100]  # First 100 leaves
+            'leaves': leaves,
+            'all_nodes': [n for n in all_nodes if n]  # Filter empty names
         }
 
     except Exception as e:

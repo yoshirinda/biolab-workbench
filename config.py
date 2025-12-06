@@ -62,7 +62,9 @@ DEFAULT_THREADS = int(os.environ.get('BIOLAB_THREADS', 4))
 
 # Flask 配置 - Secret key from environment or generated randomly
 SECRET_KEY = os.environ.get('BIOLAB_SECRET_KEY', secrets.token_hex(32))
-MAX_CONTENT_LENGTH = 100 * 1024 * 1024  # 100MB
+
+# 上传大小上限（默认 100MB）。若需更大可设置环境变量 BIOLAB_MAX_CONTENT_MB。
+MAX_CONTENT_LENGTH = int(float(os.environ.get('BIOLAB_MAX_CONTENT_MB', 100)) * 1024 * 1024)
 
 # 确保目录存在 (skip in test environments or when path doesn't exist)
 try:

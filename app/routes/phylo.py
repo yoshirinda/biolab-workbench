@@ -10,6 +10,9 @@ from app.core.phylo_pipeline import (
     step4_clipkit, step4_5_check_sites, step5_iqtree,
     run_full_pipeline
 )
+from app.core.hmm_wrapper import run_hmmsearch, run_hmmsearch_multi, get_hmm_info
+from app.core.clipkit_wrapper import run_clipkit, suggest_clipkit_mode, compare_before_after_trimming
+from app.core.iqtree_wrapper import run_iqtree, run_iqtree_modelfinder, summarize_bootstrap_support
 from app.utils.file_utils import save_uploaded_file, list_files_in_dir
 from app.utils.logger import get_app_logger
 
@@ -19,14 +22,15 @@ logger = get_app_logger()
 
 @phylo_bp.route('/')
 def phylo_page():
-    """Render the phylogenetic pipeline page."""
+    """Render the phylogenetic pipeline page (now uses pipeline.html)."""
     # List available HMM profiles
     hmm_files = list_files_in_dir(config.HMM_PROFILES_DIR, ['.hmm'])
 
     # List available gold lists
     gold_files = list_files_in_dir(config.GOLD_LISTS_DIR, ['.txt'])
 
-    return render_template('phylo.html',
+    # Use the new unified pipeline.html template
+    return render_template('pipeline.html',
                           hmm_files=hmm_files,
                           gold_files=gold_files)
 
@@ -144,7 +148,12 @@ def run_step(step):
                 return jsonify({'success': False, 'error': 'Gold standard list is required for step 2.5'})
             pident = float(request.form.get('pident', 30))
             qcovs = float(request.form.get('qcovs', 50))
-            success, output, message = step2_5_blast_filter(input_file, gold_file, output_dir, pident, qcovs)
+            result = step2_5_blast_filter(input_file, gold_file, output_dir, pident, qcovs)
+            if len(result) == 4:
+                success, output, message, stats = result
+            else:
+                success, output, message = result
+                stats = None
 
         elif step == 'step2_7':
             success, output, message = step2_7_length_stats(input_file, output_dir)
@@ -158,7 +167,12 @@ def run_step(step):
 
         elif step == 'step2_8':
             min_length = int(request.form.get('min_length', 50))
-            success, output, message = step2_8_length_filter(input_file, output_dir, min_length)
+            result = step2_8_length_filter(input_file, output_dir, min_length)
+            if len(result) == 4:
+                success, output, message, stats = result
+            else:
+                success, output, message = result
+                stats = None
 
         elif step == 'step3':
             maxiterate = int(request.form.get('maxiterate', 1000))
@@ -194,7 +208,8 @@ def run_step(step):
             'success': success,
             'output': output,
             'message': message,
-            'result_dir': output_dir
+            'result_dir': output_dir,
+            'stats': stats if 'stats' in locals() else None
         }
         
         if commands:
@@ -209,11 +224,16 @@ def run_step(step):
         return jsonify({'success': False, 'error': str(e)})
 
 
-@phylo_bp.route('/download/<path:filepath>')
-def download(filepath):
+@phylo_bp.route('/download')
+def download():
     """Download a result file."""
     try:
         from urllib.parse import unquote
+        
+        # Get filepath from query parameter
+        filepath = request.args.get('path', '')
+        if not filepath:
+            return jsonify({'success': False, 'error': 'No path provided'}), 400
         
         # URL decode the filepath for port-forwarding scenarios
         filepath = unquote(filepath)
@@ -260,3 +280,228 @@ def download(filepath):
     except Exception as e:
         logger.error(f"Download error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# New enhanced endpoints
+
+@phylo_bp.route('/hmm-search', methods=['POST'])
+def hmm_search():
+    """Run HMM search with one or more profiles."""
+    try:
+        sequence_file = None
+        if 'file' in request.files and request.files['file'].filename:
+            file = request.files['file']
+            sequence_file = save_uploaded_file(file)
+        else:
+            sequence_file = request.form.get('file_path')
+            if not sequence_file or not os.path.exists(sequence_file):
+                return jsonify({'success': False, 'error': 'No sequence file uploaded or path invalid'})
+        
+        # Get HMM profiles
+        hmm_files = request.form.getlist('hmm_files[]')
+        if not hmm_files:
+            return jsonify({'success': False, 'error': 'No HMM profiles selected'})
+        
+        hmm_paths = [os.path.join(config.HMM_PROFILES_DIR, hmm) for hmm in hmm_files]
+        
+        # Parameters
+        evalue = float(request.form.get('evalue', 1e-5))
+        cut_ga = request.form.get('cut_ga', 'false').lower() == 'true'
+        
+        # Run search
+        if len(hmm_paths) == 1:
+            success, result_dir, output_files, hits = run_hmmsearch(
+                hmm_paths[0], sequence_file, evalue=evalue, cut_ga=cut_ga
+            )
+        else:
+            success, result_dir, output_files, hits = run_hmmsearch_multi(
+                hmm_paths, sequence_file, evalue=evalue, cut_ga=cut_ga
+            )
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'result_dir': result_dir,
+                'output_files': output_files,
+                'hit_count': len(hits),
+                'hits': hits[:100]  # Return first 100 for display
+            })
+        else:
+            return jsonify({'success': False, 'error': str(hits)})
+    
+    except Exception as e:
+        logger.error(f"HMM search error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@phylo_bp.route('/clipkit-trim', methods=['POST'])
+def clipkit_trim():
+    """Run ClipKIT to trim alignment."""
+    try:
+        alignment_file = None
+        if 'file' in request.files and request.files['file'].filename:
+            file = request.files['file']
+            alignment_file = save_uploaded_file(file)
+        else:
+            alignment_file = request.form.get('file_path')
+            if not alignment_file or not os.path.exists(alignment_file):
+                return jsonify({'success': False, 'error': 'No alignment file uploaded or path invalid'})
+        
+        # Parameters
+        mode = request.form.get('mode', 'kpic-gappy')
+        gaps = float(request.form.get('gaps', 0.9))
+        
+        # Run ClipKIT
+        success, result_dir, output_file, stats = run_clipkit(
+            alignment_file, mode=mode, gaps=gaps
+        )
+        
+        if success:
+            # Get before/after comparison
+            comparison = compare_before_after_trimming(alignment_file, output_file)
+            
+            return jsonify({
+                'success': True,
+                'result_dir': result_dir,
+                'output_file': output_file,
+                'stats': stats,
+                'comparison': comparison
+            })
+        else:
+            return jsonify({'success': False, 'error': str(stats)})
+    
+    except Exception as e:
+        logger.error(f"ClipKIT error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@phylo_bp.route('/suggest-clipkit-mode', methods=['POST'])
+def suggest_mode():
+    """Analyze alignment and suggest ClipKIT mode."""
+    try:
+        alignment_file = None
+        if 'file' in request.files and request.files['file'].filename:
+            file = request.files['file']
+            alignment_file = save_uploaded_file(file)
+        else:
+            alignment_file = request.form.get('file_path')
+            if not alignment_file or not os.path.exists(alignment_file):
+                return jsonify({'success': False, 'error': 'No alignment file uploaded or path invalid'})
+        
+        mode, reason = suggest_clipkit_mode(alignment_file)
+        
+        return jsonify({
+            'success': True,
+            'suggested_mode': mode,
+            'reason': reason
+        })
+    
+    except Exception as e:
+        logger.error(f"Mode suggestion error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@phylo_bp.route('/iqtree-infer', methods=['POST'])
+def iqtree_infer():
+    """Run IQ-TREE phylogenetic inference."""
+    try:
+        alignment_file = None
+        if 'file' in request.files and request.files['file'].filename:
+            file = request.files['file']
+            alignment_file = save_uploaded_file(file)
+        else:
+            alignment_file = request.form.get('file_path')
+            if not alignment_file or not os.path.exists(alignment_file):
+                return jsonify({'success': False, 'error': 'No alignment file uploaded or path invalid'})
+        
+        # Parameters
+        model = request.form.get('model', 'MFP')
+        bootstrap = int(request.form.get('bootstrap', 1000))
+        bootstrap_type = request.form.get('bootstrap_type', 'ufboot')
+        alrt = request.form.get('alrt', 'false').lower() == 'true'
+        bnni = request.form.get('bnni', 'true').lower() == 'true'
+        threads = request.form.get('threads', 'AUTO')
+        
+        # Run IQ-TREE
+        success, result_dir, output_files, log_info = run_iqtree(
+            alignment_file,
+            model=model,
+            bootstrap=bootstrap,
+            bootstrap_type=bootstrap_type,
+            alrt=alrt,
+            bnni=bnni,
+            threads=threads
+        )
+        
+        if success:
+            # Get bootstrap support summary
+            if 'treefile' in output_files:
+                support_stats = summarize_bootstrap_support(output_files['treefile'])
+            else:
+                support_stats = {}
+            
+            return jsonify({
+                'success': True,
+                'result_dir': result_dir,
+                'output_files': output_files,
+                'log_info': log_info,
+                'support_stats': support_stats
+            })
+        else:
+            return jsonify({'success': False, 'error': str(log_info)})
+    
+    except Exception as e:
+        logger.error(f"IQ-TREE error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@phylo_bp.route('/modelfinder', methods=['POST'])
+def modelfinder():
+    """Run ModelFinder to select best substitution model."""
+    try:
+        alignment_file = None
+        if 'file' in request.files and request.files['file'].filename:
+            file = request.files['file']
+            alignment_file = save_uploaded_file(file)
+        else:
+            alignment_file = request.form.get('file_path')
+            if not alignment_file or not os.path.exists(alignment_file):
+                return jsonify({'success': False, 'error': 'No alignment file uploaded or path invalid'})
+        
+        # Run ModelFinder
+        success, result_dir, best_model, log_info = run_iqtree_modelfinder(alignment_file)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'result_dir': result_dir,
+                'best_model': best_model,
+                'log_info': log_info
+            })
+        else:
+            return jsonify({'success': False, 'error': str(log_info)})
+    
+    except Exception as e:
+        logger.error(f"ModelFinder error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@phylo_bp.route('/hmm-info/<filename>', methods=['GET'])
+def hmm_info(filename):
+    """Get information about an HMM profile."""
+    try:
+        hmm_path = os.path.join(config.HMM_PROFILES_DIR, filename)
+        
+        if not os.path.exists(hmm_path):
+            return jsonify({'success': False, 'error': 'HMM file not found'})
+        
+        info = get_hmm_info(hmm_path)
+        
+        if info:
+            return jsonify({'success': True, 'info': info})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to parse HMM file'})
+    
+    except Exception as e:
+        logger.error(f"HMM info error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})

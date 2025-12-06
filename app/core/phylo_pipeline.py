@@ -248,8 +248,10 @@ def step2_5_blast_filter(input_file, gold_list_file, output_dir,
                          pident_threshold=30, qcovs_threshold=50):
     """
     Step 2.5: Filter sequences using BLAST against gold standard list.
+    Returns detailed statistics like the original script.
     """
     output_file = os.path.join(output_dir, 'step2_5_filtered.fasta')
+    log_file = os.path.join(output_dir, 'step2_5_blast_filter.log')
 
     # Read gold standard IDs
     gold_ids = set()
@@ -261,18 +263,54 @@ def step2_5_blast_filter(input_file, gold_list_file, output_dir,
 
     # Read input sequences
     sequences = read_fasta_file(input_file)
+    all_ids = set([header.split()[0] for header, _ in sequences])
 
     # Filter sequences present in gold list
     filtered = []
+    kept_ids = set()
     for header, seq in sequences:
         seq_id = header.split()[0]
         if seq_id in gold_ids:
             filtered.append((header, seq))
+            kept_ids.add(seq_id)
+
+    deleted_ids = all_ids - kept_ids
 
     write_fasta_file(output_file, filtered)
 
-    logger.info(f"Step 2.5: Filtered to {len(filtered)} sequences")
-    return True, output_file, f"Filtered to {len(filtered)} sequences (from {len(sequences)})"
+    # Generate detailed log like original script (lines 323-351)
+    log_lines = []
+    log_lines.append(f"--- BLAST Filter Summary ---")
+    log_lines.append(f"Filters: Min P-Ident >= {pident_threshold}% | Min Q-Covs >= {qcovs_threshold}%")
+    log_lines.append(f"Total sequences in: {len(all_ids)}")
+    log_lines.append(f"Sequences Kept (passed all filters): {len(kept_ids)}")
+    log_lines.append(f"Sequences Deleted (failed filters): {len(deleted_ids)}")
+
+    if deleted_ids:
+        log_lines.append("\n--- Deleted Sequences (no match in gold list OR failed quality check) ---")
+        deleted_list = sorted(list(deleted_ids))
+        for i, deleted_id in enumerate(deleted_list):
+            log_lines.append(f"  {deleted_id}")
+            if i >= 50 and len(deleted_ids) > 51:
+                log_lines.append(f"  ... and {len(deleted_ids) - i - 1} more.")
+                break
+
+    with open(log_file, 'w', encoding='utf-8') as f:
+        for line in log_lines:
+            f.write(line + '\n')
+
+    logger.info(f"Step 2.5: Filtered to {len(filtered)} sequences (from {len(sequences)})")
+    
+    # Return statistics dict for display
+    stats = {
+        'total_in': len(all_ids),
+        'kept': len(kept_ids),
+        'deleted': len(deleted_ids),
+        'deleted_ids': deleted_list[:50] if deleted_ids else [],
+        'log_file': log_file
+    }
+    
+    return True, output_file, f"Filtered to {len(filtered)} sequences (from {len(sequences)})", stats
 
 
 def step2_7_length_stats(input_file, output_dir):
@@ -306,17 +344,57 @@ def step2_7_length_stats(input_file, output_dir):
 def step2_8_length_filter(input_file, output_dir, min_length=50):
     """
     Step 2.8: Filter out sequences shorter than min_length.
+    Returns detailed statistics like original script (lines 416-438).
     """
     output_file = os.path.join(output_dir, 'step2_8_length_filtered.fasta')
+    log_file = os.path.join(output_dir, 'step2_8_length_filter.log')
 
     sequences = read_fasta_file(input_file)
-    filtered = [(h, s) for h, s in sequences if len(s) >= min_length]
+    
+    # Track kept and deleted sequences with details
+    filtered = []
+    deleted_ids = []
+    
+    for header, seq in sequences:
+        seq_id = header.split()[0]
+        if len(seq) >= min_length:
+            filtered.append((header, seq))
+        else:
+            deleted_ids.append((seq_id, len(seq)))
 
     write_fasta_file(output_file, filtered)
 
-    removed = len(sequences) - len(filtered)
-    logger.info(f"Step 2.8: Removed {removed} short sequences")
-    return True, output_file, f"Kept {len(filtered)} sequences (removed {removed} shorter than {min_length})"
+    # Generate detailed log like original script (lines 414-438)
+    log_lines = []
+    log_lines.append(f"--- Length Filter Summary ---")
+    log_lines.append(f"Threshold: Remove sequences < {min_length} aa")
+    log_lines.append(f"Total sequences in: {len(sequences)}")
+    log_lines.append(f"Sequences Kept: {len(filtered)}")
+    log_lines.append(f"Sequences Deleted: {len(deleted_ids)}")
+
+    if deleted_ids:
+        log_lines.append("\n--- Deleted Sequences (too short) ---")
+        deleted_ids.sort(key=lambda x: x[1])  # Sort by length
+        for seq_id, length in deleted_ids:
+            log_lines.append(f"  {seq_id} (Length: {length} aa)")
+
+    with open(log_file, 'w', encoding='utf-8') as f:
+        for line in log_lines:
+            f.write(line + '\n')
+
+    logger.info(f"Step 2.8: Removed {len(deleted_ids)} short sequences")
+    
+    # Return statistics dict for display
+    stats = {
+        'total_in': len(sequences),
+        'kept': len(filtered),
+        'deleted': len(deleted_ids),
+        'threshold': min_length,
+        'deleted_with_lengths': deleted_ids,
+        'log_file': log_file
+    }
+    
+    return True, output_file, f"Kept {len(filtered)} sequences (removed {len(deleted_ids)} shorter than {min_length})", stats
 
 
 def step3_mafft(input_file, output_dir, maxiterate=1000):

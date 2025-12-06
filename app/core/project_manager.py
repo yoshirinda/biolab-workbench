@@ -1,5 +1,4 @@
-"""
-Project management for BioLab Workbench.
+"""Project management for BioLab Workbench.
 Handles sequence organization into projects/folders.
 """
 import os
@@ -8,7 +7,7 @@ from datetime import datetime
 import config
 from app.utils.logger import get_app_logger
 from app.utils.path_utils import ensure_dir, safe_filename
-from app.core.sequence_utils import layout_features
+from app.core.sequence_utils import layout_features, detect_sequence_type
 
 logger = get_app_logger()
 
@@ -16,95 +15,158 @@ logger = get_app_logger()
 PROJECT_FILE = 'project.json'
 
 
+def _posix_path(path: str) -> str:
+    """Normalize path separators to forward slashes for API/frontend consistency."""
+    return path.replace('\\', '/')
+
+def _to_fs_path(relative_path: str) -> str:
+    """Convert a normalized relative path to a filesystem path under projects dir."""
+    cleaned = _posix_path(relative_path)
+    parts = [p for p in cleaned.split('/') if p]
+    return os.path.join(get_projects_dir(), *parts)
+
+
+def _normalize_path_input(path=None, parent_path=None, name=None):
+    """
+    Accept either a full path or parent/name parts and return a sanitized relative path
+    plus the resolved filesystem path and leaf name.
+    """
+    candidate = (path or '').strip()
+    if not candidate:
+        parts = []
+        if parent_path:
+            parts.extend([safe_filename(p) for p in _posix_path(parent_path).split('/') if p])
+        if name:
+            parts.append(safe_filename(name))
+        candidate = '/'.join([p for p in parts if p])
+
+    path_parts = [safe_filename(p) for p in _posix_path(candidate).split('/') if p]
+    if not path_parts or not all(path_parts):
+        return False, None, None, None, "Invalid project/folder path or name"
+
+    relative_path = '/'.join(path_parts)
+    fs_path = os.path.join(get_projects_dir(), *path_parts)
+    return True, relative_path, fs_path, path_parts[-1], None
+
 def get_projects_dir():
     """Get the projects directory."""
     return config.PROJECTS_DIR
 
+def _scan_directory_recursive(path, base_path):
+    tree = []
+    if not os.path.isdir(path):
+        return tree
 
-def list_projects():
-    """
-    List all projects.
-    Returns list of project info dicts.
-    """
-    projects = []
-    projects_dir = get_projects_dir()
+    for name in sorted(os.listdir(path)):
+        full_path = os.path.join(path, name)
+        if os.path.isdir(full_path):
+            relative_path = _posix_path(os.path.relpath(full_path, base_path))
+            if relative_path == '.':
+                continue
+            
+            project_file = os.path.join(full_path, PROJECT_FILE)
+            
+            node = {
+                'id': relative_path.replace('/', '_'),
+                'name': name,
+                'path': relative_path,
+                'children': _scan_directory_recursive(full_path, base_path)
+            }
 
-    if not os.path.exists(projects_dir):
-        return projects
-
-    for name in os.listdir(projects_dir):
-        project_path = os.path.join(projects_dir, name)
-        if os.path.isdir(project_path):
-            project_file = os.path.join(project_path, PROJECT_FILE)
             if os.path.exists(project_file):
                 try:
                     with open(project_file, 'r', encoding='utf-8') as f:
                         project_data = json.load(f)
-                        project_data['path'] = project_path
-                        projects.append(project_data)
-                except (json.JSONDecodeError, IOError) as e:
+                        node.update(project_data)
+                        node['is_project'] = True
+                except Exception as e:
                     logger.warning(f"Could not read project {name}: {e}")
-                    # Add basic project info if file is corrupted
-                    projects.append({
-                        'id': name,
-                        'name': name,
-                        'path': project_path,
-                        'created': None,
-                        'modified': None,
-                        'description': ''
-                    })
+                    node['is_project'] = True
+                    node['error'] = str(e)
+            else:
+                node['is_project'] = False
+            
+            # Always overwrite path to ensure it is normalized and relative
+            node['path'] = relative_path
+            tree.append(node)
+            
+    return tree
 
-    return sorted(projects, key=lambda p: p.get('modified') or '', reverse=True)
+def list_projects():
+    """
+    List all projects in a hierarchical structure.
+    Returns a tree of project/folder nodes.
+    """
+    projects_dir = get_projects_dir()
+    ensure_dir(projects_dir)
+    return _scan_directory_recursive(projects_dir, projects_dir)
 
-
-def create_project(name, description=''):
+def create_project(path=None, description='', parent_path=None, name=None):
     """
     Create a new project.
+    Accepts either a single path string or parent_path + name for easier UX.
     Returns (success, project_data, message).
     """
-    # Create safe project ID from name
-    project_id = safe_filename(name)
-    if not project_id:
-        return False, None, "Invalid project name"
+    ok, relative_path, project_path, project_name, error = _normalize_path_input(path, parent_path, name)
+    if not ok:
+        return False, None, error
 
-    project_path = os.path.join(get_projects_dir(), project_id)
+    project_id = relative_path.replace('/', '_')
 
     if os.path.exists(project_path):
-        return False, None, f"Project '{name}' already exists"
+        return False, None, f"Project or folder at '{relative_path}' already exists"
 
     try:
         ensure_dir(project_path)
-
         now = datetime.now().isoformat()
         project_data = {
             'id': project_id,
-            'name': name,
+            'name': project_name,
+            'path': relative_path,
             'description': description,
             'created': now,
             'modified': now,
-            'sequences': []
+            'sequences': [],
+            'is_project': True
         }
-
         project_file = os.path.join(project_path, PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
             json.dump(project_data, f, indent=2, ensure_ascii=False)
-
-        project_data['path'] = project_path
-        logger.info(f"Created project: {name}")
+        logger.info(f"Created project: {relative_path}")
         return True, project_data, "Project created successfully"
-
     except Exception as e:
-        logger.error(f"Failed to create project {name}: {e}")
+        logger.error(f"Failed to create project {relative_path}: {e}")
         return False, None, str(e)
 
-
-def get_project(project_id):
+def create_folder(path=None, parent_path=None, name=None):
     """
-    Get a project by ID.
-    This function now also calculates feature lanes for visualization.
+    Create a new folder; allows separate parent/name inputs for friendlier UI.
+    """
+    ok, relative_path, folder_path, folder_name, error = _normalize_path_input(path, parent_path, name)
+    if not ok:
+        return False, error
+
+    if os.path.exists(folder_path):
+        return False, f"Folder or project at '{relative_path}' already exists"
+
+    try:
+        ensure_dir(folder_path)
+        logger.info(f"Created folder: {relative_path}")
+        return True, "Folder created successfully"
+    except Exception as e:
+        logger.error(f"Failed to create folder {relative_path}: {e}")
+        return False, str(e)
+
+def get_project(path):
+    """
+    Get a project by its path relative to the projects directory.
     Returns (success, project_data, message).
     """
-    project_path = os.path.join(get_projects_dir(), safe_filename(project_id))
+    normalized = _posix_path(path)
+    if '..' in normalized or os.path.isabs(normalized):
+        return False, None, "Invalid project path"
+    
+    project_path = _to_fs_path(normalized)
     project_file = os.path.join(project_path, PROJECT_FILE)
 
     if not os.path.exists(project_file):
@@ -113,28 +175,24 @@ def get_project(project_id):
     try:
         with open(project_file, 'r', encoding='utf-8') as f:
             project_data = json.load(f)
-            project_data['path'] = project_path
-            
-            # Add feature lanes for visualization
+            project_data['path'] = normalized
             for seq in project_data.get('sequences', []):
                 if 'features' in seq:
                     seq['feature_lanes'] = layout_features(seq['features'])
-
             return True, project_data, "Success"
     except Exception as e:
-        logger.error(f"Failed to read project {project_id}: {e}")
+        logger.error(f"Failed to read project {normalized}: {e}")
         return False, None, str(e)
 
-
-def update_project(project_id, name=None, description=None):
+def update_project(path, name=None, description=None):
     """
     Update project metadata.
     Returns (success, project_data, message).
     """
-    success, project_data, msg = get_project(project_id)
+    success, project_data, msg = get_project(path)
     if not success:
         return False, None, msg
-
+    project_path = _to_fs_path(path)
     try:
         if name is not None:
             project_data['name'] = name
@@ -142,54 +200,49 @@ def update_project(project_id, name=None, description=None):
             project_data['description'] = description
         project_data['modified'] = datetime.now().isoformat()
         
-        # Strip feature_lanes before saving
         for seq in project_data.get('sequences', []):
             if 'feature_lanes' in seq:
                 del seq['feature_lanes']
 
-        project_file = os.path.join(project_data['path'], PROJECT_FILE)
+        project_file = os.path.join(project_path, PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
             json.dump(project_data, f, indent=2, ensure_ascii=False)
-
         return True, project_data, "Project updated successfully"
     except Exception as e:
-        logger.error(f"Failed to update project {project_id}: {e}")
+        logger.error(f"Failed to update project {path}: {e}")
         return False, None, str(e)
 
-
-def delete_project(project_id):
+def delete_project(path):
     """
-    Delete a project.
+    Delete a project or folder.
     Returns (success, message).
     """
-    project_path = os.path.join(get_projects_dir(), safe_filename(project_id))
-
+    normalized = _posix_path(path)
+    if '..' in normalized or os.path.isabs(normalized):
+        return False, "Invalid project path"
+    
+    project_path = _to_fs_path(normalized)
     if not os.path.exists(project_path):
         return False, "Project not found"
-
     try:
         import shutil
         shutil.rmtree(project_path)
-        logger.info(f"Deleted project: {project_id}")
+        logger.info(f"Deleted project/folder: {normalized}")
         return True, "Project deleted successfully"
     except Exception as e:
-        logger.error(f"Failed to delete project {project_id}: {e}")
+        logger.error(f"Failed to delete project/folder {normalized}: {e}")
         return False, str(e)
 
-
-def add_sequences_to_project(project_id, sequences):
+def add_sequences_to_project(path, sequences):
     """
     Add sequences to a project.
-    sequences: list of sequence dicts with id, description, sequence, type, annotation (optional), features (optional)
-    Returns (success, project_data, message).
     """
-    success, project_data, msg = get_project(project_id)
+    success, project_data, msg = get_project(path)
     if not success:
         return False, None, msg
-
+    project_path = _to_fs_path(path)
     try:
         existing_ids = {s['id'] for s in project_data.get('sequences', [])}
-
         added = 0
         for seq in sequences:
             if seq['id'] not in existing_ids:
@@ -205,67 +258,94 @@ def add_sequences_to_project(project_id, sequences):
                 }
                 project_data.setdefault('sequences', []).append(seq_entry)
                 added += 1
-
         project_data['modified'] = datetime.now().isoformat()
         
-        # Strip feature_lanes before saving
         for seq in project_data.get('sequences', []):
             if 'feature_lanes' in seq:
                 del seq['feature_lanes']
 
-        project_file = os.path.join(project_data['path'], PROJECT_FILE)
+        project_file = os.path.join(project_path, PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
             json.dump(project_data, f, indent=2, ensure_ascii=False)
-
         return True, project_data, f"Added {added} sequences"
     except Exception as e:
-        logger.error(f"Failed to add sequences to project {project_id}: {e}")
+        logger.error(f"Failed to add sequences to project {path}: {e}")
         return False, None, str(e)
 
-
-def remove_sequence_from_project(project_id, sequence_id):
+def remove_sequence_from_project(path, sequence_id):
     """
     Remove a sequence from a project.
-    Returns (success, project_data, message).
     """
-    success, project_data, msg = get_project(project_id)
+    success, project_data, msg = get_project(path)
     if not success:
         return False, None, msg
-
+    project_path = _to_fs_path(path)
     try:
         sequences = project_data.get('sequences', [])
         original_len = len(sequences)
         project_data['sequences'] = [s for s in sequences if s['id'] != sequence_id]
-
         if len(project_data['sequences']) == original_len:
             return False, None, "Sequence not found in project"
-
         project_data['modified'] = datetime.now().isoformat()
 
-        # Strip feature_lanes before saving
         for seq in project_data.get('sequences', []):
             if 'feature_lanes' in seq:
                 del seq['feature_lanes']
                 
-        project_file = os.path.join(project_data['path'], PROJECT_FILE)
+        project_file = os.path.join(project_path, PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
             json.dump(project_data, f, indent=2, ensure_ascii=False)
-
         return True, project_data, "Sequence removed"
     except Exception as e:
-        logger.error(f"Failed to remove sequence from project {project_id}: {e}")
+        logger.error(f"Failed to remove sequence from project {path}: {e}")
         return False, None, str(e)
 
-
-def update_sequence_annotation(project_id, sequence_id, annotation):
+def update_sequence_in_project(path, sequence_id, updates):
     """
-    Update the annotation for a sequence in a project.
-    Returns (success, project_data, message).
+    Update a sequence in a project.
     """
-    success, project_data, msg = get_project(project_id)
+    success, project_data, msg = get_project(path)
     if not success:
         return False, None, msg
+    project_path = _to_fs_path(path)
+    try:
+        found = False
+        for seq in project_data.get('sequences', []):
+            if seq['id'] == sequence_id:
+                if 'description' in updates:
+                    seq['description'] = updates['description']
+                if 'sequence' in updates:
+                    sequence_content = updates['sequence']
+                    seq['sequence'] = sequence_content
+                    seq['length'] = len(sequence_content)
+                    seq['type'] = detect_sequence_type(sequence_content)
+                seq['modified'] = datetime.now().isoformat()
+                found = True
+                break
+        if not found:
+            return False, None, "Sequence not found in project"
+        project_data['modified'] = datetime.now().isoformat()
+        
+        for seq in project_data.get('sequences', []):
+            if 'feature_lanes' in seq:
+                del seq['feature_lanes']
 
+        project_file = os.path.join(project_path, PROJECT_FILE)
+        with open(project_file, 'w', encoding='utf-8') as f:
+            json.dump(project_data, f, indent=2, ensure_ascii=False)
+        return True, project_data, "Sequence updated"
+    except Exception as e:
+        logger.error(f"Failed to update sequence: {e}")
+        return False, None, str(e)
+
+def update_sequence_annotation(path, sequence_id, annotation):
+    """
+    Update the annotation for a sequence in a project.
+    """
+    success, project_data, msg = get_project(path)
+    if not success:
+        return False, None, msg
+    project_path = _to_fs_path(path)
     try:
         found = False
         for seq in project_data.get('sequences', []):
@@ -274,36 +354,29 @@ def update_sequence_annotation(project_id, sequence_id, annotation):
                 seq['modified'] = datetime.now().isoformat()
                 found = True
                 break
-
         if not found:
             return False, None, "Sequence not found in project"
-
         project_data['modified'] = datetime.now().isoformat()
         
-        # Strip feature_lanes before saving
         for seq in project_data.get('sequences', []):
             if 'feature_lanes' in seq:
                 del seq['feature_lanes']
 
-        project_file = os.path.join(project_data['path'], PROJECT_FILE)
+        project_file = os.path.join(project_path, PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
             json.dump(project_data, f, indent=2, ensure_ascii=False)
-
         return True, project_data, "Annotation updated"
     except Exception as e:
         logger.error(f"Failed to update annotation: {e}")
         return False, None, str(e)
 
-
-def export_project_sequences(project_id, format='fasta'):
+def export_project_sequences(path, format='fasta'):
     """
     Export all sequences from a project.
-    Returns (success, fasta_text_or_error, count).
     """
-    success, project_data, msg = get_project(project_id)
+    success, project_data, msg = get_project(path)
     if not success:
         return False, msg, 0
-
     sequences = project_data.get('sequences', [])
     if not sequences:
         return False, "No sequences in project", 0
@@ -317,7 +390,6 @@ def export_project_sequences(project_id, format='fasta'):
             if seq.get('annotation'):
                 header += ' [' + seq['annotation'] + ']'
             lines.append(f">{header}")
-            # Write sequence in lines of 60 characters
             sequence = seq['sequence']
             for i in range(0, len(sequence), 60):
                 lines.append(sequence[i:i+60])
@@ -325,32 +397,24 @@ def export_project_sequences(project_id, format='fasta'):
     else:
         return False, f"Unsupported format: {format}", 0
 
-
 def save_collection(name, sequences, description=''):
     """
-    Save a sequence collection as a new project.
-    sequences: list of sequence dicts
-    Returns (success, project_data, message).
+    Save a sequence collection as a new project at the root level.
     """
     success, project_data, msg = create_project(name, description)
     if not success:
         return False, None, msg
+    return add_sequences_to_project(project_data['path'], sequences)
 
-    return add_sequences_to_project(project_data['id'], sequences)
-
-
-def load_collection(project_id):
+def load_collection(path):
     """
     Load a sequence collection from a project.
-    Returns (success, sequences, message).
     """
     try:
-        success, project_data, msg = get_project(project_id)
+        success, project_data, msg = get_project(path)
         if not success:
             return False, [], msg
-
         sequences = project_data.get('sequences', [])
-        # Ensure all sequences have required fields and feature lanes
         validated_sequences = []
         for seq in sequences:
             validated_seq = {
@@ -364,36 +428,30 @@ def load_collection(project_id):
                 'feature_lanes': layout_features(seq.get('features', []))
             }
             validated_sequences.append(validated_seq)
-
         return True, validated_sequences, "Loaded successfully"
     except json.JSONDecodeError as e:
-        logger.error(f"JSON parse error when loading project {project_id}: {e}")
+        logger.error(f"JSON parse error when loading project {path}: {e}")
         return False, [], f"Failed to parse project data: {str(e)}"
     except Exception as e:
-        logger.error(f"Error loading collection {project_id}: {e}")
+        logger.error(f"Error loading collection {path}: {e}")
         return False, [], str(e)
 
-
-def add_sequence_feature(project_id, sequence_id, feature):
+def add_sequence_feature(path, sequence_id, feature):
     """
     Add a feature annotation to a sequence.
-    feature: dict with type, start, end, strand (optional), label, color (optional), qualifiers (optional)
-    Returns (success, project_data, message).
     """
-    success, project_data, msg = get_project(project_id)
+    success, project_data, msg = get_project(path)
     if not success:
         return False, None, msg
-
+    project_path = _to_fs_path(path)
     try:
         import uuid
         found = False
         for seq in project_data.get('sequences', []):
             if seq['id'] == sequence_id:
-                # Initialize features list if not exists
                 if 'features' not in seq:
                     seq['features'] = []
                 
-                # Add feature with unique ID (using full UUID for uniqueness)
                 feature_entry = {
                     'id': str(uuid.uuid4()),
                     'type': feature.get('type', 'region'),
@@ -409,43 +467,36 @@ def add_sequence_feature(project_id, sequence_id, feature):
                 seq['modified'] = datetime.now().isoformat()
                 found = True
                 break
-
         if not found:
             return False, None, "Sequence not found in project"
-
         project_data['modified'] = datetime.now().isoformat()
 
-        # Strip feature_lanes before saving
         for seq in project_data.get('sequences', []):
             if 'feature_lanes' in seq:
                 del seq['feature_lanes']
                 
-        project_file = os.path.join(project_data['path'], PROJECT_FILE)
+        project_file = os.path.join(project_path, PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
             json.dump(project_data, f, indent=2, ensure_ascii=False)
-
         return True, project_data, "Feature added"
     except Exception as e:
         logger.error(f"Failed to add feature: {e}")
         return False, None, str(e)
 
-
-def update_sequence_feature(project_id, sequence_id, feature_id, feature_updates):
+def update_sequence_feature(path, sequence_id, feature_id, feature_updates):
     """
     Update a feature annotation on a sequence.
-    Returns (success, project_data, message).
     """
-    success, project_data, msg = get_project(project_id)
+    success, project_data, msg = get_project(path)
     if not success:
         return False, None, msg
-
+    project_path = _to_fs_path(path)
     try:
         found = False
         for seq in project_data.get('sequences', []):
             if seq['id'] == sequence_id:
                 for feature in seq.get('features', []):
                     if feature['id'] == feature_id:
-                        # Update feature fields
                         for key, value in feature_updates.items():
                             if key in ['type', 'start', 'end', 'strand', 'label', 'color', 'qualifiers']:
                                 if key in ['start', 'end']:
@@ -456,36 +507,30 @@ def update_sequence_feature(project_id, sequence_id, feature_id, feature_updates
                         found = True
                         break
                 break
-
         if not found:
             return False, None, "Feature not found"
-
         project_data['modified'] = datetime.now().isoformat()
 
-        # Strip feature_lanes before saving
         for seq in project_data.get('sequences', []):
             if 'feature_lanes' in seq:
                 del seq['feature_lanes']
 
-        project_file = os.path.join(project_data['path'], PROJECT_FILE)
+        project_file = os.path.join(project_path, PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
             json.dump(project_data, f, indent=2, ensure_ascii=False)
-
         return True, project_data, "Feature updated"
     except Exception as e:
         logger.error(f"Failed to update feature: {e}")
         return False, None, str(e)
 
-
-def delete_sequence_feature(project_id, sequence_id, feature_id):
+def delete_sequence_feature(path, sequence_id, feature_id):
     """
     Delete a feature annotation from a sequence.
-    Returns (success, project_data, message).
     """
-    success, project_data, msg = get_project(project_id)
+    success, project_data, msg = get_project(path)
     if not success:
         return False, None, msg
-
+    project_path = _to_fs_path(path)
     try:
         found = False
         for seq in project_data.get('sequences', []):
@@ -496,26 +541,21 @@ def delete_sequence_feature(project_id, sequence_id, feature_id):
                     found = True
                     seq['modified'] = datetime.now().isoformat()
                 break
-
         if not found:
             return False, None, "Feature not found"
-
         project_data['modified'] = datetime.now().isoformat()
 
-        # Strip feature_lanes before saving
         for seq in project_data.get('sequences', []):
             if 'feature_lanes' in seq:
                 del seq['feature_lanes']
 
-        project_file = os.path.join(project_data['path'], PROJECT_FILE)
+        project_file = os.path.join(project_path, PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
             json.dump(project_data, f, indent=2, ensure_ascii=False)
-
         return True, project_data, "Feature deleted"
     except Exception as e:
         logger.error(f"Failed to delete feature: {e}")
         return False, None, str(e)
-
 
 # Feature type definitions (Geneious-like)
 FEATURE_TYPES = [
@@ -532,7 +572,6 @@ FEATURE_TYPES = [
     {'id': 'mutation', 'name': 'Mutation', 'color': '#F44336'},
     {'id': 'variation', 'name': 'Variation', 'color': '#FF5722'},
 ]
-
 
 def get_feature_types():
     """Get list of available feature types."""

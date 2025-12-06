@@ -24,6 +24,9 @@ def setup_logging(app=None):
     # Get loggers
     app_logger = logging.getLogger('biolab.app')
     app_logger.setLevel(logging.INFO)
+    
+    # Log availability of log directory right after logger is created
+    app_logger.info(f"log_dir_available: {log_dir_available}")
 
     tools_logger = logging.getLogger('biolab.tools')
     tools_logger.setLevel(logging.DEBUG)
@@ -55,8 +58,10 @@ def setup_logging(app=None):
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
     console_handler.setLevel(logging.INFO)
-    app_logger.addHandler(console_handler)
-    tools_logger.addHandler(console_handler)
+    if not app_logger.handlers:
+        app_logger.addHandler(console_handler)
+    if not tools_logger.handlers:
+        tools_logger.addHandler(console_handler)
 
     if app:
         app.logger.handlers = app_logger.handlers

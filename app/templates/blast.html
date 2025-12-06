@@ -185,6 +185,22 @@
     let currentDatabase = null;
     let blastHits = [];
 
+    async function fetchJsonSafe(url, options = {}) {
+        const response = await fetch(url, options);
+        const contentType = response.headers.get('content-type') || '';
+        const isJson = contentType.includes('application/json');
+        const payload = isJson ? await response.json() : await response.text();
+
+        if (!response.ok) {
+            let msg = isJson ? (payload.error || payload.message) : String(payload).slice(0, 200);
+            if (response.status === 413) {
+                msg = '上传文件超过服务器限制，请将 Nginx client_max_body_size 和环境变量 BIOLAB_MAX_CONTENT_MB 设置为至少 50m，并重启服务。';
+            }
+            throw new Error(msg || `HTTP ${response.status}`);
+        }
+        return payload;
+    }
+
     document.querySelectorAll('input[name="queryType"]').forEach(radio => {
         radio.addEventListener('change', function() {
             document.getElementById('textQueryDiv').classList.toggle('d-none', this.value !== 'text');
@@ -218,11 +234,10 @@
         document.getElementById('resultsTable').classList.add('d-none');
 
         try {
-            const response = await fetch(BLAST_URLS.search, {
+            const data = await fetchJsonSafe(BLAST_URLS.search, {
                 method: 'POST',
                 body: formData
             });
-            const data = await response.json();
 
             document.getElementById('loadingSpinner').classList.add('d-none');
 
@@ -289,11 +304,10 @@
         formData.append('db_type', document.getElementById('dbType').value);
 
         try {
-            const response = await fetch(BLAST_URLS.createDb, {
+            const data = await fetchJsonSafe(BLAST_URLS.createDb, {
                 method: 'POST',
                 body: formData
             });
-            const data = await response.json();
 
             if (data.success) {
                 showAlert('success', 'Database created successfully');
@@ -316,7 +330,7 @@
         }
 
         try {
-            const response = await fetch(BLAST_URLS.extract, {
+            const data = await fetchJsonSafe(BLAST_URLS.extract, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
@@ -325,7 +339,6 @@
                     result_dir: currentResultDir
                 })
             });
-            const data = await response.json();
 
             if (data.success) {
                 showAlert('success', data.message);
