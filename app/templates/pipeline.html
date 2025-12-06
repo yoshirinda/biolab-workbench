@@ -105,10 +105,18 @@
                 </form>
                 <div class="step-result" id="result0">
                     <h6>清理结果:</h6>
-                    <div id="cleanResults"></div>
-                    <button class="btn btn-success btn-sm mt-2" onclick="nextStep(1)">
-                        <i class="bi bi-arrow-right"></i> 继续 HMM 搜索
-                    </button>
+                    <div id="cleanResults">
+                        <div class="placeholder-glow">
+                            <span class="placeholder col-6"></span>
+                            <span class="placeholder col-4"></span>
+                            <span class="placeholder col-8"></span>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <button class="btn btn-success btn-sm" onclick="nextStep(1)">
+                            <i class="bi bi-arrow-right"></i> 继续 HMM 搜索
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -124,6 +132,12 @@
                             <div class="mb-3">
                                 <label class="form-label">序列数据库 (FASTA):</label>
                                 <input type="file" class="form-control" id="hmmSeqFile" accept=".fasta,.fa,.faa" required>
+                                <div class="form-check mt-2">
+                                    <input class="form-check-input" type="checkbox" id="usePrevOutput-step1">
+                                    <label class="form-check-label" for="usePrevOutput-step1">
+                                        Use previous output
+                                    </label>
+                                </div>
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -161,10 +175,18 @@
                 
                 <div class="step-result" id="result1">
                     <h6>HMM搜索结果:</h6>
-                    <div id="hmmResults"></div>
-                    <button class="btn btn-success btn-sm mt-2" onclick="nextStep(2)">
-                        <i class="bi bi-arrow-right"></i> 继续 BLAST
-                    </button>
+                    <div id="hmmResults">
+                        <div class="placeholder-glow">
+                            <span class="placeholder col-6"></span>
+                            <span class="placeholder col-4"></span>
+                            <span class="placeholder col-8"></span>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <button class="btn btn-success btn-sm" onclick="nextStep(2)">
+                            <i class="bi bi-arrow-right"></i> 继续 BLAST
+                        </button>
+                    </div>
                 </div>
             </div>
             
@@ -212,10 +234,18 @@
                 
                 <div class="step-result" id="result2">
                     <h6>BLAST结果:</h6>
-                    <div id="blastResults"></div>
-                    <button class="btn btn-success btn-sm mt-2" onclick="nextStep(2.5)">
-                        <i class="bi bi-arrow-right"></i> 继续 BLAST 过滤
-                    </button>
+                    <div id="blastResults">
+                        <div class="placeholder-glow">
+                            <span class="placeholder col-6"></span>
+                            <span class="placeholder col-4"></span>
+                            <span class="placeholder col-8"></span>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <button class="btn btn-success btn-sm" onclick="nextStep(2.5)">
+                            <i class="bi bi-arrow-right"></i> 继续 BLAST 过滤
+                        </button>
+                    </div>
                 </div>
             </div>
             
@@ -257,10 +287,18 @@
                 
                 <div class="step-result" id="result2_5">
                     <h6>BLAST Filter 结果:</h6>
-                    <div id="blastFilterResults"></div>
-                    <button class="btn btn-success btn-sm mt-2" onclick="nextStep(3)">
-                        <i class="bi bi-arrow-right"></i> 继续长度过滤
-                    </button>
+                    <div id="blastFilterResults">
+                        <div class="placeholder-glow">
+                            <span class="placeholder col-6"></span>
+                            <span class="placeholder col-4"></span>
+                            <span class="placeholder col-8"></span>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <button class="btn btn-success btn-sm" onclick="nextStep(3)">
+                            <i class="bi bi-arrow-right"></i> 继续长度过滤
+                        </button>
+                    </div>
                 </div>
             </div>
             
@@ -297,10 +335,18 @@
                 
                 <div class="step-result" id="result3">
                     <h6>过滤结果:</h6>
-                    <div id="filterResults"></div>
-                    <button class="btn btn-success btn-sm mt-2" onclick="nextStep(4)">
-                        <i class="bi bi-arrow-right"></i> 继续多序列比对
-                    </button>
+                    <div id="filterResults">
+                        <div class="placeholder-glow">
+                            <span class="placeholder col-6"></span>
+                            <span class="placeholder col-4"></span>
+                            <span class="placeholder col-8"></span>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <button class="btn btn-success btn-sm" onclick="nextStep(4)">
+                            <i class="bi bi-arrow-right"></i> 继续多序列比对
+                        </button>
+                    </div>
                 </div>
             </div>
             
@@ -346,10 +392,18 @@
                 
                 <div class="step-result" id="result4">
                     <h6>比对结果:</h6>
-                    <div id="alignResults"></div>
-                    <button class="btn btn-success btn-sm mt-2" onclick="nextStep(5)">
-                        <i class="bi bi-arrow-right"></i> 继续 ClipKIT
-                    </button>
+                    <div id="alignResults">
+                        <div class="placeholder-glow">
+                            <span class="placeholder col-6"></span>
+                            <span class="placeholder col-4"></span>
+                            <span class="placeholder col-8"></span>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <button class="btn btn-success btn-sm" onclick="nextStep(5)">
+                            <i class="bi bi-arrow-right"></i> 继续 ClipKIT
+                        </button>
+                    </div>
                 </div>
             </div>
             
@@ -395,10 +449,18 @@
                 
                 <div class="step-result" id="result5">
                     <h6>ClipKIT结果:</h6>
-                    <div id="clipkitResults"></div>
-                    <button class="btn btn-success btn-sm mt-2" onclick="nextStep(6)">
-                        <i class="bi bi-arrow-right"></i> 继续建树
-                    </button>
+                    <div id="clipkitResults">
+                        <div class="placeholder-glow">
+                            <span class="placeholder col-6"></span>
+                            <span class="placeholder col-4"></span>
+                            <span class="placeholder col-8"></span>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <button class="btn btn-success btn-sm" onclick="nextStep(6)">
+                            <i class="bi bi-arrow-right"></i> 继续建树
+                        </button>
+                    </div>
                 </div>
             </div>
             
@@ -440,10 +502,6 @@
                             <div class="form-check">
                                 <input type="checkbox" class="form-check-input" id="iqtreeAlrt" checked>
                                 <label class="form-check-label" for="iqtreeAlrt">SH-aLRT test</label>
-                        <div class="mb-3">
-                            <label class="form-label">或已有文件路径:</label>
-                            <input type="text" class="form-control" id="hmmExistingPath" placeholder="/path/to/cleaned.fasta">
-                        </div>
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -464,10 +522,18 @@
                 
                 <div class="step-result" id="result6">
                     <h6>IQ-TREE结果:</h6>
-                    <div id="iqtreeResults"></div>
-                    <button class="btn btn-success btn-sm mt-2" onclick="nextStep(7)">
-                        <i class="bi bi-arrow-right"></i> 树可视化
-                    </button>
+                    <div id="iqtreeResults">
+                        <div class="placeholder-glow">
+                            <span class="placeholder col-6"></span>
+                            <span class="placeholder col-4"></span>
+                            <span class="placeholder col-8"></span>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <button class="btn btn-success btn-sm" onclick="nextStep(7)">
+                            <i class="bi bi-arrow-right"></i> 树可视化
+                        </button>
+                    </div>
                 </div>
             </div>
             
@@ -488,6 +554,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{{ url_for('static', filename='js/pipeline.js') }}"></script>
 <script>
     const pipelineData = {
         cleaned: null,
@@ -537,259 +604,9 @@
         return `/phylo/download?path=${encodeURIComponent(path)}`;
     }
 
-    // Step 0: Clean headers
-    document.getElementById('cleanForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const fd = getInputForStep('cleanFile', 'cleanPath');
-        if (!fd) {
-            alert('请上传 FASTA 或提供路径');
-            return;
-        }
-        try {
-            const res = await fetch('/pipeline/clean-headers', { method: 'POST', body: fd });
-            const result = await res.json();
-            if (result.success) {
-                pipelineData.cleaned = result.output_file;
-                document.getElementById('cleanResults').innerHTML = `
-                    <p class="text-success"><i class="bi bi-check-circle"></i> 清理完成, 共 ${result.count} 条序列</p>
-                    <a class="btn btn-sm btn-outline-primary" href="${downloadLink(result.output_file)}">下载清理后的 FASTA</a>
-                `;
-                document.getElementById('result0').classList.add('show');
-            } else {
-                alert('清理失败: ' + result.error);
-            }
-        } catch (err) {
-            alert('错误: ' + err.message);
-        }
-    });
+    // Legacy functions for backward compatibility
+    // These are now handled by pipeline.js but kept for any manual calls
 
-    // Step 1: HMM Search
-    document.getElementById('hmmForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const fd = getInputForStep('hmmSeqFile', 'hmmExistingPath', pipelineData.cleaned);
-        if (!fd) {
-            alert('请上传序列或填写路径');
-            return;
-        }
-        const profiles = Array.from(document.getElementById('hmmProfiles').selectedOptions)
-            .map(opt => opt.value);
-        profiles.forEach(p => fd.append('hmm_files[]', p + '.hmm'));
-        fd.append('evalue', document.getElementById('hmmEvalue').value);
-        fd.append('cut_ga', document.getElementById('hmmCutGA').checked);
-
-        try {
-            const res = await fetch('/phylo/hmm-search', { method: 'POST', body: fd });
-            const result = await res.json();
-            if (result.success) {
-                const outputFiles = result.output_files || {};
-                pipelineData.hmmOutput = outputFiles.hits || outputFiles.hits_fasta || outputFiles.fasta || outputFiles.main || null;
-                document.getElementById('hmmResults').innerHTML = `
-                    <p class="text-success"><i class="bi bi-check-circle"></i> 找到 ${result.hit_count} 条匹配</p>
-                    ${pipelineData.hmmOutput ? `<a class="btn btn-sm btn-outline-primary" href="${downloadLink(pipelineData.hmmOutput)}">下载匹配序列</a>` : ''}
-                `;
-                document.getElementById('result1').classList.add('show');
-            } else {
-                alert('HMM 搜索失败: ' + result.error);
-            }
-        } catch (err) {
-            alert('错误: ' + err.message);
-        }
-    });
-
-    // Step 2: BLAST
-    document.getElementById('blastForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const fd = getInputForStep('blastDbFile', 'blastQueryPath', pipelineData.hmmOutput);
-        if (!fd) {
-            alert('请提供查询序列文件或路径');
-            return;
-        }
-
-        const dbPath = document.getElementById('blastDbPath').value.trim();
-        if (!dbPath) {
-            alert('请填写数据库基名路径');
-            return;
-        }
-        fd.append('database', dbPath);
-        fd.append('evalue', document.getElementById('blastEvalue').value);
-        fd.append('max_hits', document.getElementById('blastMaxTargets').value);
-        fd.append('num_threads', document.getElementById('blastThreads').value);
-
-        try {
-            const res = await fetch('/blast/search', { method: 'POST', body: fd });
-            const result = await res.json();
-            if (result.success) {
-                const outputFiles = result.output_files || {};
-                pipelineData.blastOutput = outputFiles.main || outputFiles.fasta || null;
-                document.getElementById('blastResults').innerHTML = `
-                    <p class="text-success"><i class="bi bi-check-circle"></i> BLAST 完成 (${result.total_hits} 条命中)</p>
-                    ${pipelineData.blastOutput ? `<a class="btn btn-sm btn-outline-primary" href="${downloadLink(pipelineData.blastOutput)}">下载结果</a>` : ''}
-                `;
-                document.getElementById('result2').classList.add('show');
-            } else {
-                alert('BLAST 失败: ' + result.error);
-            }
-        } catch (err) {
-            alert('错误: ' + err.message);
-        }
-    });
-
-    // Step 2.5: BLAST Filter
-    document.getElementById('blastFilterForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const goldList = document.getElementById('goldListSelect').value;
-        if (!goldList) {
-            alert('请选择 Gold Standard List');
-            return;
-        }
-        
-        const fd = new FormData();
-        const inputPath = document.getElementById('blastFilterInputPath').value.trim() || pipelineData.blastOutput;
-        if (!inputPath) {
-            alert('请提供输入序列路径或先运行 BLAST');
-            return;
-        }
-        
-        fd.append('step', 'step2_5');
-        fd.append('file_path', inputPath);
-        fd.append('gold_list', goldList);
-        fd.append('pident', document.getElementById('blastPident').value);
-        fd.append('qcovs', document.getElementById('blastQcovs').value);
-
-        try {
-            const res = await fetch('/phylo/run-step', { method: 'POST', body: fd });
-            const result = await res.json();
-            if (result.success) {
-                pipelineData.blastFiltered = result.output;
-                const stats = result.stats || {};
-                let statsHtml = `
-                    <p class="text-success"><i class="bi bi-check-circle"></i> BLAST 过滤完成</p>
-                    <div class="alert alert-info mt-2">
-                        <strong>--- BLAST Filter Summary ---</strong><br>
-                        过滤器: Min P-Ident >= ${document.getElementById('blastPident').value}% | Min Q-Covs >= ${document.getElementById('blastQcovs').value}%<br>
-                        输入总数: ${stats.total_in || 'N/A'}<br>
-                        保留序列: <span class="text-success">${stats.kept || 'N/A'}</span><br>
-                        删除序列: <span class="text-danger">${stats.deleted || 'N/A'}</span>
-                `;
-                
-                if (stats.log_file) {
-                    statsHtml += `<br><small class="text-muted">详细日志: ${stats.log_file}</small>`;
-                }
-                
-                if (stats.deleted_ids && stats.deleted_ids.length > 0) {
-                    statsHtml += '<br><br><strong>删除的序列 ID (前10条):</strong><br><code style="font-size:11px;">';
-                    stats.deleted_ids.slice(0, 10).forEach(id => {
-                        statsHtml += `${id}<br>`;
-                    });
-                    if (stats.deleted_ids.length > 10) {
-                        statsHtml += `... 还有 ${stats.deleted_ids.length - 10} 条<br>`;
-                    }
-                    statsHtml += '</code>';
-                }
-                
-                statsHtml += `</div>
-                    <a class="btn btn-sm btn-outline-primary" href="${downloadLink(result.output)}">下载过滤后 FASTA</a>
-                `;
-                
-                document.getElementById('blastFilterResults').innerHTML = statsHtml;
-                document.getElementById('result2_5').classList.add('show');
-            } else {
-                alert('BLAST 过滤失败: ' + result.error);
-            }
-        } catch (err) {
-            alert('错误: ' + err.message);
-        }
-    });
-
-    // Step 3: Length Filter
-    document.getElementById('filterForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        // Use BLAST filter output if available, otherwise fall back to BLAST output
-        const fd = getInputForStep('filterFile', 'filterInputPath', pipelineData.blastFiltered || pipelineData.blastOutput);
-        if (!fd) {
-            alert('请提供 FASTA 路径或先运行 BLAST');
-            return;
-        }
-        fd.append('min_length', document.getElementById('minLength').value);
-        fd.append('max_length', document.getElementById('maxLength').value);
-
-        try {
-            const res = await fetch('/pipeline/filter-length', { method: 'POST', body: fd });
-            const result = await res.json();
-            if (result.success) {
-                pipelineData.filteredSeqs = result.output_file;
-                const stats = result.stats || {};
-                let statsHtml = `
-                    <p class="text-success"><i class="bi bi-check-circle"></i> 长度过滤完成</p>
-                    <div class="alert alert-info mt-2">
-                        <strong>--- Length Filter Summary ---</strong><br>
-                        阈值: 移除序列 < ${stats.threshold} aa<br>
-                        输入总数: ${stats.total_in || result.kept + result.removed}<br>
-                        保留序列: <span class="text-success">${result.kept}</span><br>
-                        删除序列: <span class="text-danger">${result.removed}</span>
-                `;
-                
-                if (stats.log_file) {
-                    statsHtml += `<br><small class="text-muted">详细日志: ${stats.log_file}</small>`;
-                }
-                
-                if (stats.deleted_with_lengths && stats.deleted_with_lengths.length > 0) {
-                    statsHtml += '<br><br><strong>删除的序列 (前10条):</strong><br><code style="font-size:11px;">';
-                    stats.deleted_with_lengths.slice(0, 10).forEach(([id, len]) => {
-                        statsHtml += `${id} (长度: ${len} aa)<br>`;
-                    });
-                    if (stats.deleted_with_lengths.length > 10) {
-                        statsHtml += `... 还有 ${stats.deleted_with_lengths.length - 10} 条<br>`;
-                    }
-                    statsHtml += '</code>';
-                }
-                
-                statsHtml += `</div>
-                    <a class="btn btn-sm btn-outline-primary" href="${downloadLink(result.output_file)}">下载过滤后 FASTA</a>
-                `;
-                
-                document.getElementById('filterResults').innerHTML = statsHtml;
-                document.getElementById('result3').classList.add('show');
-            } else {
-                alert('过滤失败: ' + result.error);
-            }
-        } catch (err) {
-            alert('错误: ' + err.message);
-        }
-    });
-
-    // Step 4: Alignment
-    document.getElementById('alignForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const fd = getInputForStep('alignFileInput', 'alignInputPath', pipelineData.filteredSeqs);
-        if (!fd) {
-            alert('请提供输入 FASTA');
-            return;
-        }
-        fd.append('tool', document.getElementById('alignTool').value);
-        fd.append('mafft_algorithm', document.getElementById('mafftAlgorithm').value);
-        fd.append('threads', 4);
-
-        try {
-            const res = await fetch('/alignment/align-multi', { method: 'POST', body: fd });
-            const result = await res.json();
-            if (result.success) {
-                pipelineData.alignment = result.output_file;
-                document.getElementById('alignResults').innerHTML = `
-                    <p class="text-success"><i class="bi bi-check-circle"></i> 比对完成</p>
-                    <p>序列数: ${result.stats.num_sequences}, 比对长度: ${result.stats.alignment_length}</p>
-                    <a class="btn btn-sm btn-outline-primary" href="${downloadLink(result.output_file)}">下载比对</a>
-                `;
-                document.getElementById('result4').classList.add('show');
-            } else {
-                alert('比对失败: ' + (result.error || '未知错误'));
-            }
-        } catch (err) {
-            alert('错误: ' + err.message);
-        }
-    });
-
-    // Step 5: ClipKIT
     async function suggestClipKitMode() {
         const fd = getInputForStep('clipkitFileInput', 'clipkitInputPath', pipelineData.alignment);
         if (!fd) {
@@ -808,36 +625,6 @@
         }
     }
 
-    document.getElementById('clipkitForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const fd = getInputForStep('clipkitFileInput', 'clipkitInputPath', pipelineData.alignment);
-        if (!fd) {
-            alert('请提供比对文件');
-            return;
-        }
-        fd.append('mode', document.getElementById('clipkitMode').value);
-        fd.append('gaps', document.getElementById('clipkitGaps').value);
-
-        try {
-            const res = await fetch('/phylo/clipkit-trim', { method: 'POST', body: fd });
-            const result = await res.json();
-            if (result.success) {
-                pipelineData.trimmedAlignment = result.output_file;
-                document.getElementById('clipkitResults').innerHTML = `
-                    <p class="text-success"><i class="bi bi-check-circle"></i> ClipKIT 完成</p>
-                    <p>保留位置: ${result.stats.kept_sites} / ${result.stats.total_sites} (${result.stats.percentage_kept}%)</p>
-                    <a class="btn btn-sm btn-outline-primary" href="${downloadLink(result.output_file)}">下载修剪结果</a>
-                `;
-                document.getElementById('result5').classList.add('show');
-            } else {
-                alert('ClipKIT 失败: ' + result.error);
-            }
-        } catch (err) {
-            alert('错误: ' + err.message);
-        }
-    });
-
-    // Step 6: IQ-TREE
     async function runModelFinder() {
         const fd = getInputForStep('iqtreeFileInput', 'iqtreeInputPath', pipelineData.trimmedAlignment);
         if (!fd) {
@@ -857,38 +644,5 @@
             alert('错误: ' + err.message);
         }
     }
-
-    document.getElementById('iqtreeForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const fd = getInputForStep('iqtreeFileInput', 'iqtreeInputPath', pipelineData.trimmedAlignment);
-        if (!fd) {
-            alert('请提供比对文件');
-            return;
-        }
-        fd.append('model', document.getElementById('iqtreeModel').value);
-        fd.append('bootstrap', document.getElementById('iqtreeBootstrap').value);
-        fd.append('bootstrap_type', document.getElementById('iqtreeBootstrapType').value);
-        fd.append('alrt', document.getElementById('iqtreeAlrt').checked);
-        fd.append('bnni', document.getElementById('iqtreeBnni').checked);
-
-        try {
-            const res = await fetch('/phylo/iqtree-infer', { method: 'POST', body: fd });
-            const result = await res.json();
-            if (result.success) {
-                const treefile = result.output_files.treefile;
-                pipelineData.tree = treefile;
-                document.getElementById('iqtreeResults').innerHTML = `
-                    <p class="text-success"><i class="bi bi-check-circle"></i> 建树完成</p>
-                    <p>Bootstrap 支持率均值: ${result.support_stats.mean_support || 'N/A'}%</p>
-                    ${treefile ? `<a class="btn btn-sm btn-outline-primary" href="${downloadLink(treefile)}">下载树文件</a>` : ''}
-                `;
-                document.getElementById('result6').classList.add('show');
-            } else {
-                alert('IQ-TREE 失败: ' + result.error);
-            }
-        } catch (err) {
-            alert('错误: ' + err.message);
-        }
-    });
 </script>
 {% endblock %}
