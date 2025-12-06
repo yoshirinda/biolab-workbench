@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}UniProt Documentation - BioLab Workbench{% endblock %}
+
+{% block content %}
+<div class="container">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('docs.docs_index') }}">Documentation</a></li>
+            <li class="breadcrumb-item active">UniProt</li>
+        </ol>
+    </nav>
+
+    <h2 class="mb-4">
+        <i class="bi bi-cloud-download text-danger"></i>
+        UniProt Search Documentation
+    </h2>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- Overview -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0"><i class="bi bi-info-circle"></i> Overview</h5>
+                </div>
+                <div class="card-body">
+                    <p>
+                        <strong>UniProt</strong> (Universal Protein Resource) is a comprehensive database of protein sequences and functional information.
+                        This module allows you to search UniProt, filter by taxonomy and review status, and download sequences in FASTA format.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Parameter Documentation -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-sliders"></i> Search Parameters</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Options</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Search Query</strong></td>
+                                    <td>Text</td>
+                                    <td>Keywords to search (e.g., protein name, gene name, function)</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Taxonomy Filter</strong></td>
+                                    <td>Dropdown</td>
+                                    <td>Filter by organism (Viridiplantae, Arabidopsis, etc.)</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Database</strong></td>
+                                    <td>All / Reviewed / Unreviewed</td>
+                                    <td>
+                                        <ul class="mb-0">
+                                            <li><strong>Reviewed (Swiss-Prot)</strong>: Manually curated, high quality</li>
+                                            <li><strong>Unreviewed (TrEMBL)</strong>: Automatically annotated</li>
+                                        </ul>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Max Results</strong></td>
+                                    <td>1-5000</td>
+                                    <td>Maximum number of entries to retrieve</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Header Format</strong></td>
+                                    <td>Gene_Species_ID / Standard</td>
+                                    <td>Format for FASTA sequence headers</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Taxonomy Options -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-diagram-3"></i> Common Taxonomy IDs</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Taxonomy ID</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>Viridiplantae (Green plants)</td><td>33090</td></tr>
+                                <tr><td>Embryophyta (Land plants)</td><td>3193</td></tr>
+                                <tr><td>Angiospermae (Flowering plants)</td><td>3398</td></tr>
+                                <tr><td>Arabidopsis thaliana</td><td>3702</td></tr>
+                                <tr><td>Oryza sativa (Rice)</td><td>4530</td></tr>
+                                <tr><td>Homo sapiens (Human)</td><td>9606</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Workflow -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-list-ol"></i> Workflow</h5>
+                </div>
+                <div class="card-body">
+                    <ol>
+                        <li>Enter search keywords (e.g., "ACO oxidase", "kinase")</li>
+                        <li>Select taxonomy filter to narrow results</li>
+                        <li>Choose database type (Reviewed recommended for quality)</li>
+                        <li>Click <strong>Search</strong> to retrieve entries</li>
+                        <li>Review results in the table, select entries of interest</li>
+                        <li>Click <strong>Download Sequences</strong> to get FASTA file</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0"><i class="bi bi-lightbulb"></i> Tips</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="mb-0">
+                        <li>Use <strong>Reviewed</strong> database for curated, high-quality sequences</li>
+                        <li>Combine keywords with taxonomy for specific results</li>
+                        <li>Use <code>Gene_Species_ID</code> header format for phylogenetic analysis</li>
+                        <li>Select multiple entries using checkboxes before downloading</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-link-45deg"></i> External Resources</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled mb-0">
+                        <li><a href="https://www.uniprot.org/" target="_blank"><i class="bi bi-box-arrow-up-right"></i> UniProt Website</a></li>
+                        <li><a href="https://www.uniprot.org/help/text-search" target="_blank"><i class="bi bi-box-arrow-up-right"></i> Search Syntax Help</a></li>
+                        <li><a href="https://www.uniprot.org/taxonomy/" target="_blank"><i class="bi bi-box-arrow-up-right"></i> Taxonomy Browser</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

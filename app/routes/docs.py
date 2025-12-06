@@ -34,3 +34,9 @@ def alignment_docs():
 def tree_docs():
     """Render tree visualization documentation."""
     return render_template('docs/tree.html')
+
+
+@docs_bp.route('/uniprot')
+def uniprot_docs():
+    """Render UniProt documentation."""
+    return render_template('docs/uniprot.html')

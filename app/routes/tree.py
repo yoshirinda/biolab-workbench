@@ -6,7 +6,7 @@ from flask import Blueprint, render_template, request, jsonify, send_file
 import config
 from app.core.tree_visualizer import (
     visualize_tree, get_tree_info, get_species_from_tree,
-    read_newick, get_default_colors, DEFAULT_COLORS
+    read_newick, get_default_colors, DEFAULT_COLORS, extract_clade
 )
 from app.utils.file_utils import save_uploaded_file
 from app.utils.logger import get_app_logger
@@ -116,6 +116,65 @@ def visualize():
 
     except Exception as e:
         logger.error(f"Tree visualization error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@tree_bp.route('/extract-clade', methods=['POST'])
+def extract_clade_route():
+    """Extract and visualize a clade around a target gene."""
+    try:
+        data = request.get_json() or request.form
+
+        tree_file = data.get('tree_file')
+        if not tree_file or not os.path.exists(tree_file):
+            return jsonify({'success': False, 'error': 'Tree file not found'})
+
+        target_gene = data.get('target_gene', '').strip()
+        if not target_gene:
+            return jsonify({'success': False, 'error': 'Target gene required'})
+
+        levels_up = int(data.get('levels_up', 2))
+        layout = data.get('layout', 'rectangular')
+        show_bootstrap = data.get('show_bootstrap', True)
+        if isinstance(show_bootstrap, str):
+            show_bootstrap = show_bootstrap.lower() == 'true'
+        font_size = int(data.get('font_size', 10))
+        fixed_branch = data.get('fixed_branch_length', False)
+        if isinstance(fixed_branch, str):
+            fixed_branch = fixed_branch.lower() == 'true'
+
+        colored_species = {}
+        if data.get('colored_species'):
+            import json
+            if isinstance(data.get('colored_species'), dict):
+                colored_species = data.get('colored_species')
+            else:
+                colored_species = json.loads(data.get('colored_species'))
+
+        success, result_dir, output_file, message, clade_info = extract_clade(
+            tree_file=tree_file,
+            target_gene=target_gene,
+            levels_up=levels_up,
+            layout=layout,
+            colored_species=colored_species,
+            show_bootstrap=show_bootstrap,
+            font_size=font_size,
+            fixed_branch_length=fixed_branch
+        )
+
+        if success:
+            return jsonify({
+                'success': True,
+                'result_dir': result_dir,
+                'output_file': output_file,
+                'message': message,
+                'clade_info': clade_info
+            })
+        else:
+            return jsonify({'success': False, 'error': message})
+
+    except Exception as e:
+        logger.error(f"Clade extraction error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 

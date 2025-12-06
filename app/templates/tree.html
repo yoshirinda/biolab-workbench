@@ -70,6 +70,26 @@
                             <small class="form-text text-muted">Comma-separated list of genes to highlight</small>
                         </div>
 
+                        <hr>
+                        <h6><i class="bi bi-diagram-2"></i> Clade Extraction</h6>
+                        <div class="mb-3">
+                            <label for="targetGene" class="form-label">Target Gene:</label>
+                            <input type="text" class="form-control" id="targetGene" placeholder="Gene to center clade on" list="geneList">
+                        </div>
+                        <div class="mb-3">
+                            <label for="levelsUp" class="form-label">Levels Up:</label>
+                            <input type="number" class="form-control" id="levelsUp" value="2" min="1" max="10">
+                            <small class="form-text text-muted">向上追溯祖先层数</small>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="fixedBranch">
+                            <label class="form-check-label" for="fixedBranch">Fixed Branch Length</label>
+                        </div>
+                        <button type="button" class="btn btn-outline-secondary w-100 mb-3" id="extractCladeBtn">
+                            <i class="bi bi-scissors"></i> Extract Clade
+                        </button>
+                        <hr>
+
                         <div class="mb-3">
                             <label for="centerGene" class="form-label">Center Gene (optional):</label>
                             <input type="text" class="form-control" id="centerGene" placeholder="Gene ID to center view" list="geneList">
@@ -290,7 +310,66 @@
         } catch (error) {
             document.getElementById('loadingSpinner').classList.add('d-none');
             document.getElementById('visualizeBtn').disabled = false;
-            showAlert('danger', 'Visualization failed: ' + error.message);
+                showAlert('danger', 'Visualization failed: ' + error.message);
+        }
+    });
+
+    // Clade extraction handler
+    document.getElementById('extractCladeBtn').addEventListener('click', async function() {
+        const targetGene = document.getElementById('targetGene').value.trim();
+        if (!targetGene) {
+            showAlert('warning', 'Please enter a target gene');
+            return;
+        }
+
+        const colorInputs = document.querySelectorAll('#speciesColorList input[type="color"]');
+        const coloredSpecies = {};
+        colorInputs.forEach(input => {
+            coloredSpecies[input.dataset.species] = input.value;
+        });
+
+        const data = {
+            tree_file: document.getElementById('treePath').value,
+            target_gene: targetGene,
+            levels_up: document.getElementById('levelsUp').value,
+            layout: document.getElementById('layout').value,
+            font_size: document.getElementById('fontSize').value,
+            show_bootstrap: document.getElementById('showBootstrap').checked,
+            fixed_branch_length: document.getElementById('fixedBranch').checked,
+            colored_species: coloredSpecies
+        };
+
+        document.getElementById('loadingSpinner').classList.remove('d-none');
+        document.getElementById('treeContainer').innerHTML = '';
+
+        try {
+            const response = await fetch('/tree/extract-clade', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            const result = await response.json();
+
+            document.getElementById('loadingSpinner').classList.add('d-none');
+
+            if (result.success) {
+                const img = document.createElement('img');
+                img.src = TREE_URLS.viewBase + result.output_file;
+                img.style.maxWidth = '100%';
+                document.getElementById('treeContainer').appendChild(img);
+
+                const btn = document.getElementById('downloadSvgBtn');
+                btn.href = TREE_URLS.downloadBase + result.output_file;
+                btn.classList.remove('d-none');
+
+                const info = result.clade_info;
+                showAlert('success', `Clade extracted: ${info.leaf_count} leaves, ${info.levels_up} levels up`);
+            } else {
+                document.getElementById('treeContainer').innerHTML = `<div class="alert alert-danger">${result.error}</div>`;
+            }
+        } catch (error) {
+            document.getElementById('loadingSpinner').classList.add('d-none');
+            showAlert('danger', 'Clade extraction failed: ' + error.message);
         }
     });
 </script>
