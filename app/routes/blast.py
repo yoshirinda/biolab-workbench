@@ -156,11 +156,17 @@ def extract():
 
         success, message = extract_sequences(database, hit_ids, output_file)
 
-        return jsonify({
-            'success': success,
-            'message': message,
-            'output_file': output_file
-        })
+        if success:
+            return jsonify({
+                'success': True,
+                'message': message,
+                'output_file': output_file
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': message
+            })
 
     except Exception as e:
         logger.error(f"Sequence extraction error: {str(e)}")
