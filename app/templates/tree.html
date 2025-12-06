@@ -102,25 +102,12 @@
                             <small class="form-text text-muted">如果提示"No leaves within radius"，请增大此值</small>
                         </div>
 
-                        <h6 class="mt-3">Species Colors: <small class="text-muted">(勾选要高亮的物种)</small></h6>
+                        <h6 class="mt-3">Species Colors:</h6>
+                        <small class="text-muted d-block mb-2">
+                            <i class="bi bi-check-square"></i> 勾选物种以高亮显示其所有基因
+                        </small>
                         <div id="speciesColorList" class="mb-3" style="max-height: 200px; overflow-y: auto;">
                             <p class="text-muted">Load a tree to see species</p>
-                        </div>
-                        <div class="mb-3">
-                            <button type="button" class="btn btn-sm btn-outline-secondary me-1" onclick="selectAllSpecies(true)">全选</button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="selectAllSpecies(false)">全不选</button>
-                        </div>
-
-                        <h6>Output Size:</h6>
-                        <div class="row mb-3">
-                            <div class="col-6">
-                                <label class="form-label small">Max Width (px):</label>
-                                <input type="number" class="form-control form-control-sm" id="maxWidth" value="1200" min="400" max="4000" step="100">
-                            </div>
-                            <div class="col-6">
-                                <label class="form-label small">Max Height (px):</label>
-                                <input type="number" class="form-control form-control-sm" id="maxHeight" value="800" min="400" max="4000" step="100">
-                            </div>
                         </div>
 
                         <button type="submit" class="btn btn-secondary w-100" id="visualizeBtn">
@@ -228,17 +215,14 @@
 
         container.innerHTML = species.map((sp, idx) => `
             <div class="d-flex align-items-center mb-2">
-                <input type="checkbox" class="form-check-input me-2 species-checkbox" id="check_${idx}" data-species="${sp}" checked>
+                <input type="checkbox" class="form-check-input me-2"
+                    id="highlight_${idx}" data-species="${sp}">
                 <input type="color" class="form-control form-control-color me-2"
                     id="color_${idx}" value="${colors[sp] || defaultColors[idx % defaultColors.length] || '#000000'}"
-                    data-species="${sp}" style="width:30px;height:24px;">
-                <label class="form-label mb-0 small" for="check_${idx}">${sp}</label>
+                    data-species="${sp}" style="width: 50px;">
+                <label class="form-label mb-0" for="color_${idx}" style="flex-grow: 1;">${sp}</label>
             </div>
         `).join('');
-    }
-
-    function selectAllSpecies(selectAll) {
-        document.querySelectorAll('.species-checkbox').forEach(cb => cb.checked = selectAll);
     }
 
     function buildCenterGeneSearch(allNodes, leaves) {
@@ -278,15 +262,16 @@
     document.getElementById('visualizeForm').addEventListener('submit', async function(e) {
         e.preventDefault();
 
-        // Collect species colors (only checked ones)
+        // Collect species colors
+        const colorInputs = document.querySelectorAll('#speciesColorList input[type="color"]');
         const coloredSpecies = {};
-        document.querySelectorAll('.species-checkbox:checked').forEach(cb => {
-            const sp = cb.dataset.species;
-            const colorInput = document.querySelector(`input[type="color"][data-species="${sp}"]`);
-            if (colorInput) {
-                coloredSpecies[sp] = colorInput.value;
-            }
+        colorInputs.forEach(input => {
+            coloredSpecies[input.dataset.species] = input.value;
         });
+
+        // Collect highlighted species (checked checkboxes)
+        const highlightChecks = document.querySelectorAll('#speciesColorList input[type="checkbox"]:checked');
+        const highlightSpecies = Array.from(highlightChecks).map(cb => cb.dataset.species);
 
         const data = {
             tree_file: document.getElementById('treePath').value,
@@ -296,10 +281,9 @@
             show_bootstrap: document.getElementById('showBootstrap').checked,
             highlighted_genes: document.getElementById('highlightGenes').value,
             colored_species: coloredSpecies,
+            highlight_species: highlightSpecies,
             center_gene: document.getElementById('centerGene').value,
-            radius_edges: document.getElementById('radiusEdges').value,
-            max_width: document.getElementById('maxWidth').value,
-            max_height: document.getElementById('maxHeight').value
+            radius_edges: document.getElementById('radiusEdges').value
         };
 
         document.getElementById('loadingSpinner').classList.remove('d-none');
@@ -318,11 +302,19 @@
             document.getElementById('visualizeBtn').disabled = false;
 
             if (result.success) {
-                // Display SVG
-                const img = document.createElement('img');
-                img.src = TREE_URLS.viewBase + result.output_file;
-                img.style.maxWidth = '100%';
-                document.getElementById('treeContainer').appendChild(img);
+                // Display SVG with zoom controls
+                const container = document.getElementById('treeContainer');
+                container.innerHTML = `
+                    <div class="mb-2 text-center">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="zoomTree(0.8)"><i class="bi bi-zoom-out"></i></button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="zoomTree(1.0)">100%</button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="zoomTree(1.2)"><i class="bi bi-zoom-in"></i></button>
+                        <span class="ms-2 text-muted" id="zoomLevel">100%</span>
+                    </div>
+                    <div style="overflow: auto; max-height: 800px; border: 1px solid #ddd; padding: 10px;">
+                        <img id="treeImage" src="${TREE_URLS.viewBase + result.output_file}" style="display: block; margin: 0 auto; max-width: none; width: 100%;">
+                    </div>
+                `;
 
                 // Show download button
                 const btn = document.getElementById('downloadSvgBtn');
@@ -354,6 +346,10 @@
             coloredSpecies[input.dataset.species] = input.value;
         });
 
+        // Collect highlighted species
+        const highlightChecks = document.querySelectorAll('#speciesColorList input[type="checkbox"]:checked');
+        const highlightSpecies = Array.from(highlightChecks).map(cb => cb.dataset.species);
+
         const data = {
             tree_file: document.getElementById('treePath').value,
             target_gene: targetGene,
@@ -362,7 +358,8 @@
             font_size: document.getElementById('fontSize').value,
             show_bootstrap: document.getElementById('showBootstrap').checked,
             fixed_branch_length: document.getElementById('fixedBranch').checked,
-            colored_species: coloredSpecies
+            colored_species: coloredSpecies,
+            highlight_species: highlightSpecies
         };
 
         document.getElementById('loadingSpinner').classList.remove('d-none');
@@ -379,10 +376,18 @@
             document.getElementById('loadingSpinner').classList.add('d-none');
 
             if (result.success) {
-                const img = document.createElement('img');
-                img.src = TREE_URLS.viewBase + result.output_file;
-                img.style.maxWidth = '100%';
-                document.getElementById('treeContainer').appendChild(img);
+                const container = document.getElementById('treeContainer');
+                container.innerHTML = `
+                    <div class="mb-2 text-center">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="zoomTree(0.8)"><i class="bi bi-zoom-out"></i></button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="zoomTree(1.0)">100%</button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="zoomTree(1.2)"><i class="bi bi-zoom-in"></i></button>
+                        <span class="ms-2 text-muted" id="zoomLevel">100%</span>
+                    </div>
+                    <div style="overflow: auto; max-height: 800px; border: 1px solid #ddd; padding: 10px;">
+                        <img id="treeImage" src="${TREE_URLS.viewBase + result.output_file}" style="display: block; margin: 0 auto; max-width: none; width: 100%;">
+                    </div>
+                `;
 
                 const btn = document.getElementById('downloadSvgBtn');
                 btn.href = TREE_URLS.downloadBase + result.output_file;
@@ -398,5 +403,24 @@
             showAlert('danger', 'Clade extraction failed: ' + error.message);
         }
     });
+
+    // Zoom control for tree image
+    let currentZoom = 1.0;
+    function zoomTree(factor) {
+        const img = document.getElementById('treeImage');
+        if (!img) return;
+        
+        if (factor === 1.0) {
+            currentZoom = 1.0;
+        } else {
+            currentZoom *= factor;
+        }
+        
+        // Limit zoom range
+        currentZoom = Math.max(0.2, Math.min(3.0, currentZoom));
+        
+        img.style.width = (currentZoom * 100) + '%';
+        document.getElementById('zoomLevel').textContent = Math.round(currentZoom * 100) + '%';
+    }
 </script>
 {% endblock %}

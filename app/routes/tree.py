@@ -92,8 +92,13 @@ def visualize():
             else:
                 highlighted_genes = [g.strip() for g in data.get('highlighted_genes').split(',') if g.strip()]
 
-        max_width = int(data.get('max_width', 1200))
-        max_height = int(data.get('max_height', 800))
+        # Parse highlight species
+        highlight_species = []
+        if data.get('highlight_species'):
+            if isinstance(data.get('highlight_species'), list):
+                highlight_species = data.get('highlight_species')
+            else:
+                highlight_species = [s.strip() for s in data.get('highlight_species').split(',') if s.strip()]
 
         success, result_dir, output_file, message = visualize_tree(
             tree_file=tree_file,
@@ -105,8 +110,7 @@ def visualize():
             v_scale=v_scale,
             center_gene=center_gene,
             radius_edges=radius_edges,
-            max_width=max_width,
-            max_height=max_height
+            highlight_species=highlight_species
         )
 
         if success:
@@ -156,6 +160,14 @@ def extract_clade_route():
             else:
                 colored_species = json.loads(data.get('colored_species'))
 
+        # Parse highlight species
+        highlight_species = []
+        if data.get('highlight_species'):
+            if isinstance(data.get('highlight_species'), list):
+                highlight_species = data.get('highlight_species')
+            else:
+                highlight_species = [s.strip() for s in data.get('highlight_species').split(',') if s.strip()]
+
         success, result_dir, output_file, message, clade_info = extract_clade(
             tree_file=tree_file,
             target_gene=target_gene,
@@ -164,7 +176,8 @@ def extract_clade_route():
             colored_species=colored_species,
             show_bootstrap=show_bootstrap,
             font_size=font_size,
-            fixed_branch_length=fixed_branch
+            fixed_branch_length=fixed_branch,
+            highlight_species=highlight_species
         )
 
         if success:

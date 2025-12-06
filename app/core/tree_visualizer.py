@@ -105,8 +105,7 @@ def get_species_from_tree(tree_string):
 def visualize_tree(tree_file, output_file=None, layout='rectangular',
                    colored_species=None, highlighted_genes=None,
                    show_bootstrap=True, font_size=10, v_scale=1.0,
-                   center_gene=None, radius_edges=3,
-                   max_width=1200, max_height=800):
+                   center_gene=None, radius_edges=3, highlight_species=None):
     """
     Visualize a phylogenetic tree.
 
@@ -119,8 +118,9 @@ def visualize_tree(tree_file, output_file=None, layout='rectangular',
         show_bootstrap: Whether to show bootstrap values
         font_size: Font size for labels
         v_scale: Vertical scale factor
-        max_width: Maximum width of output SVG in pixels
-        max_height: Maximum height of output SVG in pixels
+        center_gene: Gene to center view on
+        radius_edges: Radius around center gene
+        highlight_species: List of species prefixes to highlight with background
 
     Returns:
         (success, result_dir, output_file, message)
@@ -135,6 +135,8 @@ def visualize_tree(tree_file, output_file=None, layout='rectangular',
         colored_species = {}
     if highlighted_genes is None:
         highlighted_genes = []
+    if highlight_species is None:
+        highlight_species = []
 
     result_dir = create_result_dir('tree', 'visualization')
 
@@ -144,6 +146,7 @@ def visualize_tree(tree_file, output_file=None, layout='rectangular',
         'layout': layout,
         'colored_species': colored_species,
         'highlighted_genes': highlighted_genes,
+        'highlight_species': highlight_species,
         'show_bootstrap': show_bootstrap,
         'font_size': font_size,
         'v_scale': v_scale,
@@ -196,6 +199,11 @@ def visualize_tree(tree_file, output_file=None, layout='rectangular',
             except Exception:
                 pass
 
+        # Calculate adaptive width based on number of leaves
+        num_leaves = len(tree.get_leaves())
+        # Base width calculation: ensure readable spacing
+        adaptive_width = max(800, min(2400, num_leaves * 15))
+        
         # Create tree style
         ts = TreeStyle()
         ts.mode = 'c' if layout == 'circular' else 'r'
@@ -218,7 +226,11 @@ def visualize_tree(tree_file, output_file=None, layout='rectangular',
                 if prefix in colored_species:
                     nstyle['fgcolor'] = colored_species[prefix]
 
-                # Highlight specific genes
+                # Highlight by species (light background)
+                if prefix in highlight_species:
+                    nstyle['bgcolor'] = '#ffffcc'  # Light yellow background
+
+                # Highlight specific genes (stronger highlight)
                 if node.name in highlighted_genes:
                     nstyle['bgcolor'] = '#ffff00'  # Yellow background
 
@@ -239,14 +251,8 @@ def visualize_tree(tree_file, output_file=None, layout='rectangular',
                     support_face.fgcolor = '#666666'
                     node.add_face(support_face, column=0, position='branch-top')
 
-        # Render tree with size constraints
-        try:
-            max_w = int(max_width) if max_width else 1200
-            max_h = int(max_height) if max_height else 800
-        except (ValueError, TypeError):
-            max_w, max_h = 1200, 800
-        
-        tree.render(output_file, tree_style=ts, w=max_w, h=max_h, units='px')
+        # Render tree with adaptive width
+        tree.render(output_file, tree_style=ts, w=adaptive_width, units='px')
 
         logger.info(f"Tree visualization saved to {output_file}")
         # Return relative path from results directory for proper web serving
@@ -326,7 +332,8 @@ def get_default_colors(species_list):
 
 def extract_clade(tree_file, target_gene, levels_up=2, output_file=None,
                   layout='rectangular', colored_species=None, 
-                  show_bootstrap=True, font_size=10, fixed_branch_length=False):
+                  show_bootstrap=True, font_size=10, fixed_branch_length=False,
+                  highlight_species=None):
     """
     Extract and visualize a clade around a target gene.
     Goes 'levels_up' ancestors from the target gene.
@@ -340,6 +347,7 @@ def extract_clade(tree_file, target_gene, levels_up=2, output_file=None,
         show_bootstrap: Show bootstrap values
         font_size: Font size for labels
         fixed_branch_length: If True, use uniform branch lengths
+        highlight_species: List of species prefixes to highlight with background
     
     Returns:
         (success, result_dir, output_file, message, clade_info)
@@ -353,6 +361,8 @@ def extract_clade(tree_file, target_gene, levels_up=2, output_file=None,
     
     if colored_species is None:
         colored_species = {}
+    if highlight_species is None:
+        highlight_species = []
 
     try:
         normalized_tree = normalize_tree_file(tree_file)
@@ -398,10 +408,16 @@ def extract_clade(tree_file, target_gene, levels_up=2, output_file=None,
                 nstyle['size'] = 0
                 
                 prefix = extract_species_prefix(node.name)
-                if prefix in colored_species:
-                    nstyle['bgcolor'] = colored_species[prefix]
                 
-                # Highlight target gene
+                # Highlight by species (light background)
+                if prefix in highlight_species:
+                    nstyle['bgcolor'] = '#ffffcc'
+                
+                # Color by species (as border/text color)
+                if prefix in colored_species:
+                    nstyle['fgcolor'] = colored_species[prefix]
+                
+                # Highlight target gene (strongest highlight)
                 if node.name == target_gene:
                     nstyle['bgcolor'] = '#ffff00'
                 
@@ -442,8 +458,8 @@ def extract_clade(tree_file, target_gene, levels_up=2, output_file=None,
         if output_file is None:
             output_file = os.path.join(result_dir, f'{target_gene}_L{actual_levels}_{layout}.svg')
         
-        # Render
-        width = max(1200, len(clade_leaves) * 20)
+        # Render with adaptive width
+        width = max(800, min(2400, len(clade_leaves) * 15))
         display_tree.render(output_file, tree_style=ts, w=width, units='px')
         
         rel_path = os.path.relpath(output_file, config.RESULTS_DIR)
