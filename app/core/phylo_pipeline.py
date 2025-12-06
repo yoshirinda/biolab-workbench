@@ -282,7 +282,7 @@ def step2_hmmsearch_multiple(input_file, hmm_files, output_dir, cut_ga=True):
 def step2_5_blast_filter(input_file, gold_list_file, output_dir,
                          pident_threshold=30, qcovs_threshold=50,
                          blast_db_path=None, evalue=1e-5, max_target_seqs=5,
-                         threads=None):
+                         threads=None, progress_callback=None):
     """
     Step 2.5: Filter sequences using BLAST against a gold standard database.
     Runs blastp, writes raw TSV output and a verbose filter log, and returns stats.
@@ -331,6 +331,11 @@ def step2_5_blast_filter(input_file, gold_list_file, output_dir,
     except (ValueError, FileNotFoundError) as e:
         return False, None, str(e), None, None
 
+    msg = "[STEP2.5] Loading gold standard list..."
+    logger.info(msg)
+    if progress_callback:
+        progress_callback(msg, 'info')
+
     gold_ids = set()
     with open(gold_list_file, 'r', encoding='utf-8') as handle:
         for line in handle:
@@ -343,6 +348,11 @@ def step2_5_blast_filter(input_file, gold_list_file, output_dir,
 
     if not gold_ids:
         logger.warning(f"Gold list {gold_list_file} contains no IDs")
+
+    msg = f"[STEP2.5] Loaded {len(gold_ids)} gold standard IDs"
+    logger.info(msg)
+    if progress_callback:
+        progress_callback(msg, 'info')
 
     outfmt = shlex.quote('6 qseqid sseqid pident qcovs')
     blast_command = (
@@ -391,6 +401,11 @@ def step2_5_blast_filter(input_file, gold_list_file, output_dir,
         ):
             valid_query_ids.add(qseqid)
 
+    msg = "[STEP2.5] Reading input sequences..."
+    logger.info(msg)
+    if progress_callback:
+        progress_callback(msg, 'info')
+
     sequences = read_fasta_file(input_file)
     filtered = []
     all_ids = []
@@ -400,9 +415,9 @@ def step2_5_blast_filter(input_file, gold_list_file, output_dir,
         if seq_id in valid_query_ids:
             filtered.append((header, seq))
 
+    deleted_ids = [seq_id for seq_id in all_ids if seq_id not in valid_query_ids]
     write_fasta_file(output_file, filtered)
 
-    deleted_ids = [seq_id for seq_id in all_ids if seq_id not in valid_query_ids]
     deleted_unique = sorted(set(deleted_ids))
     deleted_preview = deleted_unique[:50]
 
@@ -437,6 +452,11 @@ def step2_5_blast_filter(input_file, gold_list_file, output_dir,
     message = f"BLAST filter kept {kept_count} of {total_sequences} sequences"
     if kept_count == 0:
         message = "No sequences passed BLAST filter"
+
+    msg = f"Step 2.5: Filtered to {kept_count} sequences (from {total_sequences})"
+    logger.info(msg)
+    if progress_callback:
+        progress_callback(msg, 'info')
 
     stats = {
         'total_in': total_sequences,
