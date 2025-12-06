@@ -83,18 +83,53 @@
                         <div class="spinner-border text-danger" role="status">
                             <span class="visually-hidden">Loading...</span>
                         </div>
-                        <p class="mt-2">Searching UniProt...</p>
+                        <p class="mt-2 mb-0">Searching UniProt...</p>
                     </div>
 
                     <div id="resultsArea">
-                        <p class="text-muted text-center">Enter a search query to find sequences</p>
+                        <p class="text-muted text-center mb-0">Enter a search query to find sequences</p>
                     </div>
 
                     <div id="resultsTable" class="d-none">
+                        <div id="selectionSummary" class="bg-light border rounded p-3 mb-3">
+                            <div class="d-flex flex-column flex-xl-row align-items-xl-center justify-content-between gap-3">
+                                <div>
+                                    <div class="fw-semibold">
+                                        <i class="bi bi-check2-square"></i> Curated Selection
+                                    </div>
+                                    <div class="text-muted small">Selections persist as you filter results.</div>
+                                    <div class="mt-2">
+                                        <span class="badge bg-danger me-1" id="selectedCount">0</span>
+                                        <span class="text-muted">selected out of <span id="totalCount">0</span></span>
+                                    </div>
+                                </div>
+                                <div class="d-flex flex-wrap gap-2 align-items-center w-100">
+                                    <div class="input-group input-group-sm flex-grow-1">
+                                        <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                        <input type="text" class="form-control" id="quickFilter"
+                                            placeholder="Quick filter (accession, gene, organism)">
+                                    </div>
+                                    <button type="button" class="btn btn-outline-danger btn-sm" id="selectAllBtn">
+                                        <i class="bi bi-check-all"></i> Select All
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="clearSelectionBtn">
+                                        <i class="bi bi-x-circle"></i> Clear Selection
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="clearFilterBtn">
+                                        <i class="bi bi-funnel"></i> Clear Filter
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
-                            <table class="table table-sm table-hover">
+                            <table class="table table-sm table-hover align-middle">
                                 <thead class="table-light sticky-top">
                                     <tr>
+                                        <th style="width: 48px;">
+                                            <input type="checkbox" id="selectAllCheckbox" class="form-check-input"
+                                                title="Select/Deselect filtered results">
+                                        </th>
                                         <th>Accession</th>
                                         <th>Entry Name</th>
                                         <th>Protein Name</th>
@@ -103,8 +138,7 @@
                                         <th>Length</th>
                                     </tr>
                                 </thead>
-                                <tbody id="resultsTableBody">
-                                </tbody>
+                                <tbody id="resultsTableBody"></tbody>
                             </table>
                         </div>
                     </div>
@@ -117,124 +151,410 @@
 
 {% block extra_js %}
 <script>
-    // Use Flask url_for to generate base URLs for JavaScript
     const UNIPROT_URLS = {
         search: '{{ url_for("uniprot.search") }}',
         download: '{{ url_for("uniprot.download") }}',
         downloadFileBase: '{{ url_for("uniprot.download_file", filepath="") }}'
     };
 
-    let searchResults = [];
+    const state = {
+        results: [],
+        filterTerm: ''
+    };
 
-    document.getElementById('uniprotForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        await performSearch();
+    const selectedAccessions = new Set();
+
+    const elements = {
+        form: document.getElementById('uniprotForm'),
+        searchBtn: document.getElementById('searchBtn'),
+        downloadBtn: document.getElementById('downloadBtn'),
+        loadingSpinner: document.getElementById('loadingSpinner'),
+        resultsArea: document.getElementById('resultsArea'),
+        resultsTableWrapper: document.getElementById('resultsTable'),
+        resultsTableBody: document.getElementById('resultsTableBody'),
+        quickFilter: document.getElementById('quickFilter'),
+        clearFilterBtn: document.getElementById('clearFilterBtn'),
+        selectAllBtn: document.getElementById('selectAllBtn'),
+        clearSelectionBtn: document.getElementById('clearSelectionBtn'),
+        selectAllCheckbox: document.getElementById('selectAllCheckbox'),
+        resultCount: document.getElementById('resultCount'),
+        totalCount: document.getElementById('totalCount'),
+        selectedCount: document.getElementById('selectedCount')
+    };
+
+    elements.form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        performSearch();
     });
+    elements.quickFilter.addEventListener('input', handleFilterInput);
+    elements.clearFilterBtn.addEventListener('click', clearFilter);
+    elements.selectAllBtn.addEventListener('click', selectAllResults);
+    elements.clearSelectionBtn.addEventListener('click', clearSelection);
+    elements.selectAllCheckbox.addEventListener('change', toggleFilteredSelection);
+    elements.resultsTableBody.addEventListener('change', handleRowSelection);
+    elements.downloadBtn.addEventListener('click', handleDownload);
+
+    updateDownloadButtonLabel();
+    elements.selectAllCheckbox.disabled = true;
+    elements.quickFilter.disabled = true;
+    elements.clearFilterBtn.disabled = true;
+    elements.selectAllBtn.disabled = true;
+    elements.clearSelectionBtn.disabled = true;
 
     async function performSearch() {
-        const query = document.getElementById('query').value;
-        const taxonomy = document.getElementById('taxonomy').value;
-        const dbType = document.getElementById('dbType').value;
-        const limit = document.getElementById('limit').value;
+        const payload = {
+            query: document.getElementById('query').value,
+            taxonomy_id: document.getElementById('taxonomy').value,
+            database_type: document.getElementById('dbType').value,
+            limit: parseInt(document.getElementById('limit').value, 10) || 500
+        };
 
-        document.getElementById('loadingSpinner').classList.remove('d-none');
-        document.getElementById('resultsArea').classList.add('d-none');
-        document.getElementById('resultsTable').classList.add('d-none');
-        document.getElementById('searchBtn').disabled = true;
+        if (!payload.query || !payload.query.trim()) {
+            showAlert('warning', 'Please enter a search query.');
+            return;
+        }
+
+        toggleLoading(true);
 
         try {
             const response = await fetch(UNIPROT_URLS.search, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    query: query,
-                    taxonomy_id: taxonomy,
-                    database_type: dbType,
-                    limit: parseInt(limit)
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             });
             const data = await response.json();
 
-            document.getElementById('loadingSpinner').classList.add('d-none');
-            document.getElementById('searchBtn').disabled = false;
-
             if (data.success) {
-                searchResults = data.results;
-                displayResults(data.results);
-                document.getElementById('resultCount').textContent = `${data.count} entries`;
-                document.getElementById('downloadBtn').disabled = data.count === 0;
+                handleNewResults(data.results || []);
             } else {
-                document.getElementById('resultsArea').classList.remove('d-none');
-                document.getElementById('resultsArea').innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                showError(data.error || 'Search failed.');
             }
         } catch (error) {
-            document.getElementById('loadingSpinner').classList.add('d-none');
-            document.getElementById('searchBtn').disabled = false;
-            showAlert('danger', 'Search failed: ' + error.message);
+            showError('Search failed: ' + error.message);
+        } finally {
+            toggleLoading(false);
         }
     }
 
-    function displayResults(results) {
-        const tbody = document.getElementById('resultsTableBody');
+    function toggleLoading(isLoading) {
+        elements.loadingSpinner.classList.toggle('d-none', !isLoading);
+        elements.searchBtn.disabled = isLoading;
+        if (isLoading) {
+            elements.downloadBtn.disabled = true;
+        } else if (state.results.length) {
+            elements.downloadBtn.disabled = false;
+        }
+    }
 
-        if (results.length === 0) {
-            document.getElementById('resultsArea').classList.remove('d-none');
-            document.getElementById('resultsArea').innerHTML = '<p class="text-muted text-center">No results found</p>';
+    function handleNewResults(results) {
+        state.results = Array.isArray(results) ? results.map(prepareEntry) : [];
+        state.filterTerm = '';
+        elements.quickFilter.value = '';
+        selectedAccessions.clear();
+
+        if (!state.results.length) {
+            showNoResults();
             return;
         }
 
-        document.getElementById('resultsTable').classList.remove('d-none');
-
-        tbody.innerHTML = results.map(entry => `
-            <tr>
-                <td><a href="https://www.uniprot.org/uniprotkb/${entry.accession}" target="_blank">${entry.accession}</a></td>
-                <td>${entry.entry_name}</td>
-                <td title="${entry.protein_name}">${entry.protein_name ? entry.protein_name.substring(0, 40) + '...' : ''}</td>
-                <td>${entry.gene_names}</td>
-                <td>${entry.organism}</td>
-                <td>${entry.sequence_length}</td>
-            </tr>
-        `).join('');
+        elements.quickFilter.disabled = false;
+        elements.clearFilterBtn.disabled = true;
+        renderResultsTable();
     }
 
-    document.getElementById('downloadBtn').addEventListener('click', async function() {
-        const query = document.getElementById('query').value;
-        const taxonomy = document.getElementById('taxonomy').value;
-        const dbType = document.getElementById('dbType').value;
-        const limit = document.getElementById('limit').value;
-        const headerFormat = document.getElementById('headerFormat').value;
+    function prepareEntry(entry) {
+        const safeEntry = {
+            accession: entry.accession || '',
+            entry_name: entry.entry_name || '',
+            protein_name: entry.protein_name || '',
+            gene_names: entry.gene_names || '',
+            organism: entry.organism || '',
+            sequence_length: entry.sequence_length || 0
+        };
 
-        this.disabled = true;
-        this.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Downloading...';
+        const searchValues = [
+            safeEntry.accession,
+            safeEntry.entry_name,
+            safeEntry.protein_name,
+            safeEntry.gene_names,
+            safeEntry.organism
+        ];
+        safeEntry.search_content = searchValues.map((value) => value.toLowerCase()).join(' ');
+        return safeEntry;
+    }
+
+    function showNoResults() {
+        state.results = [];
+        elements.resultsTableWrapper.classList.add('d-none');
+        elements.resultsArea.classList.remove('d-none');
+        elements.resultsArea.innerHTML = '<p class="text-muted text-center mb-0">No results found</p>';
+        elements.resultCount.textContent = '0 entries';
+        elements.totalCount.textContent = '0';
+        elements.selectedCount.textContent = '0';
+        elements.downloadBtn.disabled = true;
+        elements.quickFilter.disabled = true;
+        elements.clearFilterBtn.disabled = true;
+        elements.selectAllBtn.disabled = true;
+        elements.clearSelectionBtn.disabled = true;
+        elements.selectAllCheckbox.checked = false;
+        elements.selectAllCheckbox.indeterminate = false;
+        elements.selectAllCheckbox.disabled = true;
+        selectedAccessions.clear();
+        updateDownloadButtonLabel();
+    }
+
+    function handleFilterInput(event) {
+        state.filterTerm = event.target.value.trim().toLowerCase();
+        renderResultsTable();
+    }
+
+    function clearFilter() {
+        if (!state.filterTerm) {
+            return;
+        }
+        state.filterTerm = '';
+        elements.quickFilter.value = '';
+        renderResultsTable();
+    }
+
+    function renderResultsTable() {
+        if (!state.results.length) {
+            showNoResults();
+            return;
+        }
+
+        const filtered = getFilteredResults();
+        const hasMatches = filtered.length > 0;
+        const rowsHtml = hasMatches
+            ? filtered.map(buildRow).join('')
+            : `<tr><td colspan="7" class="text-center text-muted py-4">No matches for "<span class="fw-semibold">${escapeHtml(state.filterTerm)}</span>"</td></tr>`;
+
+        elements.resultsTableBody.innerHTML = rowsHtml;
+        elements.resultsArea.classList.add('d-none');
+        elements.resultsTableWrapper.classList.remove('d-none');
+
+        updateResultCount(filtered.length);
+        syncMasterCheckbox(filtered);
+        updateSelectionSummary(filtered.length);
+    }
+
+    function getFilteredResults() {
+        if (!state.filterTerm) {
+            return state.results;
+        }
+        return state.results.filter((entry) => entry.search_content.includes(state.filterTerm));
+    }
+
+    function buildRow(entry) {
+        const isSelected = selectedAccessions.has(entry.accession);
+        const truncatedProtein = truncate(entry.protein_name, 60);
+        const accession = escapeHtml(entry.accession);
+
+        return `
+            <tr data-accession="${accession}" class="${isSelected ? 'table-active' : ''}">
+                <td>
+                    <input type="checkbox" class="form-check-input result-checkbox" data-accession="${accession}" ${isSelected ? 'checked' : ''}>
+                </td>
+                <td>
+                    <a href="https://www.uniprot.org/uniprotkb/${encodeURIComponent(entry.accession)}" target="_blank" rel="noopener">
+                        ${accession}
+                    </a>
+                </td>
+                <td>${escapeHtml(entry.entry_name)}</td>
+                <td title="${escapeHtml(entry.protein_name)}">${escapeHtml(truncatedProtein)}</td>
+                <td>${escapeHtml(entry.gene_names)}</td>
+                <td>${escapeHtml(entry.organism)}</td>
+                <td>${entry.sequence_length || 0}</td>
+            </tr>
+        `;
+    }
+
+    function updateResultCount(shown) {
+        const total = state.results.length;
+        const filterActive = Boolean(state.filterTerm);
+        elements.resultCount.textContent = filterActive
+            ? `${total} entries (${shown} shown)`
+            : `${total} entries`;
+    }
+
+    function updateSelectionSummary(shownCount = getFilteredResults().length) {
+        const total = state.results.length;
+        const selected = selectedAccessions.size;
+
+        elements.totalCount.textContent = total;
+        elements.selectedCount.textContent = selected;
+
+        const hasResults = total > 0;
+        elements.quickFilter.disabled = !hasResults;
+        elements.clearFilterBtn.disabled = !state.filterTerm;
+        elements.selectAllBtn.disabled = !hasResults;
+        elements.clearSelectionBtn.disabled = selected === 0;
+        elements.downloadBtn.disabled = !hasResults;
+
+        updateDownloadButtonLabel();
+    }
+
+    function updateDownloadButtonLabel() {
+        const selected = selectedAccessions.size;
+        if (selected > 0) {
+            elements.downloadBtn.innerHTML = `<i class="bi bi-download"></i> Download ${selected} Selected`;
+        } else {
+            elements.downloadBtn.innerHTML = '<i class="bi bi-download"></i> Download All Results';
+        }
+    }
+
+    function syncMasterCheckbox(filtered) {
+        const master = elements.selectAllCheckbox;
+        if (!filtered.length) {
+            master.checked = false;
+            master.indeterminate = false;
+            master.disabled = true;
+            return;
+        }
+
+        master.disabled = false;
+        const selectedInFilter = filtered.filter((entry) => selectedAccessions.has(entry.accession)).length;
+
+        if (selectedInFilter === 0) {
+            master.checked = false;
+            master.indeterminate = false;
+        } else if (selectedInFilter === filtered.length) {
+            master.checked = true;
+            master.indeterminate = false;
+        } else {
+            master.checked = false;
+            master.indeterminate = true;
+        }
+    }
+
+    function selectAllResults() {
+        if (!state.results.length) {
+            return;
+        }
+        state.results.forEach((entry) => selectedAccessions.add(entry.accession));
+        renderResultsTable();
+    }
+
+    function clearSelection() {
+        if (!selectedAccessions.size) {
+            return;
+        }
+        selectedAccessions.clear();
+        renderResultsTable();
+    }
+
+    function toggleFilteredSelection(event) {
+        const filtered = getFilteredResults();
+        if (!filtered.length) {
+            event.target.checked = false;
+            return;
+        }
+
+        if (event.target.checked) {
+            filtered.forEach((entry) => selectedAccessions.add(entry.accession));
+        } else {
+            filtered.forEach((entry) => selectedAccessions.delete(entry.accession));
+        }
+
+        renderResultsTable();
+    }
+
+    function handleRowSelection(event) {
+        if (!event.target.classList.contains('result-checkbox')) {
+            return;
+        }
+
+        const accession = event.target.dataset.accession;
+        if (!accession) {
+            return;
+        }
+
+        if (event.target.checked) {
+            selectedAccessions.add(accession);
+        } else {
+            selectedAccessions.delete(accession);
+        }
+
+        const row = event.target.closest('tr');
+        if (row) {
+            row.classList.toggle('table-active', event.target.checked);
+        }
+
+        syncMasterCheckbox(getFilteredResults());
+        updateSelectionSummary();
+    }
+
+    async function handleDownload() {
+        if (!state.results.length) {
+            showAlert('warning', 'Run a search before downloading.');
+            return;
+        }
+
+        const payload = {
+            query: document.getElementById('query').value,
+            taxonomy_id: document.getElementById('taxonomy').value,
+            database_type: document.getElementById('dbType').value,
+            limit: parseInt(document.getElementById('limit').value, 10) || 500,
+            header_format: document.getElementById('headerFormat').value,
+            selected_ids: Array.from(selectedAccessions)
+        };
+
+        elements.downloadBtn.disabled = true;
+        elements.downloadBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Downloading...';
 
         try {
             const response = await fetch(UNIPROT_URLS.download, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    query: query,
-                    taxonomy_id: taxonomy,
-                    database_type: dbType,
-                    limit: parseInt(limit),
-                    header_format: headerFormat
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             });
             const data = await response.json();
 
-            this.disabled = false;
-            this.innerHTML = '<i class="bi bi-download"></i> Download Sequences';
-
             if (data.success && data.fasta_file) {
-                showAlert('success', `Downloaded ${data.count} sequences`);
+                const message = selectedAccessions.size > 0
+                    ? `Downloaded ${data.count} selected sequences`
+                    : `Downloaded ${data.count} sequences`;
+                showAlert('success', message);
                 window.open(UNIPROT_URLS.downloadFileBase + encodeURIComponent(data.fasta_file), '_blank');
             } else {
                 showAlert('danger', data.error || 'Download failed');
             }
         } catch (error) {
-            this.disabled = false;
-            this.innerHTML = '<i class="bi bi-download"></i> Download Sequences';
             showAlert('danger', 'Download failed: ' + error.message);
+        } finally {
+            elements.downloadBtn.disabled = state.results.length === 0;
+            updateDownloadButtonLabel();
         }
-    });
+    }
+
+    function showError(message) {
+        elements.resultsArea.classList.remove('d-none');
+        elements.resultsArea.innerHTML = `<div class="alert alert-danger mb-0">${message}</div>`;
+        elements.resultsTableWrapper.classList.add('d-none');
+        elements.resultCount.textContent = '0 entries';
+        selectedAccessions.clear();
+        updateDownloadButtonLabel();
+    }
+
+    function escapeHtml(value) {
+        if (value === null || value === undefined) {
+            return '';
+        }
+        return String(value).replace(/[&<>"']/g, (char) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        })[char]);
+    }
+
+    function truncate(value, limit) {
+        if (!value) {
+            return '';
+        }
+        const safeValue = String(value);
+        return safeValue.length > limit ? `${safeValue.slice(0, limit - 1)}…` : safeValue;
+    }
 </script>
 {% endblock %}
