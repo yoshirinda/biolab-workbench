@@ -4,6 +4,7 @@ File utilities for BioLab Workbench.
 import os
 import json
 from datetime import datetime
+from flask import request
 import config
 from app.utils.path_utils import ensure_dir, safe_filename
 
@@ -45,6 +46,64 @@ def save_uploaded_file(file_storage, filename=None):
 
     file_storage.save(save_path)
     return save_path
+
+
+def resolve_input_file(request_obj=None):
+    """
+    Resolve input file from either a server-side path or an uploaded file.
+    
+    This helper enables pipeline step chaining by accepting either:
+    1. A file_path parameter pointing to a previously generated result
+    2. A freshly uploaded file
+    
+    Args:
+        request_obj: Flask request object (defaults to current request)
+    
+    Returns:
+        str: Absolute path to the input file
+    
+    Raises:
+        ValueError: If no valid input is provided or path is invalid/unsafe
+    """
+    if request_obj is None:
+        request_obj = request
+    
+    # Prefer file_path (server-side path for chaining)
+    file_path = request_obj.form.get('file_path', '').strip()
+    
+    if file_path:
+        # Security check: ensure path is within allowed directories
+        abs_path = os.path.abspath(file_path)
+        results_dir = os.path.abspath(config.RESULTS_DIR)
+        uploads_dir = os.path.abspath(config.UPLOADS_DIR)
+        
+        # Check if path is within RESULTS_DIR or UPLOADS_DIR
+        if not (abs_path.startswith(results_dir + os.sep) or 
+                abs_path.startswith(uploads_dir + os.sep)):
+            raise ValueError(
+                f"Invalid file path: must be within results or uploads directory. "
+                f"Provided path resolves to: {abs_path}"
+            )
+        
+        # Check if file exists
+        if not os.path.exists(abs_path):
+            raise ValueError(f"File not found: {file_path}")
+        
+        # Check if it's actually a file
+        if not os.path.isfile(abs_path):
+            raise ValueError(f"Path is not a file: {file_path}")
+        
+        return abs_path
+    
+    # Fall back to uploaded file
+    if 'file' in request_obj.files:
+        file = request_obj.files['file']
+        if file and file.filename:
+            return save_uploaded_file(file)
+    
+    raise ValueError(
+        "No input file provided. Please either upload a file or provide a file_path parameter."
+    )
 
 
 def read_fasta_file(filepath):

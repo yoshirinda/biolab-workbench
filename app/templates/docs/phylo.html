@@ -35,6 +35,48 @@
                 </div>
             </div>
 
+            <!-- Pipeline Chaining -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-link-45deg"></i> Pipeline Step Chaining</h5>
+                </div>
+                <div class="card-body">
+                    <p>
+                        Each pipeline step can accept input from either a freshly uploaded file or a previously 
+                        generated result file, enabling seamless chaining of pipeline steps.
+                    </p>
+                    <h6>Using the <code>file_path</code> Parameter</h6>
+                    <p>
+                        Instead of uploading a new file for each step, you can provide a <code>file_path</code> 
+                        parameter pointing to the output of a previous step. The path must be within the 
+                        <code>results/</code> or <code>uploads/</code> directory for security.
+                    </p>
+                    <div class="alert alert-success">
+                        <i class="bi bi-check-circle"></i>
+                        <strong>Example:</strong> After running step 1 (clean FASTA) and getting an output file at 
+                        <code>results/phylo_step1_20231215_123456/cleaned.fasta</code>, you can use this path 
+                        directly in step 2 by setting <code>file_path</code> to that location.
+                    </div>
+                    <h6>API Usage</h6>
+                    <pre class="bg-light p-3"><code># Option 1: Upload a new file
+POST /phylo/run-step/step3
+Content-Type: multipart/form-data
+file: (binary file data)
+maxiterate: 1000
+
+# Option 2: Use a server-side path (chaining)
+POST /phylo/run-step/step3
+Content-Type: application/x-www-form-urlencoded
+file_path: /path/to/results/phylo_step1_20231215_123456/cleaned.fasta
+maxiterate: 1000</code></pre>
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <strong>Security Note:</strong> Paths outside the results or uploads directories will be 
+                        rejected with an "Invalid file path" error to prevent path traversal attacks.
+                    </div>
+                </div>
+            </div>
+
             <!-- HMMer Parameters -->
             <div class="card shadow-sm mb-4">
                 <div class="card-header bg-light">

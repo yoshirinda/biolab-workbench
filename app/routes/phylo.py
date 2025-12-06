@@ -13,7 +13,7 @@ from app.core.phylo_pipeline import (
 from app.core.hmm_wrapper import run_hmmsearch, run_hmmsearch_multi, get_hmm_info
 from app.core.clipkit_wrapper import run_clipkit, suggest_clipkit_mode, compare_before_after_trimming
 from app.core.iqtree_wrapper import run_iqtree, run_iqtree_modelfinder, summarize_bootstrap_support
-from app.utils.file_utils import save_uploaded_file, list_files_in_dir
+from app.utils.file_utils import save_uploaded_file, list_files_in_dir, resolve_input_file
 from app.utils.logger import get_app_logger
 
 phylo_bp = Blueprint('phylo', __name__)
@@ -39,15 +39,11 @@ def phylo_page():
 def run_full():
     """Run the complete phylogenetic pipeline."""
     try:
-        # Get input file
-        if 'file' not in request.files:
-            return jsonify({'success': False, 'error': 'No file uploaded'})
-
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({'success': False, 'error': 'No file selected'})
-
-        input_file = save_uploaded_file(file)
+        # Get input file - supports both uploaded files and server-side paths
+        try:
+            input_file = resolve_input_file(request)
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)})
 
         # Get optional HMM files (support multiple)
         hmm_files = []
@@ -99,12 +95,11 @@ def run_full():
 def run_step(step):
     """Run a single pipeline step."""
     try:
-        # Get input file
-        if 'file' not in request.files:
-            return jsonify({'success': False, 'error': 'No file uploaded'})
-
-        file = request.files['file']
-        input_file = save_uploaded_file(file)
+        # Get input file - supports both uploaded files and server-side paths
+        try:
+            input_file = resolve_input_file(request)
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)})
 
         # Create output directory
         from app.utils.file_utils import create_result_dir
@@ -288,14 +283,10 @@ def download():
 def hmm_search():
     """Run HMM search with one or more profiles."""
     try:
-        sequence_file = None
-        if 'file' in request.files and request.files['file'].filename:
-            file = request.files['file']
-            sequence_file = save_uploaded_file(file)
-        else:
-            sequence_file = request.form.get('file_path')
-            if not sequence_file or not os.path.exists(sequence_file):
-                return jsonify({'success': False, 'error': 'No sequence file uploaded or path invalid'})
+        try:
+            sequence_file = resolve_input_file(request)
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)})
         
         # Get HMM profiles
         hmm_files = request.form.getlist('hmm_files[]')
@@ -338,14 +329,10 @@ def hmm_search():
 def clipkit_trim():
     """Run ClipKIT to trim alignment."""
     try:
-        alignment_file = None
-        if 'file' in request.files and request.files['file'].filename:
-            file = request.files['file']
-            alignment_file = save_uploaded_file(file)
-        else:
-            alignment_file = request.form.get('file_path')
-            if not alignment_file or not os.path.exists(alignment_file):
-                return jsonify({'success': False, 'error': 'No alignment file uploaded or path invalid'})
+        try:
+            alignment_file = resolve_input_file(request)
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)})
         
         # Parameters
         mode = request.form.get('mode', 'kpic-gappy')
@@ -379,14 +366,10 @@ def clipkit_trim():
 def suggest_mode():
     """Analyze alignment and suggest ClipKIT mode."""
     try:
-        alignment_file = None
-        if 'file' in request.files and request.files['file'].filename:
-            file = request.files['file']
-            alignment_file = save_uploaded_file(file)
-        else:
-            alignment_file = request.form.get('file_path')
-            if not alignment_file or not os.path.exists(alignment_file):
-                return jsonify({'success': False, 'error': 'No alignment file uploaded or path invalid'})
+        try:
+            alignment_file = resolve_input_file(request)
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)})
         
         mode, reason = suggest_clipkit_mode(alignment_file)
         
@@ -405,14 +388,10 @@ def suggest_mode():
 def iqtree_infer():
     """Run IQ-TREE phylogenetic inference."""
     try:
-        alignment_file = None
-        if 'file' in request.files and request.files['file'].filename:
-            file = request.files['file']
-            alignment_file = save_uploaded_file(file)
-        else:
-            alignment_file = request.form.get('file_path')
-            if not alignment_file or not os.path.exists(alignment_file):
-                return jsonify({'success': False, 'error': 'No alignment file uploaded or path invalid'})
+        try:
+            alignment_file = resolve_input_file(request)
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)})
         
         # Parameters
         model = request.form.get('model', 'MFP')
@@ -459,14 +438,10 @@ def iqtree_infer():
 def modelfinder():
     """Run ModelFinder to select best substitution model."""
     try:
-        alignment_file = None
-        if 'file' in request.files and request.files['file'].filename:
-            file = request.files['file']
-            alignment_file = save_uploaded_file(file)
-        else:
-            alignment_file = request.form.get('file_path')
-            if not alignment_file or not os.path.exists(alignment_file):
-                return jsonify({'success': False, 'error': 'No alignment file uploaded or path invalid'})
+        try:
+            alignment_file = resolve_input_file(request)
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)})
         
         # Run ModelFinder
         success, result_dir, best_model, log_info = run_iqtree_modelfinder(alignment_file)

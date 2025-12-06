@@ -6,7 +6,7 @@ from datetime import datetime
 from flask import Blueprint, render_template, request, jsonify
 import config
 from app.utils.logger import get_app_logger
-from app.utils.file_utils import save_uploaded_file
+from app.utils.file_utils import save_uploaded_file, resolve_input_file
 from app.utils.fasta_utils import parse_fasta, write_fasta, clean_headers, filter_by_length
 
 pipeline_bp = Blueprint('pipeline', __name__, url_prefix='/pipeline')
@@ -38,13 +38,10 @@ def get_status(job_id):
 def clean_headers_route():
     """Clean FASTA headers (whitespace/special chars) and return sanitized file."""
     try:
-        fasta_path = None
-        if 'file' in request.files and request.files['file'].filename:
-            fasta_path = save_uploaded_file(request.files['file'])
-        else:
-            fasta_path = request.form.get('file_path')
-            if not fasta_path or not os.path.exists(fasta_path):
-                return jsonify({'success': False, 'error': 'No FASTA uploaded or path invalid'})
+        try:
+            fasta_path = resolve_input_file(request)
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)})
 
         sequences = parse_fasta(fasta_path)
         cleaned, id_map = clean_headers(sequences)
@@ -71,13 +68,10 @@ def clean_headers_route():
 def filter_length():
     """Filter sequences by length and return new FASTA with detailed statistics."""
     try:
-        fasta_path = None
-        if 'file' in request.files and request.files['file'].filename:
-            fasta_path = save_uploaded_file(request.files['file'])
-        else:
-            fasta_path = request.form.get('file_path')
-            if not fasta_path or not os.path.exists(fasta_path):
-                return jsonify({'success': False, 'error': 'No FASTA uploaded or path invalid'})
+        try:
+            fasta_path = resolve_input_file(request)
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)})
 
         min_len = int(request.form.get('min_length', 0))
         max_len = int(request.form.get('max_length', 10000000))
