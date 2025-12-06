@@ -172,8 +172,8 @@
                 // Build species color list
                 buildSpeciesColorList(treeInfo.species || [], speciesColors);
 
-                // Build center gene search list
-                buildCenterGeneSearch(treeInfo.all_nodes || [], treeInfo.leaves || []);
+                // Build target gene search list with fuzzy search
+                buildTargetGeneSearch(treeInfo.all_nodes || [], treeInfo.leaves || []);
 
                 showAlert('success', 'Tree loaded successfully');
             } else {
@@ -204,35 +204,51 @@
         `).join('');
     }
 
-    function buildCenterGeneSearch(allNodes, leaves) {
-        const input = document.getElementById('centerGene');
+    function buildTargetGeneSearch(allNodes, leaves) {
+        const input = document.getElementById('targetGene');
         if (!input) return;
 
         const datalist = document.getElementById('geneList');
         
-        // Populate with leaves only (more reliable for distance calculation)
-        const uniqueLeaves = [...new Set(leaves)];
-        datalist.innerHTML = uniqueLeaves.map(leaf => 
-            `<option value="${leaf}">`
+        // Populate with all nodes (leaves + internal nodes for clade extraction)
+        const uniqueGenes = [...new Set([...leaves, ...allNodes.filter(n => n)])];
+        
+        // Initial population with first 50 genes
+        datalist.innerHTML = uniqueGenes.slice(0, 50).map(gene => 
+            `<option value="${gene}">`
         ).join('');
 
-        // Add search filter functionality for better UX
+        // Add fuzzy search filter
+        let searchTimeout;
         input.addEventListener('input', function() {
-            const val = this.value.toLowerCase();
-            const filtered = uniqueLeaves.filter(leaf => 
-                leaf.toLowerCase().includes(val)
-            ).slice(0, 30);  // Show top 30 matches
+            clearTimeout(searchTimeout);
+            const val = this.value.toLowerCase().trim();
+            
+            if (!val) {
+                // Show first 50 when empty
+                datalist.innerHTML = uniqueGenes.slice(0, 50).map(gene =>
+                    `<option value="${gene}">`
+                ).join('');
+                return;
+            }
+            
+            // Debounce search for better performance
+            searchTimeout = setTimeout(() => {
+                const filtered = uniqueGenes.filter(gene => 
+                    gene.toLowerCase().includes(val)
+                ).slice(0, 50);  // Show top 50 matches
 
-            datalist.innerHTML = filtered.map(leaf =>
-                `<option value="${leaf}">`
-            ).join('');
+                datalist.innerHTML = filtered.map(gene =>
+                    `<option value="${gene}">`
+                ).join('');
+            }, 150);
         });
 
-        // Show hint on focus
+        // Show options on focus
         input.addEventListener('focus', function() {
             if (!this.value) {
-                datalist.innerHTML = uniqueLeaves.slice(0, 20).map(leaf => 
-                    `<option value="${leaf}">`
+                datalist.innerHTML = uniqueGenes.slice(0, 50).map(gene => 
+                    `<option value="${gene}">`
                 ).join('');
             }
         });

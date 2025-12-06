@@ -225,7 +225,7 @@ def visualize_tree(tree_file, output_file=None, layout='rectangular',
                 # Create node style
                 nstyle = NodeStyle()
 
-                # Color by species
+                # Color by species (for node markers only)
                 if prefix in colored_species:
                     nstyle['fgcolor'] = colored_species[prefix]
 
@@ -241,10 +241,12 @@ def visualize_tree(tree_file, output_file=None, layout='rectangular',
 
                 node.set_style(nstyle)
 
-                # Add name face
+                # Add name face - only color text for highlighted species
                 name_face = TextFace(node.name, fsize=font_size)
-                if prefix in colored_species:
+                if prefix in highlight_species and prefix in colored_species:
                     name_face.fgcolor = colored_species[prefix]
+                else:
+                    name_face.fgcolor = '#000000'  # Black for non-highlighted species
                 node.add_face(name_face, column=0, position='branch-right')
 
             else:
@@ -416,7 +418,7 @@ def extract_clade(tree_file, target_gene, levels_up=2, output_file=None,
                 if prefix in highlight_species:
                     nstyle['bgcolor'] = '#ffffcc'
                 
-                # Color by species (as border/text color)
+                # Color by species (as border/text color) - only for node markers
                 if prefix in colored_species:
                     nstyle['fgcolor'] = colored_species[prefix]
                 
@@ -429,8 +431,13 @@ def extract_clade(tree_file, target_gene, levels_up=2, output_file=None,
                 # Add name face
                 face_text = f"→ {node.name}" if node.name == target_gene else node.name
                 face = TextFace(face_text, fsize=font_size, bold=(node.name == target_gene))
-                if prefix in colored_species:
+                
+                # Only color text for highlighted species, others stay black
+                if prefix in highlight_species and prefix in colored_species:
                     face.fgcolor = colored_species[prefix]
+                else:
+                    face.fgcolor = '#000000'  # Black for non-highlighted species
+                    
                 node.add_face(face, column=0, position='branch-right')
             
             elif show_bootstrap and node.name:
