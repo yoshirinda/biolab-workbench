@@ -2,8 +2,10 @@
 Phylogenetic pipeline routes for BioLab Workbench.
 """
 import os
+import uuid
 from flask import Blueprint, render_template, request, jsonify, send_file
 import config
+from app.utils.stream_runner import run_pipeline_step_with_stream
 from app.core.phylo_pipeline import (
     step1_clean_fasta, step2_hmmsearch, step2_hmmsearch_multiple, step2_5_blast_filter,
     step2_7_length_stats, step2_8_length_filter, step3_mafft,
@@ -222,6 +224,87 @@ def run_step(step):
     except Exception as e:
         logger.error(f"Step {step} error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
+
+
+@phylo_bp.route('/stream-step/<step>', methods=['POST'])
+def stream_step(step):
+    """Run a single pipeline step with SSE progress streaming."""
+    try:
+        task_id = str(uuid.uuid4())
+
+        # Get input file
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file uploaded'}), 400
+
+        file = request.files['file']
+        input_file = save_uploaded_file(file)
+
+        # Create output directory
+        from app.utils.file_utils import create_result_dir
+        output_dir = create_result_dir('phylo', step)
+
+        # Prepare step function and arguments based on step type
+        if step == 'step1':
+            step_func = step1_clean_fasta
+            args = (input_file, output_dir)
+        elif step == 'step2':
+            hmm_files = []
+            hmm_files_raw = request.form.getlist('hmm_files[]')
+            if not hmm_files_raw:
+                hmm_file_single = request.form.get('hmm_file')
+                if hmm_file_single:
+                    hmm_files_raw = [hmm_file_single]
+
+            for hmm_filename in hmm_files_raw:
+                if hmm_filename:
+                    hmm_path = os.path.join(config.HMM_PROFILES_DIR, hmm_filename)
+                    if os.path.exists(hmm_path):
+                        hmm_files.append(hmm_path)
+
+            if not hmm_files:
+                return jsonify({'success': False, 'error': 'At least one HMM profile is required for step 2'}), 400
+
+            cut_ga = request.form.get('cut_ga', 'true').lower() == 'true'
+            step_func = step2_hmmsearch_multiple
+            args = (input_file, hmm_files, output_dir, cut_ga)
+        elif step == 'step2_5':
+            gold_file = request.form.get('gold_list_file')
+            if gold_file:
+                gold_file = os.path.join(config.GOLD_LISTS_DIR, gold_file)
+            else:
+                return jsonify({'success': False, 'error': 'Gold standard list is required for step 2.5'}), 400
+            pident = float(request.form.get('pident', 30))
+            qcovs = float(request.form.get('qcovs', 50))
+            step_func = step2_5_blast_filter
+            args = (input_file, gold_file, output_dir, pident, qcovs)
+        elif step == 'step2_8':
+            min_length = int(request.form.get('min_length', 50))
+            step_func = step2_8_length_filter
+            args = (input_file, output_dir, min_length)
+        elif step == 'step3':
+            maxiterate = int(request.form.get('maxiterate', 1000))
+            step_func = step3_mafft
+            args = (input_file, output_dir, maxiterate)
+        elif step == 'step4':
+            mode = request.form.get('clipkit_mode', 'kpic-gappy')
+            step_func = step4_clipkit
+            args = (input_file, output_dir, mode)
+        elif step == 'step5':
+            model = request.form.get('model', 'MFP')
+            bootstrap = int(request.form.get('bootstrap', 1000))
+            threads = int(request.form.get('threads', config.DEFAULT_THREADS))
+            bnni = request.form.get('bnni', 'true').lower() == 'true'
+            step_func = step5_iqtree
+            args = (input_file, output_dir, model, bootstrap, threads, bnni)
+        else:
+            return jsonify({'success': False, 'error': f'Unknown step: {step}'}), 400
+
+        # Run with SSE streaming and progress callbacks
+        return run_pipeline_step_with_stream(step_func, args, task_id, enable_progress=True)
+
+    except Exception as e:
+        logger.error(f"Stream step {step} error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @phylo_bp.route('/download')

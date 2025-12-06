@@ -149,7 +149,7 @@ def extract_sequences_by_ids(input_file, ids, output_file):
     return len(extracted)
 
 
-def step2_hmmsearch_multiple(input_file, hmm_files, output_dir, cut_ga=True):
+def step2_hmmsearch_multiple(input_file, hmm_files, output_dir, cut_ga=True, progress_callback=None):
     """
     Step 2: Run HMMer search with multiple HMM files.
     Merge results and deduplicate.
@@ -159,6 +159,7 @@ def step2_hmmsearch_multiple(input_file, hmm_files, output_dir, cut_ga=True):
         hmm_files: List of HMM profile file paths
         output_dir: Output directory path
         cut_ga: Use --cut_ga threshold flag
+        progress_callback: Optional callable to emit progress messages
     
     Returns:
         (success, output_fasta, message, commands_list)
@@ -180,12 +181,18 @@ def step2_hmmsearch_multiple(input_file, hmm_files, output_dir, cut_ga=True):
     all_tbl_files = []
     all_commands = []
     
-    logger.info(f"[STEP2] Processing {len(hmm_files)} HMM file(s)")
+    msg = f"[STEP2] Processing {len(hmm_files)} HMM file(s)"
+    logger.info(msg)
+    if progress_callback:
+        progress_callback(msg, 'info')
     
     # Run hmmsearch for each HMM file
     for i, hmm_file in enumerate(hmm_files):
         hmm_basename = os.path.basename(hmm_file)
-        logger.info(f"[STEP2] Processing HMM file {i+1}/{len(hmm_files)}: {hmm_basename}")
+        msg = f"[STEP2] Processing HMM file {i+1}/{len(hmm_files)}: {hmm_basename}"
+        logger.info(msg)
+        if progress_callback:
+            progress_callback(msg, 'info')
         
         tblout_file = os.path.join(output_dir, f'step2_hmmsearch_{i}_{hmm_basename}.tbl')
         output_file = os.path.join(output_dir, f'step2_hmmsearch_{i}_{hmm_basename}.out')
@@ -209,9 +216,15 @@ def step2_hmmsearch_multiple(input_file, hmm_files, output_dir, cut_ga=True):
         if success:
             all_tbl_files.append(tblout_file)
             hits = parse_hmmsearch_tblout(tblout_file)
-            logger.info(f"[STEP2] HMM {hmm_basename}: Found {len(hits)} hits")
+            msg = f"[STEP2] HMM {hmm_basename}: Found {len(hits)} hits"
+            logger.info(msg)
+            if progress_callback:
+                progress_callback(msg, 'info')
         else:
-            logger.warning(f"[STEP2] HMM {hmm_basename} failed: {stderr}")
+            msg = f"[STEP2] HMM {hmm_basename} failed: {stderr}"
+            logger.warning(msg)
+            if progress_callback:
+                progress_callback(msg, 'warning')
     
     if not all_tbl_files:
         return False, None, "All HMM searches failed", all_commands
@@ -230,14 +243,24 @@ def step2_hmmsearch_multiple(input_file, hmm_files, output_dir, cut_ga=True):
     unique_count = len(unique_ids)
     duplicate_count = total_hits - unique_count
     
-    logger.info(f"[STEP2] Found {total_hits} total hits, {unique_count} unique after deduplication")
-    logger.info(f"[STEP2] Removed {duplicate_count} duplicate hits")
+    msg = f"[STEP2] Found {total_hits} total hits, {unique_count} unique after deduplication"
+    logger.info(msg)
+    if progress_callback:
+        progress_callback(msg, 'info')
+    
+    msg = f"[STEP2] Removed {duplicate_count} duplicate hits"
+    logger.info(msg)
+    if progress_callback:
+        progress_callback(msg, 'info')
     
     # Extract sequences with unique IDs
     output_fasta = os.path.join(output_dir, 'step2_hmm_hits.fasta')
     extracted_count = extract_sequences_by_ids(input_file, unique_ids, output_fasta)
     
-    logger.info(f"[STEP2] Extracted {extracted_count} sequences to {output_fasta}")
+    msg = f"[STEP2] Extracted {extracted_count} sequences to {output_fasta}"
+    logger.info(msg)
+    if progress_callback:
+        progress_callback(msg, 'info')
     
     message = f"Found {unique_count} unique hits from {len(hmm_files)} HMM file(s) (removed {duplicate_count} duplicates)"
     
@@ -245,13 +268,18 @@ def step2_hmmsearch_multiple(input_file, hmm_files, output_dir, cut_ga=True):
 
 
 def step2_5_blast_filter(input_file, gold_list_file, output_dir,
-                         pident_threshold=30, qcovs_threshold=50):
+                         pident_threshold=30, qcovs_threshold=50, progress_callback=None):
     """
     Step 2.5: Filter sequences using BLAST against gold standard list.
     Returns detailed statistics like the original script.
     """
     output_file = os.path.join(output_dir, 'step2_5_filtered.fasta')
     log_file = os.path.join(output_dir, 'step2_5_blast_filter.log')
+
+    msg = "[STEP2.5] Loading gold standard list..."
+    logger.info(msg)
+    if progress_callback:
+        progress_callback(msg, 'info')
 
     # Read gold standard IDs
     gold_ids = set()
@@ -260,6 +288,16 @@ def step2_5_blast_filter(input_file, gold_list_file, output_dir,
             line = line.strip()
             if line and not line.startswith('#'):
                 gold_ids.add(line.split()[0])
+
+    msg = f"[STEP2.5] Loaded {len(gold_ids)} gold standard IDs"
+    logger.info(msg)
+    if progress_callback:
+        progress_callback(msg, 'info')
+
+    msg = "[STEP2.5] Reading input sequences..."
+    logger.info(msg)
+    if progress_callback:
+        progress_callback(msg, 'info')
 
     # Read input sequences
     sequences = read_fasta_file(input_file)
@@ -275,6 +313,11 @@ def step2_5_blast_filter(input_file, gold_list_file, output_dir,
             kept_ids.add(seq_id)
 
     deleted_ids = all_ids - kept_ids
+
+    msg = f"[STEP2.5] Filtered sequences: {len(kept_ids)} kept, {len(deleted_ids)} deleted"
+    logger.info(msg)
+    if progress_callback:
+        progress_callback(msg, 'info')
 
     write_fasta_file(output_file, filtered)
 
@@ -299,7 +342,10 @@ def step2_5_blast_filter(input_file, gold_list_file, output_dir,
         for line in log_lines:
             f.write(line + '\n')
 
-    logger.info(f"Step 2.5: Filtered to {len(filtered)} sequences (from {len(sequences)})")
+    msg = f"Step 2.5: Filtered to {len(filtered)} sequences (from {len(sequences)})"
+    logger.info(msg)
+    if progress_callback:
+        progress_callback(msg, 'info')
     
     # Return statistics dict for display
     stats = {
@@ -341,7 +387,7 @@ def step2_7_length_stats(input_file, output_dir):
     return True, stats_file, stats
 
 
-def step2_8_length_filter(input_file, output_dir, min_length=50):
+def step2_8_length_filter(input_file, output_dir, min_length=50, progress_callback=None):
     """
     Step 2.8: Filter out sequences shorter than min_length.
     Returns detailed statistics like original script (lines 416-438).
@@ -349,7 +395,17 @@ def step2_8_length_filter(input_file, output_dir, min_length=50):
     output_file = os.path.join(output_dir, 'step2_8_length_filtered.fasta')
     log_file = os.path.join(output_dir, 'step2_8_length_filter.log')
 
+    msg = "[STEP2.8] Reading input sequences..."
+    logger.info(msg)
+    if progress_callback:
+        progress_callback(msg, 'info')
+
     sequences = read_fasta_file(input_file)
+    
+    msg = f"[STEP2.8] Filtering sequences (threshold: {min_length} aa)..."
+    logger.info(msg)
+    if progress_callback:
+        progress_callback(msg, 'info')
     
     # Track kept and deleted sequences with details
     filtered = []
@@ -382,7 +438,10 @@ def step2_8_length_filter(input_file, output_dir, min_length=50):
         for line in log_lines:
             f.write(line + '\n')
 
-    logger.info(f"Step 2.8: Removed {len(deleted_ids)} short sequences")
+    msg = f"Step 2.8: Removed {len(deleted_ids)} short sequences"
+    logger.info(msg)
+    if progress_callback:
+        progress_callback(msg, 'info')
     
     # Return statistics dict for display
     stats = {
@@ -397,7 +456,7 @@ def step2_8_length_filter(input_file, output_dir, min_length=50):
     return True, output_file, f"Kept {len(filtered)} sequences (removed {len(deleted_ids)} shorter than {min_length})", stats
 
 
-def step3_mafft(input_file, output_dir, maxiterate=1000):
+def step3_mafft(input_file, output_dir, maxiterate=1000, progress_callback=None):
     """
     Step 3: Run MAFFT multiple sequence alignment.
     Returns (success, output, message, command).
@@ -411,6 +470,11 @@ def step3_mafft(input_file, output_dir, maxiterate=1000):
 
     output_file = os.path.join(output_dir, 'step3_alignment.fasta')
     log_file = os.path.join(output_dir, 'step3_mafft.log')
+
+    msg = f"[STEP3] Starting MAFFT alignment (maxiterate={maxiterate})..."
+    logger.info(msg)
+    if progress_callback:
+        progress_callback(msg, 'info')
 
     # Use shlex.quote for safe command construction
     command = f'mafft --maxiterate {maxiterate} {shlex.quote(input_file)}'
@@ -428,13 +492,20 @@ def step3_mafft(input_file, output_dir, maxiterate=1000):
         return False, None, str(e), display_command
 
     if success:
-        logger.info(f"Step 3: MAFFT alignment completed")
+        msg = f"Step 3: MAFFT alignment completed"
+        logger.info(msg)
+        if progress_callback:
+            progress_callback(msg, 'info')
         return True, output_file, "MAFFT alignment completed", display_command
     else:
+        msg = "MAFFT alignment failed"
+        logger.error(msg)
+        if progress_callback:
+            progress_callback(msg, 'error')
         return False, None, "MAFFT alignment failed", display_command
 
 
-def step4_clipkit(input_file, output_dir, mode='kpic-gappy'):
+def step4_clipkit(input_file, output_dir, mode='kpic-gappy', progress_callback=None):
     """
     Step 4: Trim alignment with ClipKIT.
     mode: kpic-gappy, gappy, kpic
@@ -454,6 +525,11 @@ def step4_clipkit(input_file, output_dir, mode='kpic-gappy'):
     output_file = os.path.join(output_dir, 'step4_trimmed.fasta')
     log_file = os.path.join(output_dir, 'step4_clipkit.log')
 
+    msg = f"[STEP4] Starting ClipKIT trimming (mode={mode})..."
+    logger.info(msg)
+    if progress_callback:
+        progress_callback(msg, 'info')
+
     command = f'clipkit {shlex.quote(input_file)} -o {shlex.quote(output_file)} -m {mode} -l'
 
     # Full command for display
@@ -469,9 +545,16 @@ def step4_clipkit(input_file, output_dir, mode='kpic-gappy'):
         return False, None, str(e), display_command
 
     if success:
-        logger.info(f"Step 4: ClipKIT trimming completed")
+        msg = f"Step 4: ClipKIT trimming completed"
+        logger.info(msg)
+        if progress_callback:
+            progress_callback(msg, 'info')
         return True, output_file, "ClipKIT trimming completed", display_command
     else:
+        msg = "ClipKIT trimming failed"
+        logger.error(msg)
+        if progress_callback:
+            progress_callback(msg, 'error')
         return False, None, "ClipKIT trimming failed", display_command
 
 
@@ -506,7 +589,7 @@ def step4_5_check_sites(clipkit_log_file):
         return False, None, str(e)
 
 
-def step5_iqtree(input_file, output_dir, model='MFP', bootstrap=1000, threads=None, bnni=True):
+def step5_iqtree(input_file, output_dir, model='MFP', bootstrap=1000, threads=None, bnni=True, progress_callback=None):
     """
     Step 5: Build phylogenetic tree with IQ-Tree.
     Returns (success, output, message, command).
@@ -532,6 +615,11 @@ def step5_iqtree(input_file, output_dir, model='MFP', bootstrap=1000, threads=No
 
     bnni_opt = '-bnni' if bnni else ''
 
+    msg = f"[STEP5] Starting IQ-Tree inference (model={model}, bootstrap={bootstrap}, threads={threads})..."
+    logger.info(msg)
+    if progress_callback:
+        progress_callback(msg, 'info')
+
     command = f'iqtree -s {shlex.quote(input_file)} -pre {shlex.quote(prefix)} -m {model} -B {bootstrap} -T {threads} {bnni_opt}'
 
     # Full command for display
@@ -540,11 +628,17 @@ def step5_iqtree(input_file, output_dir, model='MFP', bootstrap=1000, threads=No
     success, stdout, stderr = run_conda_command(command, timeout=14400)
 
     if success and os.path.exists(treefile):
-        logger.info(f"Step 5: IQ-Tree completed")
+        msg = f"Step 5: IQ-Tree completed"
+        logger.info(msg)
+        if progress_callback:
+            progress_callback(msg, 'info')
         return True, treefile, "IQ-Tree completed", full_command
     else:
-        logger.error(f"Step 5 failed: {stderr}")
-        return False, None, stderr or "IQ-Tree failed", full_command
+        msg = stderr or "IQ-Tree failed"
+        logger.error(f"Step 5 failed: {msg}")
+        if progress_callback:
+            progress_callback(msg, 'error')
+        return False, None, msg, full_command
 
 
 def run_full_pipeline(input_file, hmm_files=None, gold_list_file=None, options=None):

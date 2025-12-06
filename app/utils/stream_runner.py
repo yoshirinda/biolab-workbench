@@ -80,7 +80,7 @@ def run_command_with_stream(cmd, task_id):
     )
 
 
-def run_pipeline_step_with_stream(step_func, args, task_id):
+def run_pipeline_step_with_stream(step_func, args, task_id, enable_progress=False):
     """
     Run a pipeline step function and stream progress updates.
     
@@ -88,6 +88,7 @@ def run_pipeline_step_with_stream(step_func, args, task_id):
         step_func: The step function to execute
         args: Arguments for the step function
         task_id: Unique identifier for this task
+        enable_progress: If True, pass a progress_callback to the step function
     
     Returns:
         Flask Response with SSE stream
@@ -97,27 +98,71 @@ def run_pipeline_step_with_stream(step_func, args, task_id):
             # Send start event
             yield f"data: {json.dumps({'status': 'started', 'task_id': task_id})}\n\n"
             
-            # Execute the step
-            result = step_func(*args)
+            # List to collect progress messages
+            progress_messages = []
             
-            # Send result
-            if len(result) >= 3:
-                success, output, message = result[:3]
-                command = result[3] if len(result) > 3 else None
-                
-                data = {
-                    'done': True,
-                    'success': success,
-                    'output': output,
+            # Create a callback wrapper that collects progress updates
+            def progress_callback(message, level='info'):
+                """Callback to collect progress messages."""
+                progress_messages.append({
                     'message': message,
-                    'command': command,
+                    'level': level
+                })
+            
+            # Execute the step with progress callback if enabled
+            try:
+                if enable_progress:
+                    # Try to pass progress_callback to the step function
+                    result = step_func(*args, progress_callback=progress_callback)
+                else:
+                    result = step_func(*args)
+            except TypeError as e:
+                # If the function doesn't accept progress_callback, try without it
+                if 'progress_callback' in str(e):
+                    result = step_func(*args)
+                else:
+                    raise
+            
+            # Emit all collected progress messages
+            for prog in progress_messages:
+                data = {
+                    'progress': prog['message'],
+                    'level': prog['level'],
                     'task_id': task_id
                 }
+                yield f"data: {json.dumps(data)}\n\n"
+            
+            # Send result
+            if isinstance(result, (list, tuple)):
+                if len(result) >= 3:
+                    success = result[0]
+                    output = result[1]
+                    message = result[2]
+                    command = result[3] if len(result) > 3 else None
+                    stats = result[4] if len(result) > 4 else None
+                    
+                    data = {
+                        'done': True,
+                        'success': success,
+                        'output': output,
+                        'message': message,
+                        'command': command,
+                        'task_id': task_id
+                    }
+                    if stats:
+                        data['stats'] = stats
+                else:
+                    data = {
+                        'done': True,
+                        'success': False,
+                        'error': 'Invalid step result',
+                        'task_id': task_id
+                    }
             else:
                 data = {
                     'done': True,
                     'success': False,
-                    'error': 'Invalid step result',
+                    'error': 'Step function did not return tuple/list',
                     'task_id': task_id
                 }
             
