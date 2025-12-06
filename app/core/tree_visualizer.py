@@ -4,6 +4,7 @@ Uses ETE3 for tree visualization.
 """
 import os
 import re
+import sys
 from datetime import datetime
 import config
 from app.utils.logger import get_tools_logger
@@ -11,8 +12,10 @@ from app.utils.file_utils import create_result_dir, save_params
 
 logger = get_tools_logger()
 
-# Set QT_QPA_PLATFORM for headless rendering
+# Set QT_QPA_PLATFORM for headless rendering and suppress Qt warnings
 os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.*=false'
+os.environ['QT_DEBUG_PLUGINS'] = '0'
 
 
 def detect_tree_format(filepath):
