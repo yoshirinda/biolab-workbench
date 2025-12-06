@@ -74,14 +74,31 @@ class PhyloRenderer:
         return pruned_tree
         
     def _get_species_prefix(self, gene_name):
-        """Extract species prefix from gene name (e.g., 'AT' from 'AT1G12345')"""
+        """Extract species prefix from gene name (e.g., 'AT' from 'AT1G12345', 'Os' from 'LOC_Os05g05680')"""
         if not gene_name:
             return None
-        # Try common patterns: AT, Os, Sl, Mp, etc.
+        # Try common patterns
         import re
-        match = re.match(r'^([A-Z][a-z]?)', gene_name)
+        
+        # Pattern 1: LOC_XX format (rice genes) -> 'LOC_Os05g05680' -> 'Os'
+        match = re.match(r'^LOC_([A-Z][a-z])', gene_name)
         if match:
             return match.group(1)
+        
+        # Pattern 2: Solyc format (tomato) -> 'Solyc01g123' -> 'Sl'
+        if gene_name.startswith('Solyc'):
+            return 'Sl'
+            
+        # Pattern 3: Two uppercase letters -> 'AT1G12345' -> 'AT'
+        match = re.match(r'^([A-Z]{2})', gene_name)
+        if match:
+            return match.group(1)
+            
+        # Pattern 4: One uppercase + one lowercase -> 'Mp3g19700' -> 'Mp'
+        match = re.match(r'^([A-Z][a-z])', gene_name)
+        if match:
+            return match.group(1)
+            
         return None
             
     def extract_subtree(self, target_gene, levels_up=5):
