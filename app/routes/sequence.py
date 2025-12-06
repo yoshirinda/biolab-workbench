@@ -64,8 +64,6 @@ def import_sequences():
     try:
         project_path = request.form.get('project_path')
         print(f"!!! DEBUG: Received import request for project_path: '{project_path}'", file=sys.stderr)
-        if not project_path:
-            return jsonify({'success': False, 'error': 'Project path is required'}), 400
 
         source = request.form.get('source', 'text')
         sequences_to_parse = []
@@ -99,17 +97,23 @@ def import_sequences():
                 'type': seq_type
             })
 
-        success, updated_project, message = add_sequences_to_project(project_path, formatted_sequences)
+        updated_project = None
+        message = 'Sequences parsed successfully'
+        if project_path:
+            success, updated_project, message = add_sequences_to_project(project_path, formatted_sequences)
+            if not success:
+                return jsonify({'success': False, 'error': message}), 500
+            logger.info(f"Imported {len(formatted_sequences)} sequences to project {project_path}")
 
-        if not success:
-            return jsonify({'success': False, 'error': message}), 500
-
-        logger.info(f"Imported {len(formatted_sequences)} sequences to project {project_path}")
-        return jsonify({
-            'success': True, 
-            'project': updated_project,
+        response_payload = {
+            'success': True,
+            'sequences': formatted_sequences,
             'message': message
-        })
+        }
+        if updated_project is not None:
+            response_payload['project'] = updated_project
+
+        return jsonify(response_payload)
 
     except Exception as e:
         logger.error(f"Import error: {str(e)}")
