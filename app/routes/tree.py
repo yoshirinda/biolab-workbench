@@ -8,6 +8,7 @@ from app.core.tree_visualizer import (
     visualize_tree, get_tree_info, get_species_from_tree,
     read_newick, get_default_colors, DEFAULT_COLORS, extract_clade
 )
+from app.utils.multiprocess_utils import run_in_process
 from app.utils.file_utils import save_uploaded_file
 from app.utils.logger import get_app_logger
 
@@ -35,7 +36,7 @@ def upload():
         filepath = save_uploaded_file(file)
 
         # Get tree information
-        info = get_tree_info(filepath)
+        info, error = get_tree_info(filepath)
 
         if info:
             # Assign default colors
@@ -48,7 +49,7 @@ def upload():
                 'default_colors': colors
             })
         else:
-            return jsonify({'success': False, 'error': 'Failed to parse tree file'})
+            return jsonify({'success': False, 'error': error or 'Failed to parse tree file'})
 
     except Exception as e:
         logger.error(f"Tree upload error: {str(e)}")
@@ -100,7 +101,8 @@ def visualize():
             else:
                 highlight_species = [s.strip() for s in data.get('highlight_species').split(',') if s.strip()]
 
-        success, result_dir, output_file, message = visualize_tree(
+        success, result_dir, output_file, message = run_in_process(
+            visualize_tree,
             tree_file=tree_file,
             layout=layout,
             colored_species=colored_species,
@@ -168,7 +170,8 @@ def extract_clade_route():
             else:
                 highlight_species = [s.strip() for s in data.get('highlight_species').split(',') if s.strip()]
 
-        success, result_dir, output_file, message, clade_info = extract_clade(
+        success, result_dir, output_file, message, clade_info = run_in_process(
+            extract_clade,
             tree_file=tree_file,
             target_gene=target_gene,
             levels_up=levels_up,

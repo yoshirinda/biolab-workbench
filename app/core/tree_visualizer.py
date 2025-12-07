@@ -1,6 +1,6 @@
 """
 Tree visualization module for BioLab Workbench.
-Uses Biopython Phylo + Matplotlib for stable rendering without Qt dependencies.
+Uses ETE3 for tree visualization.
 """
 import os
 import re
@@ -9,9 +9,13 @@ from datetime import datetime
 import config
 from app.utils.logger import get_tools_logger
 from app.utils.file_utils import create_result_dir, save_params
-from app.core.phylo_renderer import PhyloRenderer
 
 logger = get_tools_logger()
+
+# Set QT_QPA_PLATFORM for headless rendering and suppress Qt warnings
+os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.*=false'
+os.environ['QT_DEBUG_PLUGINS'] = '0'
 
 
 def detect_tree_format(filepath):
@@ -42,27 +46,44 @@ def detect_tree_format(filepath):
 def normalize_tree_file(filepath):
     """
     Normalize various tree formats to a Newick file for downstream rendering.
-    Returns the path to a Newick file (original if already Newick).
+    Tries to auto-detect format using Biopython.
+    Returns (path_to_newick, error_message).
     """
-    fmt = detect_tree_format(filepath)
-    if fmt == 'newick':
-        return filepath
-
     try:
         from Bio import Phylo
     except ImportError:
-        logger.warning("Biopython not installed; cannot convert non-Newick tree")
-        return filepath
+        msg = "Biopython not installed; cannot convert non-Newick tree"
+        logger.warning(msg)
+        return None, msg
 
+    # First, try to read as Newick as it's the most common format
     try:
-        tree = Phylo.read(filepath, fmt)
-        # Write to a normalized Newick file alongside the original
-        normalized = filepath + '.normalized.nwk'
-        Phylo.write(tree, normalized, 'newick')
-        return normalized
-    except Exception as e:
-        logger.warning(f"Failed to normalize tree ({fmt}): {e}")
-        return filepath
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read(2048).strip()
+            # Simple check for Newick format
+            if content.startswith('(') and content.endswith(';'):
+                # It looks like a Newick tree, check if ete3 can read it directly
+                from ete3 import Tree
+                Tree(filepath)
+                return filepath, None
+    except Exception:
+        pass # Not a simple Newick, try conversion
+
+    # Try converting with Bio.Phylo using common formats
+    for fmt in ['nexus', 'phyloxml', 'nexml', 'newick']:
+        try:
+            tree = Phylo.read(filepath, fmt)
+            normalized = filepath + '.normalized.nwk'
+            Phylo.write(tree, normalized, 'newick')
+            logger.info(f"Successfully converted tree from '{fmt}' format.")
+            return normalized, None
+        except Exception:
+            continue  # Try next format
+
+    # If all conversions fail
+    msg = "Could not parse tree file. Supported formats are Newick, Nexus, PhyloXML, and NeXML."
+    logger.error(msg)
+    return None, msg
 
 
 def read_newick(filepath):
@@ -70,7 +91,9 @@ def read_newick(filepath):
     Read a tree file (any supported format) as text.
     Returns tree string.
     """
-    normalized = normalize_tree_file(filepath)
+    normalized, err = normalize_tree_file(filepath)
+    if err:
+        raise ValueError(err)
     with open(normalized, 'r') as f:
         return f.read().strip()
 
@@ -157,7 +180,9 @@ def visualize_tree(tree_file, output_file=None, layout='rectangular',
         output_file = os.path.join(result_dir, 'tree.svg')
 
     # Normalize tree file (handles nexus/phyloxml -> newick)
-    normalized_tree = normalize_tree_file(tree_file)
+    normalized_tree, error_message = normalize_tree_file(tree_file)
+    if error_message:
+        return False, result_dir, None, error_message
 
     try:
         # Load tree
@@ -220,29 +245,21 @@ def visualize_tree(tree_file, output_file=None, layout='rectangular',
 
                 # Create node style
                 nstyle = NodeStyle()
+                nstyle['size'] = 0  # Hide node circles
 
-                # Color by species (for node markers only)
-                if prefix in colored_species:
-                    nstyle['fgcolor'] = colored_species[prefix]
+                # Set background color only if species is selected for highlight
+                if prefix in highlight_species and prefix in colored_species:
+                    nstyle['bgcolor'] = colored_species[prefix]
 
-                # Highlight by species (light background)
-                if prefix in highlight_species:
-                    nstyle['bgcolor'] = '#ffffcc'  # Light yellow background
-
-                # Highlight specific genes (stronger highlight)
+                # Highlight specific genes (stronger highlight, overrides species color)
                 if node.name in highlighted_genes:
                     nstyle['bgcolor'] = '#ffff00'  # Yellow background
 
-                nstyle['size'] = 0  # Hide node circles
-
                 node.set_style(nstyle)
 
-                # Add name face - only color text for highlighted species
+                # Add name face - text is always black
                 name_face = TextFace(node.name, fsize=font_size)
-                if prefix in highlight_species and prefix in colored_species:
-                    name_face.fgcolor = colored_species[prefix]
-                else:
-                    name_face.fgcolor = '#000000'  # Black for non-highlighted species
+                name_face.fgcolor = '#000000'  # Black for all species text
                 node.add_face(name_face, column=0, position='branch-right')
 
             else:
@@ -268,24 +285,18 @@ def visualize_tree(tree_file, output_file=None, layout='rectangular',
 def get_tree_info(tree_file):
     """
     Get basic information about a tree.
-    Returns species, leaves, and all nodes for center-gene search.
+    Returns (info_dict, error_message).
     """
     try:
         from ete3 import Tree
     except ImportError:
-        # Fallback without ETE3
-        tree_string = read_newick(tree_file)
-        species = get_species_from_tree(tree_string)
-        return {
-            'species': species,
-            'leaf_count': None,
-            'has_support': None,
-            'leaves': [],
-            'all_nodes': []
-        }
+        return None, "ETE3 library not installed"
+
+    normalized_tree, error_message = normalize_tree_file(tree_file)
+    if error_message:
+        return None, error_message
 
     try:
-        normalized_tree = normalize_tree_file(tree_file)
         tree = Tree(normalized_tree, format=1)
 
         leaves = [leaf.name for leaf in tree.get_leaves()]
@@ -299,17 +310,19 @@ def get_tree_info(tree_file):
         # Check if tree has support values
         has_support = any(node.support for node in tree.traverse() if not node.is_leaf())
 
-        return {
+        info = {
             'species': sorted(species),
             'leaf_count': len(leaves),
             'has_support': has_support,
             'leaves': leaves,
             'all_nodes': [n for n in all_nodes if n]  # Filter empty names
         }
+        return info, None
 
     except Exception as e:
-        logger.error(f"Failed to get tree info: {str(e)}")
-        return None
+        msg = f"Failed to parse tree file: {e}"
+        logger.error(msg)
+        return None, msg
 
 
 # Default color palette for species
@@ -337,7 +350,7 @@ def extract_clade(tree_file, target_gene, levels_up=2, output_file=None,
                   highlight_species=None):
     """
     Extract and visualize a clade around a target gene.
-    Uses Biopython Phylo + Matplotlib for stable rendering.
+    Goes 'levels_up' ancestors from the target gene.
     
     Args:
         tree_file: Path to tree file
@@ -345,14 +358,19 @@ def extract_clade(tree_file, target_gene, levels_up=2, output_file=None,
         levels_up: Number of ancestor levels to go up (default 2)
         layout: 'circular' or 'rectangular'
         colored_species: Dict of {species_prefix: color}
-        show_bootstrap: Show bootstrap values (ignored in this implementation)
-        font_size: Font size for labels (ignored in this implementation)
-        fixed_branch_length: If True, use uniform branch lengths (ignored)
-        highlight_species: List of species prefixes to highlight
+        show_bootstrap: Show bootstrap values
+        font_size: Font size for labels
+        fixed_branch_length: If True, use uniform branch lengths
+        highlight_species: List of species prefixes to highlight with background
     
     Returns:
         (success, result_dir, output_file, message, clade_info)
     """
+    try:
+        from ete3 import Tree, TreeStyle, NodeStyle, TextFace
+    except ImportError:
+        return False, None, None, "ETE3 not installed", None
+
     result_dir = create_result_dir('tree', 'clade')
     
     if colored_species is None:
@@ -361,48 +379,105 @@ def extract_clade(tree_file, target_gene, levels_up=2, output_file=None,
         highlight_species = []
 
     try:
-        # Detect and normalize tree format
-        tree_format = detect_tree_format(tree_file)
-        normalized_tree = normalize_tree_file(tree_file)
+        normalized_tree, error_message = normalize_tree_file(tree_file)
+        if error_message:
+            return False, result_dir, None, error_message, None
+
+        tree = Tree(normalized_tree, format=1)
         
-        # Initialize renderer
-        renderer = PhyloRenderer(normalized_tree, format=tree_format)
-        
-        # Get clade info before rendering (approximate)
-        subtree = renderer.extract_subtree(target_gene, levels_up)
-        if not subtree:
+        # Find target node
+        target_nodes = tree.search_nodes(name=target_gene)
+        if not target_nodes:
             return False, result_dir, None, f"Gene not found: {target_gene}", None
-            
-        clade_leaves = [leaf.name for leaf in subtree.get_terminals()]
+        target = target_nodes[0]
+        
+        # Go up 'levels_up' ancestors
+        ancestor = target
+        actual_levels = 0
+        for i in range(levels_up):
+            if ancestor.up:
+                ancestor = ancestor.up
+                actual_levels += 1
+            else:
+                break
+        
+        # Get clade info
+        clade_leaves = [leaf.name for leaf in ancestor.get_leaves()]
         clade_info = {
             'target_gene': target_gene,
-            'levels_up': levels_up,
+            'levels_up': actual_levels,
             'leaf_count': len(clade_leaves),
             'leaves': clade_leaves
         }
         
+        # Create subtree copy
+        display_tree = ancestor.copy()
+        
+        # Apply fixed branch length if requested
+        if fixed_branch_length:
+            for n in display_tree.traverse():
+                n.dist = 1.0
+        
+        # Style nodes
+        for node in display_tree.traverse():
+            if node.is_leaf():
+                nstyle = NodeStyle()
+                nstyle['size'] = 0
+                
+                prefix = extract_species_prefix(node.name)
+
+                # Set background color only if species is selected for highlight
+                if prefix in highlight_species and prefix in colored_species:
+                    nstyle['bgcolor'] = colored_species[prefix]
+                
+                # Highlight target gene (strongest highlight, overrides species color)
+                if node.name == target_gene:
+                    nstyle['bgcolor'] = '#ffff00'
+                
+                node.set_style(nstyle)
+                
+                # Add name face - text is always black
+                face_text = f"→ {node.name}" if node.name == target_gene else node.name
+                face = TextFace(face_text, fsize=font_size, bold=(node.name == target_gene))
+                face.fgcolor = '#000000'  # Black for all species text
+                    
+                node.add_face(face, column=0, position='branch-right')
+            
+            elif show_bootstrap and node.name:
+                # Show bootstrap values
+                try:
+                    val = float(node.name.split('/')[0])
+                    if 0 <= val <= 1:
+                        val = int(val * 100)
+                    face = TextFace(str(int(val)), fsize=font_size-2, fgcolor='#666')
+                    node.add_face(face, column=0, position='branch-top')
+                except (ValueError, IndexError):
+                    pass
+        
+        # Tree style
+        ts = TreeStyle()
+        ts.mode = 'c' if layout == 'circular' else 'r'
+        ts.show_leaf_name = False
+        ts.show_branch_support = False
+        ts.branch_vertical_margin = 15
+        
+        # Add legend
+        if colored_species:
+            ts.legend.add_face(TextFace("Species Legend", bold=True, fsize=12), column=0)
+            for sp, color in colored_species.items():
+                ts.legend.add_face(TextFace(f"  {sp}", fgcolor=color, fsize=10), column=0)
+        
         # Output file
         if output_file is None:
-            output_file = os.path.join(result_dir, f'{target_gene}_L{levels_up}_{layout}.svg')
+            output_file = os.path.join(result_dir, f'{target_gene}_L{actual_levels}_{layout}.svg')
         
-        # Render subtree
-        success = renderer.render_subtree(
-            output_file,
-            target_gene,
-            levels_up,
-            highlighted_species=highlight_species,
-            layout=layout,
-            label_colors=colored_species
-        )
-        
-        if not success:
-            return False, result_dir, None, "Rendering failed", None
+        # Render with adaptive width
+        width = max(800, min(2400, len(clade_leaves) * 15))
+        display_tree.render(output_file, tree_style=ts, w=width, units='px')
         
         rel_path = os.path.relpath(output_file, config.RESULTS_DIR)
         return True, result_dir, rel_path, f"Clade extracted: {len(clade_leaves)} leaves", clade_info
         
     except Exception as e:
         logger.error(f"Clade extraction failed: {e}")
-        import traceback
-        traceback.print_exc()
         return False, result_dir, None, str(e), None

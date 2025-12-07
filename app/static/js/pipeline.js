@@ -1,3 +1,33 @@
+// ClipKIT 检查弹窗逻辑
+document.addEventListener('DOMContentLoaded', function() {
+    const checkForm = document.getElementById('clipkitCheckForm');
+    if (checkForm) {
+        checkForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const id = document.getElementById('clipkitCheckId').value.trim();
+            const sites = document.getElementById('clipkitCheckSites').value.trim();
+            const resultDiv = document.getElementById('clipkitCheckResult');
+            resultDiv.innerHTML = '<div class="text-info">查询中...</div>';
+            try {
+                // 获取 ClipKIT log 路径（用 pipelineState.step5.output 或后端返回的 log_file）
+                const logFile = pipelineState.step5.output || '';
+                const resp = await fetch('/phylo/clipkit-check', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, sites, log_file: logFile })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    resultDiv.innerHTML = `<pre>${data.report}</pre>`;
+                } else {
+                    resultDiv.innerHTML = `<div class="text-danger">${data.error || '查询失败'}</div>`;
+                }
+            } catch (err) {
+                resultDiv.innerHTML = `<div class="text-danger">${err.message}</div>`;
+            }
+        });
+    }
+});
 /**
  * Pipeline UI Orchestration JavaScript
  * Handles interactive phylogenetic pipeline workflow
@@ -85,6 +115,26 @@ function addContinueWithPreviousToggle(step) {
             Use previous output
         </label>
     `;
+
+                // If deleted_with_reasons available, show details
+                if (stats.deleted_with_reasons && stats.deleted_with_reasons.length > 0) {
+                                        // If hit details preview is included, show it for debugging
+                                        if (stats.hit_details_preview) {
+                                            let hitHtml = '<div class="mt-3"><strong>示例 hits（每 query 最多 10 个）:</strong><table class="table table-sm mt-2"><thead><tr><th>Query</th><th>Hits (sseqid | pident | qcovs | gold)</th></tr></thead><tbody>';
+                                            Object.entries(stats.hit_details_preview).forEach(([q, hits]) => {
+                                                const hitStr = hits.map(h => `${h[0]} | ${h[1]} | ${h[2]} | ${h[3]}`).join('<br>');
+                                                hitHtml += `<tr><td>${q}</td><td>${hitStr}</td></tr>`;
+                                            });
+                                            hitHtml += '</tbody></table></div>';
+                                            document.getElementById('blastResults').insertAdjacentHTML('beforeend', hitHtml);
+                                        }
+                    let reasonsHtml = '<div class="mt-3"><strong>删除序列原因（示例）:</strong><br><table class="table table-sm mt-2"><thead><tr><th>ID</th><th>原因</th></tr></thead><tbody>';
+                    stats.deleted_with_reasons.forEach(([id, reasons]) => {
+                        reasonsHtml += `<tr><td>${id}</td><td>${(reasons || []).join(', ')}</td></tr>`;
+                    });
+                    reasonsHtml += '</tbody></table></div>';
+                    document.getElementById('blastResults').insertAdjacentHTML('beforeend', reasonsHtml);
+                }
     
     inputPathField.parentNode.insertBefore(toggleContainer, inputPathField);
     

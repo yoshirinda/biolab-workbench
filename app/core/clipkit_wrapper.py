@@ -19,7 +19,10 @@ def run_conda_command(command, timeout=3600):
     Run a command in the conda environment.
     Returns (success, stdout, stderr).
     """
-    full_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} {command}"
+    if config.USE_CONDA and config.CONDA_ENV:
+        full_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} {command}"
+    else:
+        full_command = command
     logger.info(f"Running command: {full_command}")
 
     try:
@@ -70,6 +73,14 @@ def parse_clipkit_log(log_file):
                         if stats['input_length'] > 0:
                             stats['trimmed_sites'] = stats['input_length'] - stats['output_length']
                             stats['percent_kept'] = (stats['output_length'] / stats['input_length']) * 100
+                elif 'Alignment has' in line and 'sequences with' in line and 'columns' in line:
+                    # Fallback: parse from IQ-TREE style line
+                    import re
+                    match = re.search(r'Alignment has (\d+) sequences with (\d+) columns', line)
+                    if match:
+                        stats['input_length'] = int(match.group(2))
+                        stats['output_length'] = int(match.group(2))  # Assume no trim info, set same
+                        stats['percent_kept'] = 100.0
     except Exception as e:
         logger.warning(f"Failed to parse ClipKIT log: {e}")
     
@@ -121,7 +132,7 @@ def run_clipkit(input_alignment, output_file=None, mode='kpic-gappy',
     if complement:
         command += ' --complement'
     
-    command += f' -l {shlex.quote(log_file)}'
+    command += f' -l'
     
     # Save parameters
     params = {
@@ -141,19 +152,29 @@ def run_clipkit(input_alignment, output_file=None, mode='kpic-gappy',
         logger.error(f"ClipKIT failed: {stderr}")
         return False, result_dir, None, stderr
     
+    # Write log
+    with open(log_file, 'w') as f:
+        f.write(stdout)
+    
     # Parse log
     stats = parse_clipkit_log(log_file)
     
-    # Get sequence counts
+    # Get sequence counts and lengths
     input_seqs = parse_fasta(input_alignment)
     output_seqs = parse_fasta(output_file)
     
+    input_length = len(input_seqs[0][2]) if input_seqs else 0
+    output_length = len(output_seqs[0][2]) if output_seqs else 0
+    
+    stats['input_length'] = input_length
+    stats['output_length'] = output_length
+    stats['percent_kept'] = (output_length / input_length) * 100 if input_length > 0 else 0
     stats['input_seq_count'] = len(input_seqs)
     stats['output_seq_count'] = len(output_seqs)
     
     logger.info(f"ClipKIT completed: {stats['output_length']} sites kept from {stats['input_length']}")
     
-    return True, result_dir, output_file, stats
+    return True, result_dir, output_file, log_file, stats
 
 
 def analyze_alignment_conservation(alignment_file, window_size=10):

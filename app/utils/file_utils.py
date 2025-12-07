@@ -70,6 +70,8 @@ def resolve_input_file(request_obj=None):
     
     # Prefer file_path (server-side path for chaining)
     file_path = request_obj.form.get('file_path', '').strip()
+    if not file_path:
+        file_path = request_obj.form.get('input_path', '').strip()
     
     if file_path:
         # Security check: ensure path is within allowed directories
@@ -177,3 +179,33 @@ def get_file_info(filepath):
         'size': stat.st_size,
         'modified': datetime.fromtimestamp(stat.st_mtime).isoformat(),
     }
+
+
+def find_latest_pipeline_file(search_dir, step_prefixes):
+    """
+    Find the most recent file in a directory that matches a list of step prefixes.
+    
+    Args:
+        search_dir (str): The directory to search in.
+        step_prefixes (list): A list of prefixes to look for (e.g., ['step2_5_', 'step2_']).
+    
+    Returns:
+        str: The full path to the latest file found, or None if no match.
+    """
+    latest_file = None
+    latest_time = 0
+
+    if not os.path.isdir(search_dir):
+        return None
+
+    for filename in os.listdir(search_dir):
+        for prefix in step_prefixes:
+            if filename.startswith(prefix):
+                filepath = os.path.join(search_dir, filename)
+                if os.path.isfile(filepath):
+                    mod_time = os.path.getmtime(filepath)
+                    if mod_time > latest_time:
+                        latest_time = mod_time
+                        latest_file = filepath
+    
+    return latest_file

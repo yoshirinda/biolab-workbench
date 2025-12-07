@@ -19,7 +19,10 @@ def run_conda_command(command, timeout=7200):
     Run a command in the conda environment.
     Returns (success, stdout, stderr).
     """
-    full_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} {command}"
+    if config.USE_CONDA and config.CONDA_ENV:
+        full_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} {command}"
+    else:
+        full_command = command
     logger.info(f"Running command: {full_command}")
 
     try:
@@ -198,35 +201,27 @@ def run_iqtree(alignment_file, output_prefix=None, model='MFP',
     
     # Execute
     logger.info(f"Starting IQ-TREE analysis (this may take a while)...")
-    success, stdout, stderr = run_conda_command(command)
+    if config.USE_CONDA and config.CONDA_ENV:
+        full_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} {command} > {shlex.quote(output_prefix)}.log 2>&1"
+    else:
+        full_command = f"{command} > {shlex.quote(output_prefix)}.log 2>&1"
+    logger.info(f"Running command: {full_command}")
+
+    popen = subprocess.Popen(
+        full_command,
+        shell=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
     
-    if not success:
-        logger.error(f"IQ-TREE failed: {stderr}")
-        return False, result_dir, None, stderr
-    
-    # Collect output files
+    # Collect expected output files
     output_files = {
         'treefile': output_prefix + '.treefile',
         'log': output_prefix + '.log',
         'iqtree': output_prefix + '.iqtree'
     }
     
-    # Check for additional output files
-    if os.path.exists(output_prefix + '.contree'):
-        output_files['contree'] = output_prefix + '.contree'  # Consensus tree
-    if os.path.exists(output_prefix + '.ckp.gz'):
-        output_files['checkpoint'] = output_prefix + '.ckp.gz'
-    if os.path.exists(output_prefix + '.mldist'):
-        output_files['mldist'] = output_prefix + '.mldist'  # ML distances
-    if os.path.exists(output_prefix + '.model.gz'):
-        output_files['model'] = output_prefix + '.model.gz'
-    
-    # Parse log
-    log_info = parse_iqtree_log(output_files['log'])
-    
-    logger.info(f"IQ-TREE completed: {log_info.get('model', 'unknown model')}")
-    
-    return True, result_dir, output_files, log_info
+    return popen, result_dir, output_files, output_prefix
 
 
 def run_iqtree_modelfinder(alignment_file, output_prefix=None, 
@@ -315,7 +310,7 @@ def run_iqtree_constrained(alignment_file, constraint_tree, output_prefix=None,
     # Note: This would need modification of run_iqtree to add -g flag
     # For now, this is a placeholder showing the intended functionality
     
-    return success, result_dir, output_files, log_info
+    return success, result_dir, output_files, output_prefix
 
 
 def extract_bootstrap_support(treefile):

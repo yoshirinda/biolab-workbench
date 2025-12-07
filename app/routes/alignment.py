@@ -319,6 +319,7 @@ def align_multi():
         if tool == 'mafft':
             extra_params['algorithm'] = request.form.get('mafft_algorithm', 'auto')
             extra_params['adjustdirection'] = request.form.get('adjustdirection', 'false') == 'true'
+            extra_params['maxiterate'] = int(request.form.get('maxiterate', 1000))
         elif tool == 'clustalw':
             extra_params['gapopen'] = float(request.form.get('gapopen', 10.0))
             extra_params['gapext'] = float(request.form.get('gapext', 0.2))
@@ -337,7 +338,8 @@ def align_multi():
                 'success': True,
                 'result_dir': result_dir,
                 'output_file': output_file,
-                'stats': stats
+                'stats': stats,
+                'command': stats.get('command', '')
             })
         else:
             return jsonify({'success': False, 'error': stats.get('error', 'Unknown error')})

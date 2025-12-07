@@ -13,8 +13,10 @@ from app.utils.file_utils import create_result_dir, save_params
 
 logger = get_tools_logger()
 
-# UniProt REST API base URL
-UNIPROT_API_BASE = "https://rest.uniprot.org/uniprotkb"
+# UniProt REST API base URLs
+UNIPROT_API_BASE = "https://rest.uniprot.org"
+UNIPROTKB_BASE = f"{UNIPROT_API_BASE}/uniprotkb"
+TAXONOMY_BASE = f"{UNIPROT_API_BASE}/taxonomy"
 
 
 def search_uniprot(query, taxonomy_id=None, database_type='all', limit=500):
@@ -48,7 +50,7 @@ def search_uniprot(query, taxonomy_id=None, database_type='all', limit=500):
         'fields': 'accession,id,protein_name,gene_names,organism_name,sequence'
     }
 
-    url = f"{UNIPROT_API_BASE}/search?{urlencode(params)}"
+    url = f"{UNIPROTKB_BASE}/search?{urlencode(params)}"
     logger.info(f"Searching UniProt: {url}")
 
     try:
@@ -69,6 +71,70 @@ def search_uniprot(query, taxonomy_id=None, database_type='all', limit=500):
         return False, [], str(e)
     except Exception as e:
         logger.error(f"UniProt search error: {str(e)}")
+        return False, [], str(e)
+
+
+def search_taxonomy(query, limit=50):
+    """
+    Search the UniProt taxonomy database.
+    """
+    params = {
+        'query': query,
+        'format': 'json',
+        'size': limit,
+        'fields': 'id,scientific_name,common_name,lineage'
+    }
+    url = f"{TAXONOMY_BASE}/search?{urlencode(params)}"
+    logger.info(f"Searching UniProt Taxonomy: {url}")
+
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        return True, data.get('results', []), "Success"
+    except Exception as e:
+        logger.error(f"Taxonomy search failed: {e}")
+        return False, [], str(e)
+
+
+def get_taxonomy_lineage(taxon_id):
+    """
+    Get the lineage for a given taxon ID.
+    """
+    url = f"{TAXONOMY_BASE}/lineage/{taxon_id}?format=json"
+    logger.info(f"Fetching lineage for taxon: {taxon_id}")
+
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        return True, data.get('lineage', []), "Success"
+    except Exception as e:
+        logger.error(f"Taxonomy lineage fetch failed: {e}")
+        return False, [], str(e)
+
+
+def get_taxonomy_children(parent_id):
+    """
+    Get the direct children for a given taxon ID.
+    """
+    query = f"parent:{parent_id}"
+    params = {
+        'query': query,
+        'format': 'json',
+        'size': 500,  # Get a reasonable number of children
+        'fields': 'id,scientific_name,common_name'
+    }
+    url = f"{TAXONOMY_BASE}/search?{urlencode(params)}"
+    logger.info(f"Fetching children for taxon: {parent_id}")
+
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        return True, data.get('results', []), "Success"
+    except Exception as e:
+        logger.error(f"Taxonomy children fetch failed: {e}")
         return False, [], str(e)
 
 
@@ -144,16 +210,17 @@ def download_sequences(query, taxonomy_id=None, database_type='all', limit=500,
                 # Write sequence in lines of 60 characters
                 for i in range(0, len(sequence), 60):
                     f.write(sequence[i:i+60] + '\n')
-
+    
+    relative_path = os.path.relpath(fasta_file, config.RESULTS_DIR)
     logger.info(f"Downloaded {len(results)} sequences to {fasta_file}")
-    return True, result_dir, fasta_file, len(results)
+    return True, result_dir, relative_path, len(results)
 
 
 def get_entry(accession):
     """
     Get a single UniProt entry by accession.
     """
-    url = f"{UNIPROT_API_BASE}/{accession}.json"
+    url = f"{UNIPROTKB_BASE}/{accession}.json"
 
     try:
         response = requests.get(url, timeout=30)
@@ -257,7 +324,7 @@ def fetch_curated_sequences(accessions, header_format='gene_species_id', batch_s
     if not accessions:
         return []
 
-    stream_url = f"{UNIPROT_API_BASE}/stream"
+    stream_url = f"{UNIPROTKB_BASE}/stream"
     order_map = {acc: idx for idx, acc in enumerate(accessions)}
     collected = {}
 
@@ -327,6 +394,7 @@ def download_selected_sequences(accessions, header_format='gene_species_id'):
             handle.write(f">{record['header']}\n")
             for i in range(0, len(sequence), 60):
                 handle.write(sequence[i:i+60] + '\n')
-
+    
+    relative_path = os.path.relpath(fasta_file, config.RESULTS_DIR)
     logger.info(f"Downloaded {len(curated_records)} curated sequences to {fasta_file}")
-    return True, result_dir, fasta_file, len(curated_records)
+    return True, result_dir, relative_path, len(curated_records)

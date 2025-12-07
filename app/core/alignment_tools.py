@@ -36,7 +36,10 @@ def sanitize_path(path):
 
 def run_conda_command(command, timeout=3600):
     """Run a command in the conda environment."""
-    full_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} {command}"
+    if config.USE_CONDA and config.CONDA_ENV:
+        full_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} {command}"
+    else:
+        full_command = command
     logger.info(f"Running command: {full_command}")
 
     try:
@@ -147,7 +150,7 @@ def run_mafft(input_file, output_file, options=None):
     command = f'mafft {opts_str} {shlex.quote(input_file)}'
 
     # Full command for display
-    full_command = f"conda run -n {config.CONDA_ENV} {command} > {shlex.quote(output_file)}"
+    full_command = f"conda run -n {config.CONDA_ENV} -- {command} > {shlex.quote(output_file)}"
 
     full_shell_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} {command} > {shlex.quote(output_file)}"
 
@@ -177,7 +180,7 @@ def run_clustalw(input_file, output_file, options=None):
     command = f'clustalw -INFILE={shlex.quote(input_file)} -OUTFILE={shlex.quote(output_file)} -OUTPUT=FASTA{matrix_opt}'
 
     # Full command for display
-    full_command = f"conda run -n {config.CONDA_ENV} {command}"
+    full_command = f"conda run -n {config.CONDA_ENV} -- {command}"
 
     success, stdout, stderr = run_conda_command(command)
 
@@ -201,7 +204,7 @@ def run_muscle(input_file, output_file, options=None):
     command = f'muscle -in {shlex.quote(input_file)} -out {shlex.quote(output_file)}'
 
     # Full command for display
-    full_command = f"conda run -n {config.CONDA_ENV} {command}"
+    full_command = f"conda run -n {config.CONDA_ENV} -- {command}"
 
     success, stdout, stderr = run_conda_command(command)
 

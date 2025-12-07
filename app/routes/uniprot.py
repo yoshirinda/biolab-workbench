@@ -5,17 +5,76 @@ import os
 import json
 from flask import Blueprint, render_template, request, jsonify, send_file
 import config
-from app.core.uniprot_client import search_uniprot, download_sequences, download_selected_sequences, get_entry
+from app.core.uniprot_client import (
+    search_uniprot, download_sequences, download_selected_sequences, get_entry,
+    search_taxonomy, get_taxonomy_lineage, get_taxonomy_children
+)
 from app.utils.logger import get_app_logger
 
 uniprot_bp = Blueprint('uniprot', __name__)
 logger = get_app_logger()
 
-
 @uniprot_bp.route('/')
 def uniprot_page():
     """Render the UniProt search page."""
-    return render_template('uniprot.html', taxonomy_options=config.TAXONOMY_OPTIONS)
+    # Define common species for quick access, as requested
+    common_species = {
+        "Human": 9606,
+        "Mouse": 10090,
+        "Zebrafish": 7955,
+        "Fruit fly": 7227,
+        "Nematode": 6239,
+        "Yeast": 559292,
+        "E. coli": 83333,
+        "Arabidopsis thaliana": 3702,
+        "Oryza sativa": 4530,
+        "Zea mays": 4577,
+        "Glycine max": 3847
+    }
+    # Define major classifications to start browsing from
+    major_classifications = {
+        "Eukaryota": 2759,
+        "Bacteria": 2,
+        "Archaea": 2157,
+        "Viruses": 10239
+    }
+    return render_template('uniprot.html',
+                           common_species=common_species,
+                           major_classifications=major_classifications)
+
+
+@uniprot_bp.route('/taxonomy/search')
+def taxonomy_search():
+    """Search for a taxon by name."""
+    query = request.args.get('query', '')
+    if not query or len(query) < 3:
+        return jsonify({'success': False, 'error': 'Query must be at least 3 characters'})
+    
+    success, results, message = search_taxonomy(query)
+    if success:
+        return jsonify({'success': True, 'results': results})
+    else:
+        return jsonify({'success': False, 'error': message})
+
+
+@uniprot_bp.route('/taxonomy/children/<int:taxon_id>')
+def taxonomy_children(taxon_id):
+    """Get children for a taxon."""
+    success, results, message = get_taxonomy_children(taxon_id)
+    if success:
+        return jsonify({'success': True, 'results': results})
+    else:
+        return jsonify({'success': False, 'error': message})
+
+
+@uniprot_bp.route('/taxonomy/lineage/<int:taxon_id>')
+def taxonomy_lineage(taxon_id):
+    """Get lineage for a taxon."""
+    success, lineage, message = get_taxonomy_lineage(taxon_id)
+    if success:
+        return jsonify({'success': True, 'lineage': lineage})
+    else:
+        return jsonify({'success': False, 'error': message})
 
 
 @uniprot_bp.route('/search', methods=['POST'])
@@ -30,7 +89,10 @@ def search():
 
         taxonomy_id = data.get('taxonomy_id')
         if taxonomy_id:
-            taxonomy_id = int(taxonomy_id)
+            try:
+                taxonomy_id = int(taxonomy_id)
+            except (ValueError, TypeError):
+                taxonomy_id = None
 
         database_type = data.get('database_type', 'all')
         limit = int(data.get('limit', 500))

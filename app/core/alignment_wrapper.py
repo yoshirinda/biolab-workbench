@@ -50,11 +50,13 @@ def run_alignment(
         
         # Route to appropriate tool
         if tool.lower() == 'mafft':
-            success, error_msg = _run_mafft(input_file, output_file, output_format, threads, extra_params)
+            success, error_msg, command = _run_mafft(input_file, output_file, output_format, threads, extra_params)
         elif tool.lower() == 'clustalw':
             success, error_msg = _run_clustalw(input_file, output_file, output_format, threads, extra_params)
+            command = ""  # TODO: implement command return for other tools
         elif tool.lower() == 'muscle':
             success, error_msg = _run_muscle(input_file, output_file, output_format, threads, extra_params)
+            command = ""  # TODO
         else:
             return False, result_dir, '', {'error': f'Unknown alignment tool: {tool}'}
         
@@ -65,6 +67,7 @@ def run_alignment(
         stats = _calculate_alignment_stats(output_file)
         stats['tool'] = tool
         stats['parameters'] = extra_params or {}
+        stats['command'] = command
         
         return True, result_dir, output_file, stats
         
@@ -79,7 +82,7 @@ def _run_mafft(
     output_format: str,
     threads: int,
     extra_params: Optional[Dict]
-) -> Tuple[bool, str]:
+) -> Tuple[bool, str, str]:
     """Run MAFFT alignment."""
     try:
         # Build MAFFT command
@@ -91,6 +94,9 @@ def _run_mafft(
         
         # Add extra parameters
         if extra_params:
+            if extra_params.get('maxiterate') is not None:
+                cmd.extend(['--maxiterate', str(extra_params['maxiterate'])])
+            
             if extra_params.get('algorithm') == 'linsi':
                 cmd = ['mafft', '--localpair', '--maxiterate', '1000', '--thread', str(threads)]
             elif extra_params.get('algorithm') == 'ginsi':
@@ -109,13 +115,15 @@ def _run_mafft(
         
         cmd.append(input_file)
         
+        command = ' '.join(cmd)
+        
         # Run MAFFT
-        logger.info(f"Running MAFFT: {' '.join(cmd)}")
+        logger.info(f"Running MAFFT: {command}")
         
         if config.USE_CONDA:
-            conda_cmd = f"conda run -n {config.CONDA_ENV} {' '.join(cmd)}"
+            full_command = f"conda run -n {config.CONDA_ENV} {command}"
             result = subprocess.run(
-                conda_cmd,
+                full_command,
                 shell=True,
                 capture_output=True,
                 text=True
@@ -128,16 +136,16 @@ def _run_mafft(
             )
         
         if result.returncode != 0:
-            return False, f"MAFFT failed: {result.stderr}"
+            return False, f"MAFFT failed: {result.stderr}", command
         
         # Write output
         with open(output_file, 'w') as f:
             f.write(result.stdout)
         
-        return True, ""
+        return True, "", command
         
     except Exception as e:
-        return False, str(e)
+        return False, str(e), command if 'command' in locals() else ' '.join(cmd)
 
 
 def _run_clustalw(
@@ -285,7 +293,8 @@ def _run_muscle(
 def _calculate_alignment_stats(alignment_file: str) -> Dict:
     """Calculate statistics from alignment."""
     try:
-        sequences = parse_fasta(alignment_file)
+        parsed = parse_fasta(alignment_file)
+        sequences = {seq_id: seq for seq_id, _, seq in parsed}
         
         if not sequences:
             return {}

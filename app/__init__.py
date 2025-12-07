@@ -1,13 +1,18 @@
 """
 BioLab Workbench Flask Application Factory
 """
-from flask import Flask
+from flask import Flask, request, jsonify
 from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.exceptions import HTTPException
 import config
+import logging
 
 
 def create_app():
     """Create and configure the Flask application."""
+    # Disable werkzeug request logging
+    logging.getLogger('werkzeug').setLevel(logging.WARNING)
+    
     app = Flask(__name__)
 
     # Handle reverse proxy headers for DevTunnel/port forwarding
@@ -37,6 +42,7 @@ def create_app():
     from app.routes.tree import tree_bp
     from app.routes.docs import docs_bp
     from app.routes.pipeline import pipeline_bp
+    from app.routes.database import database_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(sequence_bp, url_prefix='/sequence')
@@ -47,6 +53,25 @@ def create_app():
     app.register_blueprint(tree_bp, url_prefix='/tree')
     app.register_blueprint(docs_bp, url_prefix='/docs')
     app.register_blueprint(pipeline_bp, url_prefix='/pipeline')
+    app.register_blueprint(database_bp, url_prefix='/database')
+
+    # Return JSON for API-style requests to avoid HTML breaking fetch()
+    @app.errorhandler(Exception)
+    def json_error_handler(err):
+        status = 500
+        if isinstance(err, HTTPException):
+            status = err.code or 500
+
+        wants_json = (
+            request.accept_mimetypes.best == 'application/json' or
+            request.headers.get('X-Requested-With') == 'XMLHttpRequest' or
+            request.path.startswith(('/phylo', '/blast', '/pipeline', '/alignment', '/tree'))
+        )
+
+        if wants_json:
+            return jsonify({'success': False, 'error': str(err)}), status
+
+        return err
 
     # Setup logging
     from app.utils.logger import setup_logging

@@ -34,7 +34,10 @@ def run_conda_command(command, timeout=3600):
     Run a command in the conda environment.
     Returns (success, stdout, stderr).
     """
-    full_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} {command}"
+    if config.USE_CONDA and config.CONDA_ENV:
+        full_command = f"conda run -n {shlex.quote(config.CONDA_ENV)} {command}"
+    else:
+        full_command = command
     logger.info(f"Running command: {full_command}")
 
     try:

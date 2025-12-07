@@ -2,6 +2,32 @@
 
 {% block title %}UniProt Search - BioLab Workbench{% endblock %}
 
+{% block extra_css %}
+<style>
+    .taxon-item {
+        cursor: pointer;
+        padding: 8px 12px;
+        border-radius: 4px;
+        transition: background-color 0.15s ease-in-out;
+        display: block;
+    }
+    .taxon-item:hover, .taxon-item.active {
+        background-color: #e9ecef;
+    }
+    .lineage-path {
+        font-size: 0.8rem;
+        color: #6c757d;
+    }
+    .breadcrumb-item a {
+        cursor: pointer;
+        text-decoration: none;
+    }
+    .breadcrumb-item a:hover {
+        text-decoration: underline;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container">
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -24,24 +50,68 @@
                 <div class="card-body">
                     <form id="uniprotForm">
                         <div class="mb-3">
-                            <label for="query" class="form-label">Search Query:</label>
+                            <label for="query" class="form-label fw-bold">Search Query:</label>
                             <input type="text" class="form-control" id="query" required
                                 placeholder="e.g., kinase, P450, GPCR">
-                            <small class="form-text text-muted">Enter keywords to search UniProt</small>
+                        </div>
+
+                        <!-- New Taxonomy Selector -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Taxonomy Filter:</label>
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <div id="selectedTaxonDisplay" class="alert alert-secondary text-center p-2">
+                                        All Organisms
+                                    </div>
+                                    <input type="hidden" id="taxonomy_id" name="taxonomy_id" value="">
+
+                                    <div class="mb-3">
+                                        <label class="form-label small text-muted">Common Species</label>
+                                        <div>
+                                            {% for name, taxid in common_species.items() %}
+                                                <button type="button" class="btn btn-sm btn-outline-secondary mb-1"
+                                                    onclick="selectTaxon('{{ name }}', '{{ taxid }}')">
+                                                    {{ name }}
+                                                </button>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                    
+                                    <ul class="nav nav-tabs nav-fill" id="taxon-tabs" role="tablist">
+                                        <li class="nav-item" role="presentation">
+                                            <button class="nav-link active" id="browse-tab" data-bs-toggle="tab" data-bs-target="#browse-panel" type="button" role="tab">Browse</button>
+                                        </li>
+                                        <li class="nav-item" role="presentation">
+                                            <button class="nav-link" id="search-tab" data-bs-toggle="tab" data-bs-target="#search-panel" type="button" role="tab">Search</button>
+                                        </li>
+                                    </ul>
+
+                                    <div class="tab-content border border-top-0 p-2" id="taxon-tabs-content" style="min-height: 250px;">
+                                        <div class="tab-pane fade show active" id="browse-panel" role="tabpanel">
+                                            <nav aria-label="breadcrumb">
+                                                <ol class="breadcrumb" id="taxonBreadcrumb"></ol>
+                                            </nav>
+                                            <div id="taxonBrowser" style="max-height: 200px; overflow-y: auto;"></div>
+                                        </div>
+                                        <div class="tab-pane fade" id="search-panel" role="tabpanel">
+                                            <div class="input-group">
+                                                <input type="text" class="form-control" id="taxonSearchQuery" placeholder="Search species name...">
+                                                <button class="btn btn-outline-danger" type="button" id="taxonSearchBtn"><i class="bi bi-search"></i></button>
+                                            </div>
+                                            <div id="taxonSearchResults" class="mt-2" style="max-height: 200px; overflow-y: auto;"></div>
+                                        </div>
+                                    </div>
+                                     <div class="text-center mt-2">
+                                        <button class="btn btn-sm btn-outline-secondary" type="button" id="clearTaxonBtn" title="Clear selection">
+                                            Clear Taxonomy Filter
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="mb-3">
-                            <label for="taxonomy" class="form-label">Taxonomy Filter:</label>
-                            <select class="form-select" id="taxonomy">
-                                <option value="">All organisms</option>
-                                {% for name, taxid in taxonomy_options.items() %}
-                                <option value="{{ taxid }}">{{ name }} ({{ taxid }})</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="dbType" class="form-label">Database:</label>
+                            <label for="dbType" class="form-label fw-bold">Database:</label>
                             <select class="form-select" id="dbType">
                                 <option value="all">All</option>
                                 <option value="reviewed">Reviewed (Swiss-Prot)</option>
@@ -50,17 +120,16 @@
                         </div>
 
                         <div class="mb-3">
-                            <label for="limit" class="form-label">Max Results:</label>
+                            <label for="limit" class="form-label fw-bold">Max Results:</label>
                             <input type="number" class="form-control" id="limit" value="500" min="1" max="5000">
                         </div>
 
                         <div class="mb-3">
-                            <label for="headerFormat" class="form-label">Header Format:</label>
+                            <label for="headerFormat" class="form-label fw-bold">Header Format:</label>
                             <select class="form-select" id="headerFormat">
                                 <option value="gene_species_id">Gene_Species_ID</option>
                                 <option value="standard">Standard UniProt</option>
                             </select>
-                            <small class="form-text text-muted">Format for FASTA headers</small>
                         </div>
 
                         <div class="d-grid gap-2">
@@ -156,19 +225,28 @@
 
 {% block extra_js %}
 <script>
+    // URLs and major classifications from Flask
     const UNIPROT_URLS = {
         search: '{{ url_for("uniprot.search") }}',
         download: '{{ url_for("uniprot.download") }}',
-        downloadFileBase: '{{ url_for("uniprot.download_file", filepath="") }}'
+        downloadFileBase: '{{ url_for("uniprot.download_file", filepath="") }}',
+        taxonSearch: '{{ url_for("uniprot.taxonomy_search") }}',
+        taxonChildren: '{{ url_for("uniprot.taxonomy_children", taxon_id=0) }}'.slice(0, -1),
+        taxonLineage: '{{ url_for("uniprot.taxonomy_lineage", taxon_id=0) }}'.slice(0, -1)
     };
+    const MAJOR_CLASSIFICATIONS = {{ major_classifications | tojson }};
 
+    // Global state
     const state = {
         results: [],
         filterTerm: ''
     };
-
     const selectedAccessions = new Set();
+    const taxonState = {
+        history: [],
+    };
 
+    // DOM Elements
     const elements = {
         form: document.getElementById('uniprotForm'),
         searchBtn: document.getElementById('searchBtn'),
@@ -184,43 +262,157 @@
         selectAllCheckbox: document.getElementById('selectAllCheckbox'),
         resultCount: document.getElementById('resultCount'),
         totalCount: document.getElementById('totalCount'),
-        selectedCount: document.getElementById('selectedCount')
+        selectedCount: document.getElementById('selectedCount'),
+        taxonSearchQuery: document.getElementById('taxonSearchQuery'),
+        taxonSearchBtn: document.getElementById('taxonSearchBtn'),
+        clearTaxonBtn: document.getElementById('clearTaxonBtn'),
+        taxonSearchResults: document.getElementById('taxonSearchResults'),
+        selectedTaxonDisplay: document.getElementById('selectedTaxonDisplay'),
+        taxonomyIdInput: document.getElementById('taxonomy_id'),
+        taxonBrowser: document.getElementById('taxonBrowser'),
+        taxonBreadcrumb: document.getElementById('taxonBreadcrumb')
     };
 
-    elements.form.addEventListener('submit', (event) => {
-        event.preventDefault();
-        performSearch();
-    });
-    elements.quickFilter.addEventListener('input', handleFilterInput);
-    elements.clearFilterBtn.addEventListener('click', clearFilter);
-    elements.selectAllBtn.addEventListener('click', selectAllResults);
-    elements.clearSelectionBtn.addEventListener('click', clearSelection);
-    elements.selectAllCheckbox.addEventListener('change', toggleFilteredSelection);
-    elements.resultsTableBody.addEventListener('change', handleRowSelection);
-    elements.downloadBtn.addEventListener('click', handleDownload);
+    // --- Event Listeners ---
+    function initializeEventListeners() {
+        elements.form.addEventListener('submit', (e) => { e.preventDefault(); performSearch(); });
+        elements.downloadBtn.addEventListener('click', handleDownload);
+        elements.quickFilter.addEventListener('input', handleFilterInput);
+        elements.clearFilterBtn.addEventListener('click', clearFilter);
+        elements.selectAllBtn.addEventListener('click', selectAllResults);
+        elements.clearSelectionBtn.addEventListener('click', clearSelection);
+        elements.selectAllCheckbox.addEventListener('change', toggleFilteredSelection);
+        elements.resultsTableBody.addEventListener('change', handleRowSelection);
+        elements.taxonSearchBtn.addEventListener('click', searchTaxonomy);
+        elements.taxonSearchQuery.addEventListener('keyup', (e) => { if (e.key === 'Enter') searchTaxonomy(); });
+        elements.clearTaxonBtn.addEventListener('click', () => selectTaxon('All Organisms', ''));
+    }
 
-    updateDownloadButtonLabel();
-    elements.selectAllCheckbox.disabled = true;
-    elements.quickFilter.disabled = true;
-    elements.clearFilterBtn.disabled = true;
-    elements.selectAllBtn.disabled = true;
-    elements.clearSelectionBtn.disabled = true;
+    // --- Taxonomy Functions ---
+    function selectTaxon(name, taxid) {
+        elements.taxonomyIdInput.value = taxid;
+        elements.selectedTaxonDisplay.textContent = name;
+        elements.taxonSearchResults.innerHTML = '';
+        if (taxid) {
+            elements.selectedTaxonDisplay.classList.remove('alert-secondary');
+            elements.selectedTaxonDisplay.classList.add('alert-success');
+        } else {
+            elements.selectedTaxonDisplay.classList.add('alert-secondary');
+            elements.selectedTaxonDisplay.classList.remove('alert-success');
+        }
+        navigateTaxon(taxid, name);
+    }
 
+    async function searchTaxonomy() {
+        const query = elements.taxonSearchQuery.value.trim();
+        if (query.length < 3) {
+            elements.taxonSearchResults.innerHTML = `<p class="text-muted small p-2">Query must be at least 3 characters.</p>`;
+            return;
+        }
+        const container = elements.taxonSearchResults;
+        container.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm"></div></div>';
+        try {
+            const response = await fetch(`${UNIPROT_URLS.taxonSearch}?query=${encodeURIComponent(query)}`);
+            const data = await response.json();
+            renderTaxonList(data.success ? data.results : null, container, true, data.error);
+        } catch (error) {
+            container.innerHTML = `<p class="text-danger small p-2">Search failed: ${error.message}</p>`;
+        }
+    }
+
+    function renderTaxonList(taxa, container, showLineage = false, errorMessage = 'No results found.') {
+        container.innerHTML = '';
+        if (!taxa || taxa.length === 0) {
+            container.innerHTML = `<p class="text-muted small p-2">${errorMessage}</p>`;
+            return;
+        }
+        taxa.sort((a, b) => (a.scientificName || '').localeCompare(b.scientificName || ''));
+        taxa.forEach(taxon => {
+            const el = document.createElement('div');
+            el.className = 'taxon-item';
+            const scientificName = escapeHtml(taxon.scientificName);
+            const commonName = taxon.commonName ? `(${escapeHtml(taxon.commonName)})` : '';
+            
+            let content = `<div class="fw-semibold">${scientificName} ${commonName}</div>`;
+            
+            if (showLineage && taxon.lineage) {
+                const lineage = (taxon.lineage || []).map(l => escapeHtml(l.scientificName)).slice(-3).join(' > ');
+                content += `<div class="lineage-path">${lineage}</div>`;
+            }
+            el.innerHTML = content;
+            el.onclick = () => selectTaxon(taxon.scientificName, taxon.taxonId);
+            container.appendChild(el);
+        });
+    }
+
+    async function navigateTaxon(taxid, name) {
+        if (!taxid) {
+            taxonState.history = [];
+            renderBreadcrumb();
+            const topLevel = Object.entries(MAJOR_CLASSIFICATIONS).map(([name, id]) => ({ scientificName: name, taxonId: id }));
+            renderTaxonList(topLevel, elements.taxonBrowser);
+            return;
+        }
+        const lastInHistory = taxonState.history.length > 0 ? taxonState.history[taxonState.history.length - 1] : null;
+        if (!lastInHistory || lastInHistory.id !== taxid) {
+            const lineage = await fetchLineage(taxid);
+            taxonState.history = lineage ? lineage.map(l => ({ id: l.taxonId, name: l.scientificName })).reverse() : [{ id: taxid, name: name }];
+        }
+        renderBreadcrumb();
+        const container = elements.taxonBrowser;
+        container.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm"></div></div>';
+        const response = await fetch(`${UNIPROT_URLS.taxonChildren}${taxid}`);
+        const data = await response.json();
+        renderTaxonList(data.success ? data.results : null, container, false, data.error || 'No sub-classifications found.');
+    }
+
+    async function fetchLineage(taxid) {
+        try {
+            const response = await fetch(`${UNIPROT_URLS.taxonLineage}${taxid}`);
+            const data = await response.json();
+            return (data.success && data.lineage) ? data.lineage : null;
+        } catch { return null; }
+    }
+
+    function renderBreadcrumb() {
+        const container = elements.taxonBreadcrumb;
+        container.innerHTML = '';
+        const root = document.createElement('li');
+        root.className = 'breadcrumb-item';
+        root.innerHTML = `<a onclick="navigateTaxon(null)">Root</a>`;
+        container.appendChild(root);
+        taxonState.history.forEach((item, index) => {
+            const li = document.createElement('li');
+            li.className = `breadcrumb-item ${index === taxonState.history.length - 1 ? 'active' : ''}`;
+            if (index === taxonState.history.length - 1) {
+                li.textContent = item.name;
+                li.setAttribute('aria-current', 'page');
+            } else {
+                li.innerHTML = `<a onclick="jumpToHistory(${index})">${item.name}</a>`;
+            }
+            container.appendChild(li);
+        });
+    }
+
+    function jumpToHistory(index) {
+        const target = taxonState.history[index];
+        taxonState.history.splice(index + 1);
+        selectTaxon(target.name, target.id);
+    }
+
+    // --- Main Search, Results, and Download Functions ---
     async function performSearch() {
         const payload = {
             query: document.getElementById('query').value,
-            taxonomy_id: document.getElementById('taxonomy').value,
+            taxonomy_id: elements.taxonomyIdInput.value,
             database_type: document.getElementById('dbType').value,
             limit: parseInt(document.getElementById('limit').value, 10) || 500
         };
-
-        if (!payload.query || !payload.query.trim()) {
-            showAlert('warning', 'Please enter a search query.');
-            return;
+        if (!payload.query || !payload.query.trim()) { 
+            alert('Please enter a search query.'); 
+            return; 
         }
-
         toggleLoading(true);
-
         try {
             const response = await fetch(UNIPROT_URLS.search, {
                 method: 'POST',
@@ -228,26 +420,17 @@
                 body: JSON.stringify(payload)
             });
             const data = await response.json();
-
-            if (data.success) {
-                handleNewResults(data.results || []);
-            } else {
-                showError(data.error || 'Search failed.');
-            }
-        } catch (error) {
-            showError('Search failed: ' + error.message);
-        } finally {
-            toggleLoading(false);
-        }
+            if (data.success) { handleNewResults(data.results || []); }
+            else { showError(data.error || 'Search failed.'); }
+        } catch (error) { showError('Search failed: ' + error.message); }
+        finally { toggleLoading(false); }
     }
-
+    
     function toggleLoading(isLoading) {
         elements.loadingSpinner.classList.toggle('d-none', !isLoading);
         elements.searchBtn.disabled = isLoading;
-        if (isLoading) {
+        if(isLoading) {
             elements.downloadBtn.disabled = true;
-        } else if (state.results.length) {
-            elements.downloadBtn.disabled = false;
         }
     }
 
@@ -256,35 +439,22 @@
         state.filterTerm = '';
         elements.quickFilter.value = '';
         selectedAccessions.clear();
-
         if (!state.results.length) {
             showNoResults();
-            return;
+        } else {
+            elements.resultsArea.classList.add('d-none');
+            elements.resultsTableWrapper.classList.remove('d-none');
+            elements.quickFilter.disabled = false;
+            elements.clearFilterBtn.disabled = true;
+            renderResultsTable();
         }
-
-        elements.quickFilter.disabled = false;
-        elements.clearFilterBtn.disabled = true;
-        renderResultsTable();
+        elements.downloadBtn.disabled = state.results.length === 0;
     }
 
     function prepareEntry(entry) {
-        const safeEntry = {
-            accession: entry.accession || '',
-            entry_name: entry.entry_name || '',
-            protein_name: entry.protein_name || '',
-            gene_names: entry.gene_names || '',
-            organism: entry.organism || '',
-            sequence_length: entry.sequence_length || 0
-        };
-
-        const searchValues = [
-            safeEntry.accession,
-            safeEntry.entry_name,
-            safeEntry.protein_name,
-            safeEntry.gene_names,
-            safeEntry.organism
-        ];
-        safeEntry.search_content = searchValues.map((value) => value.toLowerCase()).join(' ');
+        const safeEntry = { accession: entry.accession || '', entry_name: entry.entry_name || '', protein_name: entry.protein_name || '', gene_names: entry.gene_names || '', organism: entry.organism || '', sequence_length: entry.sequence_length || 0 };
+        const searchValues = [safeEntry.accession, safeEntry.entry_name, safeEntry.protein_name, safeEntry.gene_names, safeEntry.organism];
+        safeEntry.search_content = searchValues.map((value) => String(value).toLowerCase()).join(' ');
         return safeEntry;
     }
 
@@ -314,9 +484,7 @@
     }
 
     function clearFilter() {
-        if (!state.filterTerm) {
-            return;
-        }
+        if (!state.filterTerm) return;
         state.filterTerm = '';
         elements.quickFilter.value = '';
         renderResultsTable();
@@ -327,26 +495,16 @@
             showNoResults();
             return;
         }
-
         const filtered = getFilteredResults();
-        const hasMatches = filtered.length > 0;
-        const rowsHtml = hasMatches
-            ? filtered.map(buildRow).join('')
-            : `<tr><td colspan="7" class="text-center text-muted py-4">No matches for "<span class="fw-semibold">${escapeHtml(state.filterTerm)}</span>"</td></tr>`;
-
+        const rowsHtml = filtered.length > 0 ? filtered.map(buildRow).join('') : `<tr><td colspan="7" class="text-center text-muted py-4">No matches for "<span class="fw-semibold">${escapeHtml(state.filterTerm)}</span>"</td></tr>`;
         elements.resultsTableBody.innerHTML = rowsHtml;
-        elements.resultsArea.classList.add('d-none');
-        elements.resultsTableWrapper.classList.remove('d-none');
-
         updateResultCount(filtered.length);
         syncMasterCheckbox(filtered);
-        updateSelectionSummary(filtered.length);
+        updateSelectionSummary();
     }
 
     function getFilteredResults() {
-        if (!state.filterTerm) {
-            return state.results;
-        }
+        if (!state.filterTerm) return state.results;
         return state.results.filter((entry) => entry.search_content.includes(state.filterTerm));
     }
 
@@ -354,58 +512,32 @@
         const isSelected = selectedAccessions.has(entry.accession);
         const truncatedProtein = truncate(entry.protein_name, 60);
         const accession = escapeHtml(entry.accession);
-
-        return `
-            <tr data-accession="${accession}" class="${isSelected ? 'table-active' : ''}">
-                <td>
-                    <input type="checkbox" class="form-check-input result-checkbox" data-accession="${accession}" ${isSelected ? 'checked' : ''}>
-                </td>
-                <td>
-                    <a href="https://www.uniprot.org/uniprotkb/${encodeURIComponent(entry.accession)}" target="_blank" rel="noopener">
-                        ${accession}
-                    </a>
-                </td>
-                <td>${escapeHtml(entry.entry_name)}</td>
-                <td title="${escapeHtml(entry.protein_name)}">${escapeHtml(truncatedProtein)}</td>
-                <td>${escapeHtml(entry.gene_names)}</td>
-                <td>${escapeHtml(entry.organism)}</td>
-                <td>${entry.sequence_length || 0}</td>
-            </tr>
-        `;
+        return `<tr data-accession="${accession}" class="${isSelected ? 'table-active' : ''}"><td><input type="checkbox" class="form-check-input result-checkbox" data-accession="${accession}" ${isSelected ? 'checked' : ''}></td><td><a href="https://www.uniprot.org/uniprotkb/${encodeURIComponent(entry.accession)}" target="_blank" rel="noopener">${accession}</a></td><td>${escapeHtml(entry.entry_name)}</td><td title="${escapeHtml(entry.protein_name)}">${escapeHtml(truncatedProtein)}</td><td>${escapeHtml(entry.gene_names)}</td><td>${escapeHtml(entry.organism)}</td><td>${entry.sequence_length || 0}</td></tr>`;
     }
 
     function updateResultCount(shown) {
         const total = state.results.length;
         const filterActive = Boolean(state.filterTerm);
-        elements.resultCount.textContent = filterActive
-            ? `${total} entries (${shown} shown)`
-            : `${total} entries`;
+        elements.resultCount.textContent = filterActive ? `${total} entries (${shown} shown)` : `${total} entries`;
     }
 
-    function updateSelectionSummary(shownCount = getFilteredResults().length) {
+    function updateSelectionSummary() {
         const total = state.results.length;
         const selected = selectedAccessions.size;
-
         elements.totalCount.textContent = total;
         elements.selectedCount.textContent = selected;
-
         const hasResults = total > 0;
         elements.quickFilter.disabled = !hasResults;
         elements.clearFilterBtn.disabled = !state.filterTerm;
         elements.selectAllBtn.disabled = !hasResults;
         elements.clearSelectionBtn.disabled = selected === 0;
-        elements.downloadBtn.disabled = !hasResults;
-
+        elements.downloadBtn.disabled = !hasResults; 
         updateDownloadButtonLabel();
     }
 
     function updateDownloadButtonLabel() {
         const selected = selectedAccessions.size;
-        if (selected > 0) {
-            elements.downloadBtn.innerHTML = `<i class="bi bi-download"></i> Download ${selected} Selected`;
-        } else {
-            elements.downloadBtn.innerHTML = '<i class="bi bi-download"></i> Download All Results';
-        }
+        elements.downloadBtn.innerHTML = selected > 0 ? `<i class="bi bi-download"></i> Download ${selected} Selected` : '<i class="bi bi-download"></i> Download All Results';
     }
 
     function syncMasterCheckbox(filtered) {
@@ -416,10 +548,8 @@
             master.disabled = true;
             return;
         }
-
         master.disabled = false;
         const selectedInFilter = filtered.filter((entry) => selectedAccessions.has(entry.accession)).length;
-
         if (selectedInFilter === 0) {
             master.checked = false;
             master.indeterminate = false;
@@ -433,80 +563,47 @@
     }
 
     function selectAllResults() {
-        if (!state.results.length) {
-            return;
-        }
+        if (!state.results.length) return;
         state.results.forEach((entry) => selectedAccessions.add(entry.accession));
         renderResultsTable();
     }
 
     function clearSelection() {
-        if (!selectedAccessions.size) {
-            return;
-        }
+        if (!selectedAccessions.size) return;
         selectedAccessions.clear();
         renderResultsTable();
     }
 
     function toggleFilteredSelection(event) {
         const filtered = getFilteredResults();
-        if (!filtered.length) {
-            event.target.checked = false;
-            return;
-        }
-
-        if (event.target.checked) {
-            filtered.forEach((entry) => selectedAccessions.add(entry.accession));
-        } else {
-            filtered.forEach((entry) => selectedAccessions.delete(entry.accession));
-        }
-
+        if (!filtered.length) { event.target.checked = false; return; }
+        filtered.forEach(entry => event.target.checked ? selectedAccessions.add(entry.accession) : selectedAccessions.delete(entry.accession));
         renderResultsTable();
     }
 
     function handleRowSelection(event) {
-        if (!event.target.classList.contains('result-checkbox')) {
-            return;
-        }
-
+        if (!event.target.classList.contains('result-checkbox')) return;
         const accession = event.target.dataset.accession;
-        if (!accession) {
-            return;
-        }
-
-        if (event.target.checked) {
-            selectedAccessions.add(accession);
-        } else {
-            selectedAccessions.delete(accession);
-        }
-
+        if (!accession) return;
+        event.target.checked ? selectedAccessions.add(accession) : selectedAccessions.delete(accession);
         const row = event.target.closest('tr');
-        if (row) {
-            row.classList.toggle('table-active', event.target.checked);
-        }
-
+        if (row) row.classList.toggle('table-active', event.target.checked);
         syncMasterCheckbox(getFilteredResults());
         updateSelectionSummary();
     }
 
     async function handleDownload() {
-        if (!state.results.length) {
-            showAlert('warning', 'Run a search before downloading.');
-            return;
-        }
-
+        if (!state.results.length) { alert('Run a search before downloading.'); return; }
         const payload = {
             query: document.getElementById('query').value,
-            taxonomy_id: document.getElementById('taxonomy').value,
+            taxonomy_id: document.getElementById('taxonomy_id').value,
             database_type: document.getElementById('dbType').value,
             limit: parseInt(document.getElementById('limit').value, 10) || 500,
             header_format: document.getElementById('headerFormat').value,
             selected_ids: Array.from(selectedAccessions)
         };
-
         elements.downloadBtn.disabled = true;
         elements.downloadBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Downloading...';
-
         try {
             const response = await fetch(UNIPROT_URLS.download, {
                 method: 'POST',
@@ -514,18 +611,15 @@
                 body: JSON.stringify(payload)
             });
             const data = await response.json();
-
             if (data.success && data.fasta_file) {
-                const message = selectedAccessions.size > 0
-                    ? `Downloaded ${data.count} selected sequences`
-                    : `Downloaded ${data.count} sequences`;
-                showAlert('success', message);
+                const message = selectedAccessions.size > 0 ? `Downloaded ${data.count} selected sequences` : `Downloaded ${data.count} sequences`;
+                alert(message);
                 window.open(UNIPROT_URLS.downloadFileBase + encodeURIComponent(data.fasta_file), '_blank');
             } else {
-                showAlert('danger', data.error || 'Download failed');
+                alert(data.error || 'Download failed');
             }
         } catch (error) {
-            showAlert('danger', 'Download failed: ' + error.message);
+            alert('Download failed: ' + error.message);
         } finally {
             elements.downloadBtn.disabled = state.results.length === 0;
             updateDownloadButtonLabel();
@@ -540,26 +634,29 @@
         selectedAccessions.clear();
         updateDownloadButtonLabel();
     }
-
+    
     function escapeHtml(value) {
-        if (value === null || value === undefined) {
-            return '';
-        }
-        return String(value).replace(/[&<>"']/g, (char) => ({
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#39;'
-        })[char]);
+        if (value === null || value === undefined) return '';
+        return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
     }
 
     function truncate(value, limit) {
-        if (!value) {
-            return '';
-        }
+        if (!value) return '';
         const safeValue = String(value);
         return safeValue.length > limit ? `${safeValue.slice(0, limit - 1)}…` : safeValue;
     }
+
+    // --- Initializer ---
+    document.addEventListener('DOMContentLoaded', () => {
+        initializeEventListeners();
+        updateDownloadButtonLabel();
+        elements.selectAllCheckbox.disabled = true;
+        elements.quickFilter.disabled = true;
+        elements.clearFilterBtn.disabled = true;
+        elements.selectAllBtn.disabled = true;
+        elements.clearSelectionBtn.disabled = true;
+        navigateTaxon(null);
+    });
+
 </script>
 {% endblock %}

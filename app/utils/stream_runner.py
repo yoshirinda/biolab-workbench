@@ -28,8 +28,16 @@ def run_command_with_stream(cmd, task_id):
             if not isinstance(cmd, list):
                 raise ValueError("Command must be a list of arguments for security")
             
-            # Construct the full command with conda wrapper
-            full_cmd = ['conda', 'run', '-n', config.CONDA_ENV] + cmd
+            # Construct the full command with conda wrapper if used
+            use_conda = getattr(config, 'USE_CONDA', True)
+            env = getattr(config, 'CONDA_ENV', '') or ''
+            if use_conda:
+                if env:
+                    full_cmd = ['conda', 'run', '-n', env, '--'] + cmd
+                else:
+                    full_cmd = ['conda', 'run', '--'] + cmd
+            else:
+                full_cmd = list(cmd)
             
             logger.info(f"Streaming command: {' '.join(shlex.quote(c) for c in full_cmd)}")
             

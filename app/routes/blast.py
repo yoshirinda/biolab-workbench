@@ -3,16 +3,27 @@ BLAST routes for BioLab Workbench.
 """
 import os
 from flask import Blueprint, render_template, request, jsonify, send_file
+from werkzeug.exceptions import HTTPException
 import config
 from app.core.blast_wrapper import (
     list_blast_databases, create_blast_database, run_blast,
     extract_sequences, parse_blast_tsv, delete_blast_database
 )
-from app.utils.file_utils import save_uploaded_file
+from app.utils.file_utils import save_uploaded_file, resolve_input_file
 from app.utils.logger import get_app_logger
 
 blast_bp = Blueprint('blast', __name__)
 logger = get_app_logger()
+
+
+@blast_bp.errorhandler(Exception)
+def blast_error_handler(err):
+    """Return JSON for all blast errors to avoid HTML payloads breaking fetch()."""
+    status = 500
+    if isinstance(err, HTTPException):
+        status = err.code or 500
+    logger.error(f"BLAST error: {err}")
+    return jsonify({'success': False, 'error': str(err)}), status
 
 
 @blast_bp.route('/')
@@ -83,20 +94,29 @@ def delete_database():
 def search():
     """Run BLAST search."""
     try:
-        # Handle file or text input
-        if 'file' in request.files and request.files['file'].filename:
-            file = request.files['file']
-            query_file = save_uploaded_file(file)
-        elif request.form.get('query_text'):
-            # Save query text to temp file
-            import tempfile
-            query_text = request.form.get('query_text')
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.fasta',
-                                            delete=False, dir=config.UPLOADS_DIR) as f:
-                f.write(query_text)
-                query_file = f.name
-        else:
-            return jsonify({'success': False, 'error': 'No query provided'})
+        # Handle file path chaining, upload, or raw query text
+        query_file = None
+
+        # Prefer path/upload resolution when provided
+        if request.form.get('file_path') or request.form.get('input_path') or (
+            'file' in request.files and request.files['file'].filename
+        ):
+            try:
+                query_file = resolve_input_file(request)
+            except ValueError as e:
+                return jsonify({'success': False, 'error': str(e)})
+
+        # Fallback to raw query text
+        if query_file is None:
+            if request.form.get('query_text'):
+                import tempfile
+                query_text = request.form.get('query_text')
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.fasta',
+                                                delete=False, dir=config.UPLOADS_DIR) as f:
+                    f.write(query_text)
+                    query_file = f.name
+            else:
+                return jsonify({'success': False, 'error': 'No query provided'})
 
         database = request.form.get('database')
         if not database:
