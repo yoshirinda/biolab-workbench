@@ -210,6 +210,8 @@ def run_step(step):
         'stats': stats,
         'command': command or (commands[0] if commands else None)
     }
+    # Always include the result directory used for this step so clients can find other artifacts
+    response_data['result_dir'] = output_dir
     return jsonify(response_data)
 
 
