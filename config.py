@@ -63,9 +63,6 @@ USE_CONDA = os.environ.get('BIOLAB_USE_CONDA', 'true').lower() == 'true'
 # 默认参数
 DEFAULT_THREADS = int(os.environ.get('BIOLAB_THREADS', 4))
 
-# Default UI language (en or zh)
-DEFAULT_LANG = os.environ.get('BIOLAB_LANG', 'en')
-
 # Flask 配置 - Secret key from environment or generated randomly
 SECRET_KEY = os.environ.get('BIOLAB_SECRET_KEY', secrets.token_hex(32))
 

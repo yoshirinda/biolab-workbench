@@ -77,18 +77,4 @@ def create_app():
     from app.utils.logger import setup_logging
     setup_logging(app)
 
-    # Internationalization: inject translation helper and current translations
-    from app.utils.i18n import get_translations_for, t
-
-    @app.context_processor
-    def inject_i18n():
-        lang = config.DEFAULT_LANG if hasattr(config, 'DEFAULT_LANG') else None
-        if not lang:
-            lang = None
-        translations = get_translations_for(lang or 'en')
-        return {
-            'i18n': translations,
-            't': lambda k: t(k, lang)
-        }
-
     return app
