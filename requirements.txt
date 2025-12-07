@@ -3,3 +3,5 @@ biopython>=1.81
 requests>=2.31.0
 Werkzeug>=2.3.0
 pymsaviz>=0.4.2
+python-multipart>=0.0.5
+typing-extensions>=4.5.0

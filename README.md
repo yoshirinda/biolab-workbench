@@ -1,16 +1,14 @@
 # BioLab Workbench
 
-统一的生物信息学 Web 工作平台 / Unified Bioinformatics Web Platform
+Unified Bioinformatics Web Platform
 
-## Overview 概述
+## Overview
 
 BioLab Workbench is a comprehensive bioinformatics web platform that integrates multiple analysis tools into a unified interface. It can run on any Linux environment or WSL (Windows Subsystem for Linux) and is accessible via a web browser.
 
-BioLab Workbench 是一个综合性的生物信息学 Web 平台，将多种分析工具整合到统一的界面中。它可以运行在任何 Linux 环境或 WSL 中，可通过浏览器访问。
+## Features
 
-## Features 功能模块
-
-### 1. Sequence Management 序列管理
+### 1. Sequence Management
 - Import sequences (FASTA, GenBank formats)
 - View and edit sequences
 - DNA translation (6 reading frames)
@@ -26,7 +24,7 @@ BioLab Workbench 是一个综合性的生物信息学 Web 平台，将多种分�
 - Multiple output formats (TSV, TXT, HTML)
 - Extract sequences from hits
 
-### 3. Phylogenetic Pipeline 系统发育流程
+### 3. Phylogenetic Pipeline
 - Step 1: FASTA header cleaning
 - Step 2: HMMer search (hmmsearch)
 - Step 2.5: BLAST filtering with gold standard
@@ -36,7 +34,7 @@ BioLab Workbench 是一个综合性的生物信息学 Web 平台，将多种分�
 - Step 4: ClipKIT trimming
 - Step 5: IQ-Tree phylogenetic tree building
 
-### 4. Sequence Alignment 序列比对
+### 4. Sequence Alignment
 - Support for MAFFT, ClustalW, MUSCLE
 - Conservation visualization with coloring
 - HTML output with conservation scores
