@@ -28,13 +28,22 @@
     "alrt": "SH-aLRT test",
     "bnni": "减少分支长度相关性"
   },
+  "index": {
+    "features": "功能特性:",
+    "system_info": "系统信息:",
+    "quick_start": "快速开始指南"
+  },
   "alerts": {
     "provide_fasta": "请上传 FASTA 或提供路径",
     "provide_sequences": "请上传序列或填写路径",
     "provide_query": "请提供查询序列文件或路径",
     "select_gold": "请选择 Gold Standard List",
     "select_db": "请选择 BLAST 数据库",
-    "upload_limit": "上传文件超过服务器限制。请调整 Nginx client_max_body_size 或 BIOLAB_MAX_CONTENT_MB。"
+    "upload_limit": "上传文件超过服务器限制。请调整 Nginx client_max_body_size 或 BIOLAB_MAX_CONTENT_MB。",
+    "select_at_least_one": "请至少选择一条命中",
+    "db_created_success": "数据库创建成功",
+    "blast_completed": "BLAST 完成: 已找到 {count} 条命中。",
+    "no_hits_found": "未找到命中"
   },
   "buttons": {
     "check": "检查",

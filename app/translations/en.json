@@ -28,13 +28,22 @@
     "alrt": "SH-aLRT test",
     "bnni": "Optimize bootstrap trees (BNNI)"
   },
+  "index": {
+    "features": "Features:",
+    "system_info": "System Information:",
+    "quick_start": "Quick Start Guide"
+  },
   "alerts": {
     "provide_fasta": "Please upload FASTA or provide a path",
     "provide_sequences": "Please upload sequences or provide a path",
     "provide_query": "Please provide query file/path",
     "select_gold": "Please select Gold Standard List",
     "select_db": "Please select BLAST database",
-    "upload_limit": "Uploaded file exceeds server limit. Adjust Nginx client_max_body_size or BIOLAB_MAX_CONTENT_MB."
+    "upload_limit": "Uploaded file exceeds server limit. Adjust Nginx client_max_body_size or BIOLAB_MAX_CONTENT_MB.",
+    "select_at_least_one": "Please select at least one hit",
+    "db_created_success": "Database created successfully",
+    "blast_completed": "BLAST completed: {count} hits found.",
+    "no_hits_found": "No hits found"
   },
   "buttons": {
     "check": "Check",

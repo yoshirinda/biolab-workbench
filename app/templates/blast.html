@@ -218,7 +218,7 @@
         if (!response.ok) {
             let msg = isJson ? (payload.error || payload.message) : String(payload).slice(0, 200);
             if (response.status === 413) {
-                msg = '上传文件超过服务器限制，请将 Nginx client_max_body_size 和环境变量 BIOLAB_MAX_CONTENT_MB 设置为至少 50m，并重启服务。';
+                msg = `{{ t('alerts.upload_limit') }}`;
             }
             throw new Error(msg || `HTTP ${response.status}`);
         }
@@ -270,7 +270,7 @@
                 displayCommand('commandDisplay', data.command);
             }
 
-            if (data.success) {
+                if (data.success) {
                 currentResultDir = data.result_dir;
                 blastHits = data.hits;
                 displayHits(data.hits, data.total_hits);
@@ -281,7 +281,7 @@
                     btn.classList.remove('d-none');
                 }
 
-                showAlert('success', `BLAST completed. ${data.total_hits} hits found.`);
+                showAlert('success', `{{ t('alerts.blast_completed') }}`.replace('{count}', data.total_hits));
             } else {
                 document.getElementById('resultsArea').classList.remove('d-none');
                 document.getElementById('resultsArea').innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
@@ -297,7 +297,7 @@
 
         if (hits.length === 0) {
             document.getElementById('resultsArea').classList.remove('d-none');
-            document.getElementById('resultsArea').innerHTML = '<p class="text-muted">No hits found</p>';
+            document.getElementById('resultsArea').innerHTML = '<p class="text-muted">{{ t('alerts.no_hits_found') }}</p>';
             return;
         }
 
@@ -334,7 +334,7 @@
             });
 
             if (data.success) {
-                showAlert('success', 'Database created successfully');
+                showAlert('success', `{{ t('alerts.db_created_success') }}`);
                 location.reload();
             } else {
                 showAlert('danger', data.error);
@@ -349,7 +349,7 @@
         const hitIds = Array.from(checkboxes).map(cb => cb.dataset.id);
 
         if (hitIds.length === 0) {
-            showAlert('warning', 'Please select at least one hit');
+            showAlert('warning', `{{ t('alerts.select_at_least_one') }}`);
             return;
         }
 
