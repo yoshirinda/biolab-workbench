@@ -1,0 +1,43 @@
+{
+  "pipeline": {
+    "flow": "完整流程: HMM搜索 → BLAST比对 → 长度过滤 → 多序列比对 → ClipKIT修剪 → IQ-TREE建树 → 树可视化",
+    "usage": "使用说明:",
+    "steps_independent": "每一步都可独立运行: 上传文件或填写现有路径即可。",
+    "clean_headers": "点击'清理序列头'预处理 FASTA。",
+    "recommendations": "参数建议: HMM e-value 1e-5; BLAST e-value 1e-3; ClipKIT kpic-gappy; IQ-TREE MFP + UFBoot 1000。",
+    "remove_spaces_note": "移除空格和特殊字符, 生成安全的唯一序列名",
+    "upload_fasta": "上传 FASTA (可选):",
+    "or_path": "或已有文件路径:",
+    "run_clean": "清理序列头",
+    "clean_results": "清理结果:",
+    "continue_hmm": "继续 HMM 搜索",
+    "hmm_profiles_label": "HMM 模式库:",
+    "hmm_seqdb_label": "序列数据库 (FASTA):",
+    "hmm_search": "运行 HMM 搜索",
+    "run_blast": "运行 BLAST",
+    "run_align": "运行比对",
+    "run_clipkit": "运行 ClipKIT",
+    "run_modelfinder": "运行 ModelFinder",
+    "run_iqtree": "构建树",
+    "iqtree_title": "IQ-TREE 系统发育推断",
+    "upload_alignment": "上传比对文件 (可选):",
+    "replace_model": "替换模型:",
+    "bootstrap_count": "Bootstrap次数:",
+    "bootstrap_type": "Bootstrap类型:",
+    "input_alignment_path": "输入比对路径 (可选):",
+    "alrt": "SH-aLRT test",
+    "bnni": "减少分支长度相关性"
+  },
+  "alerts": {
+    "provide_fasta": "请上传 FASTA 或提供路径",
+    "provide_sequences": "请上传序列或填写路径",
+    "provide_query": "请提供查询序列文件或路径",
+    "select_gold": "请选择 Gold Standard List",
+    "select_db": "请选择 BLAST 数据库",
+    "upload_limit": "上传文件超过服务器限制。请调整 Nginx client_max_body_size 或 BIOLAB_MAX_CONTENT_MB。"
+  },
+  "buttons": {
+    "check": "检查",
+    "download": "下载"
+  }
+}

@@ -48,42 +48,10 @@
         padding: 15px;
         background: #f8f9fa;
         border-radius: 5px;
-        border-left: 4px solid #dee2e6;
-        transition: all 0.3s ease;
     }
     
     .step-result.show {
         display: block;
-        animation: fadeIn 0.5s ease-in;
-    }
-    
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-    
-    .btn-processing {
-        position: relative;
-        color: transparent !important;
-    }
-    
-    .btn-processing::after {
-        content: "";
-        position: absolute;
-        width: 16px;
-        height: 16px;
-        top: 50%;
-        left: 50%;
-        margin-left: -8px;
-        margin-top: -8px;
-        border: 2px solid #ffffff;
-        border-radius: 50%;
-        border-top-color: transparent;
-        animation: spin 1s linear infinite;
-    }
-    
-    @keyframes spin {
-        to { transform: rotate(360deg); }
     }
 </style>
 {% endblock %}
@@ -102,17 +70,17 @@
     
     <div class="alert alert-info">
         <i class="bi bi-info-circle"></i>
-        <strong>Full Pipeline:</strong> HMM Search → BLAST Alignment → Length Filtering → Multiple Sequence Alignment → ClipKIT Trimming → IQ-TREE Tree Building → Tree Visualization
+        {{ t('pipeline.flow') }}
     </div>
 
     <div class="alert alert-secondary">
         <i class="bi bi-journal-text"></i>
-        <strong>Usage Instructions:</strong>
+        <strong>{{ t('pipeline.usage') }}</strong>
         <ul class="mb-0 mt-2">
-            <li>Each step can run independently: upload files or provide existing paths, no need to start from scratch.</li>
-            <li>点击“清理序列头”预处理 FASTA, 避免特殊字符导致下游工具失败。</li>
-            <li>参数建议: HMM e-value 1e-5; BLAST e-value 1e-3, Max target 100; ClipKIT kpic-gappy; IQ-TREE 模型 MFP + UFBoot 1000。</li>
-            <li>所有结果都会给出独立下载链接; 如浏览器阻止, 复制链接在新标签打开。</li>
+            <li>{{ t('pipeline.steps_independent') }}</li>
+            <li>{{ t('pipeline.clean_headers') }}</li>
+            <li>{{ t('pipeline.recommendations') }}</li>
+            <li>{{ t('pipeline.remove_spaces_note') }}</li>
         </ul>
     </div>
     
@@ -124,27 +92,27 @@
             <div class="pipeline-step active" id="step0" data-step="0">
                 <div class="step-number">0</div>
                 <h4>Preprocess: Clean FASTA Headers</h4>
-                <p class="text-muted">移除空格和特殊字符, 生成安全的唯一序列名</p>
+                <p class="text-muted">{{ t('pipeline.remove_spaces_note') }}</p>
                 <form id="cleanForm">
                     <div class="row">
                         <div class="col-md-6">
-                            <label class="form-label">上传 FASTA (可选):</label>
+                            <label class="form-label">{{ t('pipeline.upload_fasta') }}</label>
                             <input type="file" class="form-control" id="cleanFile" accept=".fasta,.fa,.faa">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">或已有文件路径:</label>
+                            <label class="form-label">{{ t('pipeline.or_path') }}</label>
                             <input type="text" class="form-control" id="cleanPath" placeholder="/path/to/input.fasta">
                         </div>
                     </div>
                     <button type="submit" class="btn btn-primary mt-3">
-                        <i class="bi bi-broom"></i> 清理序列头
+                        <i class="bi bi-broom"></i> {{ t('pipeline.run_clean') }}
                     </button>
                 </form>
                 <div class="step-result" id="result0">
-                    <h6>清理结果:</h6>
+                    <h6>{{ t('pipeline.clean_results') }}</h6>
                     <div id="cleanResults"></div>
                     <button class="btn btn-success btn-sm mt-2" onclick="nextStep(1)">
-                        <i class="bi bi-arrow-right"></i> 继续 HMM 搜索
+                        <i class="bi bi-arrow-right"></i> {{ t('pipeline.continue_hmm') }}
                     </button>
                 </div>
             </div>
@@ -153,19 +121,19 @@
             <div class="pipeline-step" id="step1" data-step="1">
                 <div class="step-number">1</div>
                 <h4>HMM Domain Search</h4>
-                <p class="text-muted">使用 HMMER 搜索蛋白质结构域</p>
+                <p class="text-muted">{{ t('pipeline.hmm_search') }}</p>
                 
                 <form id="hmmForm">
                     <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label class="form-label">序列数据库 (FASTA):</label>
+                                <label class="form-label">{{ t('pipeline.hmm_seqdb_label') }}</label>
                                 <input type="file" class="form-control" id="hmmSeqFile" accept=".fasta,.fa,.faa">
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label class="form-label">HMM Profiles:</label>
+                                <label class="form-label">{{ t('pipeline.hmm_profiles_label') }}</label>
                                 <select class="form-select" id="hmmProfiles" multiple size="3">
                                     <option value="PF03171-2-OG-FeII_Oxy-motif.hmm">PF03171 - 2OG-FeII_Oxy</option>
                                     <option value="PF13532-AlkB.hmm">PF13532 - AlkB</option>
@@ -322,7 +290,7 @@
                     <h6>过滤结果:</h6>
                     <div id="filterResults"></div>
                     <button class="btn btn-success btn-sm mt-2" onclick="nextStep(4)">
-                        <i class="bi bi-arrow-right"></i> Continue to Multiple Sequence Alignment
+                        <i class="bi bi-arrow-right"></i> 继续多序列比对
                     </button>
                 </div>
             </div>
@@ -331,7 +299,7 @@
             <div class="pipeline-step" id="step4" data-step="4">
                 <div class="step-number">4</div>
                 <h4>Multiple Sequence Alignment</h4>
-                <p class="text-muted">Perform multiple sequence alignment using MAFFT/ClustalW/MUSCLE</p>
+                <p class="text-muted">使用 MAFFT/ClustalW/MUSCLE 进行多序列比对</p>
                 
                 <form id="alignForm">
                     <div class="mb-3">
@@ -340,7 +308,7 @@
                     </div>
                     <div class="row">
                         <div class="col-md-6">
-                            <label class="form-label">Alignment Tool:</label>
+                            <label class="form-label">比对工具:</label>
                             <select class="form-select" id="alignTool">
                                 <option value="mafft">MAFFT (推荐)</option>
                                 <option value="clustalw">ClustalW</option>
@@ -367,12 +335,12 @@
                     </div>
                     
                     <button type="submit" class="btn btn-primary mt-3">
-                        <i class="bi bi-align-middle"></i> Run Alignment
+                        <i class="bi bi-align-middle"></i> 运行比对
                     </button>
                 </form>
                 
                 <div class="step-result" id="result4">
-                    <h6>Alignment Results:</h6>
+                    <h6>比对结果:</h6>
                     <div id="alignResults"></div>
                     <button class="btn btn-success btn-sm mt-2" onclick="nextStep(5)">
                         <i class="bi bi-arrow-right"></i> 继续 ClipKIT
@@ -384,16 +352,16 @@
             <div class="pipeline-step" id="step5" data-step="5">
                 <div class="step-number">5</div>
                 <h4>ClipKIT Trimming</h4>
-                <p class="text-muted">Trim poorly conserved regions in alignment</p>
+                <p class="text-muted">修剪比对中保守性差的区域</p>
                 
                 <form id="clipkitForm">
                     <div class="mb-3">
-                        <label class="form-label">Upload Alignment File (optional):</label>
+                        <label class="form-label">上传比对文件 (可选):</label>
                         <input type="file" class="form-control" id="clipkitFileInput" accept=".fasta,.fa,.faa,.aln,.phy">
                     </div>
                     <div class="row">
                         <div class="col-md-6">
-                            <label class="form-label">Trimming Mode:</label>
+                            <label class="form-label">修剪模式:</label>
                             <select class="form-select" id="clipkitMode">
                                 <option value="kpic-gappy">kpic-gappy (推荐)</option>
                                 <option value="kpic">kpic</option>
@@ -408,12 +376,12 @@
                         </div>
                     </div>
                     <div class="mb-3 mt-3">
-                        <label class="form-label">Input Alignment Path (optional):</label>
-                        <input type="text" class="form-control" id="clipkitInputPath" placeholder="Use previous alignment result by default">
+                        <label class="form-label">输入比对路径 (可选):</label>
+                        <input type="text" class="form-control" id="clipkitInputPath" placeholder="默认使用上一步比对结果">
                     </div>
                     
                     <button type="button" class="btn btn-secondary mt-3" onclick="suggestClipKitMode()">
-                        <i class="bi bi-lightbulb"></i> Auto Suggest Mode
+                        <i class="bi bi-lightbulb"></i> 自动推荐模式
                     </button>
                     <button type="submit" class="btn btn-primary mt-3">
                         <i class="bi bi-scissors"></i> 运行 ClipKIT
@@ -424,17 +392,17 @@
                                         <h6>ClipKIT结果:</h6>
                                         <div id="clipkitResults"></div>
                                         <button class="btn btn-info btn-sm mt-2" data-bs-toggle="modal" data-bs-target="#clipkitCheckModal">
-                                                <i class="bi bi-search"></i> Check Trimmed Sites
+                                                <i class="bi bi-search"></i> 检查修剪位点
                                         </button>
                                         <button class="btn btn-success btn-sm mt-2" onclick="nextStep(6)">
-                                                <i class="bi bi-arrow-right"></i> Continue to Tree Building
+                                                <i class="bi bi-arrow-right"></i> 继续建树
                                         </button>
                                         <!-- ClipKIT 检查弹窗 -->
                                         <div class="modal fade" id="clipkitCheckModal" tabindex="-1" aria-labelledby="clipkitCheckModalLabel" aria-hidden="true">
                                             <div class="modal-dialog">
                                                 <div class="modal-content">
                                                     <div class="modal-header">
-                                                        <h5 class="modal-title" id="clipkitCheckModalLabel">ClipKIT Trimming Sites Check</h5>
+                                                        <h5 class="modal-title" id="clipkitCheckModalLabel">ClipKIT 修剪位点检查</h5>
                                                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                                                     </div>
                                                     <div class="modal-body">
@@ -465,20 +433,20 @@
                 
                 <form id="iqtreeForm">
                     <div class="mb-3">
-                        <label class="form-label">Upload Alignment File (optional):</label>
+                        <label class="form-label">上传比对文件 (可选):</label>
                         <input type="file" class="form-control" id="iqtreeFileInput" accept=".fasta,.fa,.faa,.aln,.phy">
                     </div>
                     <div class="row">
                         <div class="col-md-4">
-                            <label class="form-label">Substitution Model:</label>
-                            <input type="text" class="form-control" id="iqtreeModel" value="MFP" placeholder="MFP (auto-select)">
+                            <label class="form-label">替换模型:</label>
+                            <input type="text" class="form-control" id="iqtreeModel" value="MFP" placeholder="MFP (自动选择)">
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label">Bootstrap Replicates:</label>
+                            <label class="form-label">Bootstrap次数:</label>
                             <input type="number" class="form-control" id="iqtreeBootstrap" value="1000">
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label">Bootstrap Type:</label>
+                            <label class="form-label">Bootstrap类型:</label>
                             <select class="form-select" id="iqtreeBootstrapType">
                                 <option value="ufboot">UFBoot (快速)</option>
                                 <option value="boot">Standard Bootstrap</option>
@@ -486,8 +454,8 @@
                         </div>
                     </div>
                     <div class="mb-3 mt-3">
-                        <label class="form-label">Input Alignment Path (optional):</label>
-                        <input type="text" class="form-control" id="iqtreeInputPath" placeholder="Use ClipKIT output by default">
+                        <label class="form-label">输入比对路径 (可选):</label>
+                        <input type="text" class="form-control" id="iqtreeInputPath" placeholder="默认使用 ClipKIT 输出">
                     </div>
                     
                     <div class="row mt-3">
@@ -500,7 +468,7 @@
                         <div class="col-md-6">
                             <div class="form-check">
                                 <input type="checkbox" class="form-check-input" id="iqtreeBnni" checked>
-                                <label class="form-check-label" for="iqtreeBnni">Optimize UFBoot trees by NNI</label>
+                                <label class="form-check-label" for="iqtreeBnni">减少分支长度相关性</label>
                             </div>
                         </div>
                     </div>
@@ -509,7 +477,7 @@
                         <i class="bi bi-cpu"></i> 运行 ModelFinder
                     </button>
                     <button type="submit" class="btn btn-primary mt-3">
-                        <i class="bi bi-tree"></i> Build Tree
+                        <i class="bi bi-tree"></i> 构建树
                     </button>
                 </form>
                 
@@ -908,7 +876,7 @@
         fd.append('threads', 4);
 
         try {
-            setButtonBusy(btn, true, 'Aligning...');
+            setButtonBusy(btn, true, '比对中...');
             const res = await fetch('/alignment/align-multi', { method: 'POST', body: fd });
             const result = await parseJsonResponse(res);
             if (result.success) {
@@ -918,14 +886,14 @@
                 if (clipkitInput) clipkitInput.value = pipelineData.alignment;
                 if (iqtreeInput) iqtreeInput.value = pipelineData.alignment;
                 document.getElementById('alignResults').innerHTML = `
-                    <p class="text-success"><i class="bi bi-check-circle"></i> Alignment completed</p>
-                    <p>Sequences: ${result.stats.num_sequences}, Alignment length: ${result.stats.alignment_length}</p>
-                    <a class="btn btn-sm btn-outline-primary" href="${downloadLink(result.output_file)}">Download Alignment</a>
+                    <p class="text-success"><i class="bi bi-check-circle"></i> 比对完成</p>
+                    <p>序列数: ${result.stats.num_sequences}, 比对长度: ${result.stats.alignment_length}</p>
+                    <a class="btn btn-sm btn-outline-primary" href="${downloadLink(result.output_file)}">下载比对</a>
                     ${renderCommand(result.command)}
                 `;
                 document.getElementById('result4').classList.add('show');
             } else {
-                alert('Alignment failed: ' + (result.error || 'Unknown error'));
+                alert('比对失败: ' + (result.error || '未知错误'));
             }
         } catch (err) {
             alert('错误: ' + err.message);
@@ -938,7 +906,7 @@
     async function suggestClipKitMode() {
         const fd = getInputForStep('clipkitFileInput', 'clipkitInputPath', pipelineData.alignment);
         if (!fd) {
-            alert('Please provide an alignment file first');
+            alert('请先提供比对文件');
             return;
         }
         try {
@@ -958,7 +926,7 @@
         const btn = document.querySelector('#clipkitForm button[type="submit"]');
         const fd = getInputForStep('clipkitFileInput', 'clipkitInputPath', pipelineData.alignment);
         if (!fd) {
-            alert('Please provide an alignment file');
+            alert('请提供比对文件');
             return;
         }
         fd.append('mode', document.getElementById('clipkitMode').value);
@@ -976,7 +944,7 @@
                 document.getElementById('clipkitResults').innerHTML = `
                     <p class="text-success"><i class="bi bi-check-circle"></i> ClipKIT 完成</p>
                     <p>保留位置: ${result.stats.kept_sites} / ${result.stats.total_sites} (${result.stats.percentage_kept}%)</p>
-                    <a class="btn btn-sm btn-outline-primary" href="${downloadLink(result.output_file)}">Download Trimmed Result</a>
+                    <a class="btn btn-sm btn-outline-primary" href="${downloadLink(result.output_file)}">下载修剪结果</a>
                     <button class="btn btn-sm btn-info" onclick="checkSites()">检查特定位点</button>
                     ${renderCommand(result.command)}
                 `;
@@ -1067,7 +1035,7 @@
         const btn = document.querySelector('#iqtreeForm button.btn-primary');
         const fd = getInputForStep('iqtreeFileInput', 'iqtreeInputPath', pipelineData.trimmedAlignment);
         if (!fd) {
-            alert('Please provide an alignment file');
+            alert('请提供比对文件');
             return;
         }
         fd.append('model', document.getElementById('iqtreeModel').value);
@@ -1089,7 +1057,7 @@
 
         // Start log display
         document.getElementById('iqtreeResults').innerHTML = `
-            <p>Building tree... <button class="btn btn-sm btn-secondary" onclick="stopIqtreeLog()">Stop Log View</button></p>
+            <p>建树中... <button class="btn btn-sm btn-secondary" onclick="stopIqtreeLog()">停止查看日志</button></p>
             <pre id="iqtreeLog" style="max-height: 400px; overflow-y: auto; background: #f8f9fa; padding: 10px; font-size: 12px;"></pre>
             ${renderCommand('iqtree -s ' + inputPath + ' -m ' + fd.get('model') + ' -bb ' + fd.get('bootstrap') + ' -nt AUTO' + (fd.get('bnni') === 'true' ? ' -bnni' : '') + (fd.get('alrt') === 'true' ? ' -alrt 1000' : ''))}
         `;
@@ -1110,7 +1078,7 @@
         }, 2000); // Poll every 2 seconds
 
         try {
-            setButtonBusy(btn, true, 'Building tree...');
+            setButtonBusy(btn, true, '建树中...');
             // Add timeout to fetch
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
@@ -1130,7 +1098,7 @@
                             const treefile = statusData.output_files.treefile;
                             pipelineData.tree = treefile;
                             document.getElementById('iqtreeResults').innerHTML = `
-                                <p class="text-success"><i class="bi bi-check-circle"></i> Tree building completed</p>
+                                <p class="text-success"><i class="bi bi-check-circle"></i> 建树完成</p>
                                 <p>Bootstrap 支持率均值: ${statusData.support_stats.mean_support || 'N/A'}%</p>
                                 ${treefile ? `<a class="btn btn-sm btn-outline-primary" href="${downloadLink(treefile)}">下载树文件</a>` : ''}
                                 ${renderCommand(result.command)}

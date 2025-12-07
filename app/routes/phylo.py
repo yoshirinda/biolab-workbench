@@ -28,7 +28,7 @@ running_processes = {}
 
 @phylo_bp.route('/clipkit-check', methods=['POST'])
 def clipkit_check():
-    """Check ClipKIT trimming sites (Step 4.5)"""
+    """检查 ClipKIT 修剪位点（Step 4.5）"""
     try:
         data = request.get_json()
         ref_id = data.get('id', '').strip()
@@ -59,7 +59,7 @@ def clipkit_check():
             if kept_line and str(site) in kept_line:
                 status = '✅ 保留'
             elif trimmed_line and str(site) in trimmed_line:
-                status = '❌ Trimmed'
+                status = '❌ 已修剪'
             report += f"位点 {site}: {status}\n"
         return jsonify({'success': True, 'report': report})
     except Exception as e:

@@ -7,7 +7,6 @@ import subprocess
 import shlex
 import re
 from datetime import datetime
-from typing import Tuple, Optional, Dict, Any
 import config
 from app.utils.logger import get_tools_logger
 from app.utils.file_utils import create_result_dir, save_params
@@ -15,7 +14,7 @@ from app.utils.file_utils import create_result_dir, save_params
 logger = get_tools_logger()
 
 
-def run_conda_command(command: str, timeout: int = 7200) -> Tuple[bool, str, str]:
+def run_conda_command(command, timeout=7200):
     """
     Run a command in the conda environment.
     Returns (success, stdout, stderr).
@@ -105,9 +104,9 @@ def parse_iqtree_log(log_file):
     return info
 
 
-def run_iqtree(alignment_file: str, output_prefix: Optional[str] = None, model: str = 'MFP', 
-               bootstrap: int = 1000, bootstrap_type: str = 'ufboot', alrt: bool = False,
-               bnni: bool = True, threads: str = 'AUTO', seed: Optional[int] = None, redo: bool = False) -> Tuple[subprocess.Popen, str, Dict[str, str], str]:
+def run_iqtree(alignment_file, output_prefix=None, model='MFP', 
+               bootstrap=1000, bootstrap_type='ufboot', alrt=False,
+               bnni=True, threads='AUTO', seed=None, redo=False):
     """
     Run IQ-TREE for phylogenetic inference.
     
