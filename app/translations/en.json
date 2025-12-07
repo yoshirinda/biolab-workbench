@@ -45,6 +45,13 @@
     "blast_completed": "BLAST completed: {count} hits found.",
     "no_hits_found": "No hits found"
   },
+  "confirm": {
+    "delete": "Are you sure you want to delete \"{name}\"?"
+  },
+  "sequence": {
+    "select_source_required": "Please select a source FASTA to delete.",
+    "source_deleted": "Source FASTA deleted"
+  },
   "buttons": {
     "check": "Check",
     "download": "Download"

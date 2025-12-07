@@ -45,6 +45,13 @@
     "blast_completed": "BLAST 完成: 已找到 {count} 条命中。",
     "no_hits_found": "未找到命中"
   },
+  "confirm": {
+    "delete": "确定要删除 \"{name}\" 吗？"
+  },
+  "sequence": {
+    "select_source_required": "请选择要删除的源 FASTA。",
+    "source_deleted": "源 FASTA 已删除"
+  },
   "buttons": {
     "check": "检查",
     "download": "下载"

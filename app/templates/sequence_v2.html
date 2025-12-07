@@ -807,7 +807,7 @@ body.hide-annotations .seq-annotations { display: none; }
             if (!response.ok) {
                 let msg = isJson ? (payload.error || payload.message) : payload.slice(0, 200);
                 if (response.status === 413) {
-                    msg = '上传文件超过服务器限制。请将 Nginx client_max_body_size 和环境变量 BIOLAB_MAX_CONTENT_MB 设置为至少 50m，并重启服务。';
+                    msg = `{{ t('alerts.upload_limit') }}`;
                 }
                 throw new Error(msg || `HTTP error ${response.status}`);
             }
@@ -1059,15 +1059,15 @@ body.hide-annotations .seq-annotations { display: none; }
         const select = document.getElementById('extractSourceSelect');
         const selectedId = select.value;
         if (!selectedId) {
-            showAlert('warning', 'Please select a source FASTA to delete.');
+            showAlert('warning', `{{ t('sequence.select_source_required') }}`);
             return;
         }
         const selectedLabel = select.options[select.selectedIndex]?.text || selectedId;
-        if (!confirm(`确定要删除 "${selectedLabel}" 吗？`)) return;
+        if (!confirm(`{{ t('confirm.delete') }}`.replace('{name}', selectedLabel))) return;
 
         const data = await apiRequest(API_URLS.deleteSourceFasta, 'POST', { id: selectedId });
         if (data && data.success) {
-            showAlert('success', 'Source FASTA deleted');
+            showAlert('success', `{{ t('alerts.source_deleted') }}`);
             renderSourceSelectOptions(select, data.library || []);
         }
     }
