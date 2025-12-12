@@ -75,3 +75,4 @@ ENV/
 uploads/
 results/
 i18n_chinese_matches.txt
+node_modules/

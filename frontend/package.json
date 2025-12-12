@@ -1,0 +1,26 @@
+{
+  "name": "frontend",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {
+    "@ant-design/icons": "^6.1.0",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "antd": "^6.1.0",
+    "lucide-react": "^0.561.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "react-resizable-panels": "^1.0.4",
+    "seqviz": "latest"
+  },
+  "devDependencies": {
+    "@types/antd": "^0.12.32",
+    "@vitejs/plugin-react": "^5.1.2",
+    "typescript": "^5.0.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  }
+}
