@@ -49,6 +49,7 @@ export async function parseSequenceFile(file: File): Promise<ParsedSequence[]> {
       case 'fa':
       case 'faa':
       case 'fna':
+        // fastaToJson 期望的是文件内容字符串
         parsedData = await fastaToJson(text, { fileName: file.name });
         break;
         
@@ -160,7 +161,12 @@ export function toGenbankFormat(sequence: ParsedSequence): string {
     };
     
     // Use bio-parsers to convert to GenBank format
-    return jsonToGenbank(teselagenFormat, { reformatSeqName: false });
+    const result = jsonToGenbank(teselagenFormat, { reformatSeqName: false });
+    // jsonToGenbank 可能返回 string 或 false,我们需要确保返回 string
+    if (typeof result === 'string') {
+      return result;
+    }
+    throw new Error('GenBank conversion returned invalid result');
   } catch (error: any) {
     console.error('GenBank export error:', error);
     throw new Error(`Failed to export to GenBank: ${error.message}`);
