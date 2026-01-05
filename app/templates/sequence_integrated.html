@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Sequence Manager - BioLab Workbench{% endblock %}
+
+{% block head %}
+{{ super() }}
+<!-- React App CSS -->
+<link rel="stylesheet" href="/static/react/assets/index.css">
+{% endblock %}
+
+{% block content %}
+<div id="root" style="height: 85vh; width: 100%; overflow: hidden; background: #1f1f1f;"></div>
+<script>
+    console.log("Sequence Manager Template Loaded");
+    // Check if script loads
+    window.addEventListener('load', function() {
+        console.log("Window loaded");
+        if (!document.getElementById('root').hasChildNodes()) {
+            console.error("React root is empty after load!");
+        }
+    });
+</script>
+{% endblock %}
+
+{% block extra_js %}
+<!-- React App JS -->
+<script type="module" src="/static/react/assets/index.js"></script>
+{% endblock %}

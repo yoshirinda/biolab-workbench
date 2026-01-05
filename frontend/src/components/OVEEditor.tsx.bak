@@ -1,0 +1,83 @@
+import React, { useMemo } from 'react';
+// @ts-ignore
+import { Editor } from '@teselagen/ove';
+import { Sequence } from '../types/biolab';
+import { Empty, Spin } from 'antd';
+
+// Import essential styles for OVE
+// OVE depends on BlueprintJS, so we need its styles
+import '@blueprintjs/core/lib/css/blueprint.css';
+import '@blueprintjs/datetime/lib/css/blueprint-datetime.css';
+// import '@teselagen/ove/ove.css'; // Failed to resolve
+import '../ove.css'; // Local copy
+
+interface OVEEditorProps {
+  sequence: Sequence | null;
+}
+
+const OVEEditor: React.FC<OVEEditorProps> = ({ sequence }) => {
+  if (!sequence) {
+    return (
+      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Empty description="Select a sequence to view" />
+      </div>
+    );
+  }
+
+  // Transform to OVE format
+  const sequenceData = useMemo(() => {
+    // Determine topology: defaulting to circular for DNA unless specified otherwise
+    // In a real app, 'circular' should be a property of the sequence model
+    const isCircular = sequence.type === 'nucleotide' && (sequence.id.includes('plasmid') || sequence.id.includes('vector') || true);
+
+    return {
+      name: sequence.id,
+      sequence: sequence.sequence,
+      circular: isCircular, 
+      features: sequence.features?.map(f => ({
+        id: f.id,
+        name: f.label,
+        start: f.start - 1, // OVE is 0-based
+        end: f.end - 1,
+        type: f.type,
+        strand: f.strand === '+' ? 1 : -1,
+        color: f.color,
+        notes: f.qualifiers
+      })) || []
+    };
+  }, [sequence]);
+
+  return (
+    <div className="ove-editor-container" style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
+       {/* 
+         Editor component from @teselagen/ove 
+         - editorName: unique key for local storage of settings
+         - showMenuBar: displays the top toolbar
+       */}
+       <Editor
+         editorName="BioLabEditor"
+         sequenceData={sequenceData}
+         height="100%"
+         width="100%"
+         showMenuBar={true}
+         withPreviewMode={false}
+         ToolBarProps={{
+            toolList: [
+                'cutsiteTool',
+                'featureTool',
+                'oligoTool',
+                'orfTool',
+                'findTool',
+                'visibilityTool',
+                'undoTool',
+                'redoTool',
+                'importTool', // Enable import within editor
+                'exportTool', // Enable export within editor
+            ]
+         }}
+       />
+    </div>
+  );
+};
+
+export default OVEEditor;

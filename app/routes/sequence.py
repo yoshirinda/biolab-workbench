@@ -11,7 +11,8 @@ from app.core.sequence_utils import (
     parse_fasta, format_fasta, detect_sequence_type,
     translate_dna, reverse_complement, find_orfs,
     calculate_sequence_stats, validate_sequence,
-    parse_gene_ids_from_text, extract_sequences_fuzzy
+    parse_gene_ids_from_text, extract_sequences_fuzzy,
+    load_source_fasta_library, save_source_fasta_library
 )
 from app.core.project_manager import (
     list_projects, create_project, get_project, update_project, delete_project, create_folder,
@@ -31,29 +32,32 @@ logger = get_app_logger()
 # Session key for storing source FASTA path
 SOURCE_FASTA_KEY = 'source_fasta_path'
 SOURCE_FASTA_ID_KEY = 'source_fasta_id'
-SOURCE_FASTA_LIBRARY_FILE = os.path.join(config.UPLOADS_DIR, 'source_fasta_library.json')
 
 
 def _load_source_fasta_library():
-    if os.path.exists(SOURCE_FASTA_LIBRARY_FILE):
-        try:
-            with open(SOURCE_FASTA_LIBRARY_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception:
-            return []
-    return []
+    return load_source_fasta_library()
 
 
 def _save_source_fasta_library(entries):
-    os.makedirs(os.path.dirname(SOURCE_FASTA_LIBRARY_FILE), exist_ok=True)
-    with open(SOURCE_FASTA_LIBRARY_FILE, 'w', encoding='utf-8') as f:
-        json.dump(entries, f, ensure_ascii=False, indent=2)
+    return save_source_fasta_library(entries)
 
 
 @sequence_bp.route('/')
 def sequence_page():
-    """Render the sequence management page."""
+    """Render the integrated React sequence management page."""
+    return render_template('sequence_integrated.html')
+
+
+@sequence_bp.route('/v2')
+def sequence_v2_page():
+    """Render the legacy sequence management page (v2)."""
     return render_template('sequence_v2.html')
+
+
+@sequence_bp.route('/v3')
+def sequence_v3_page():
+    """Render the new Geneious-style sequence management page (v3)."""
+    return render_template('sequence_v3.html')
 
 
 @sequence_bp.route('/import', methods=['POST'])

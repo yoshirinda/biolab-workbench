@@ -558,6 +558,8 @@ def delete_sequence_feature(path, sequence_id, feature_id):
         return False, None, str(e)
 
 # Feature type definitions (Geneious-like)
+import shutil
+
 FEATURE_TYPES = [
     {'id': 'CDS', 'name': 'CDS (Coding Sequence)', 'color': '#4CAF50'},
     {'id': 'gene', 'name': 'Gene', 'color': '#2196F3'},
@@ -576,3 +578,78 @@ FEATURE_TYPES = [
 def get_feature_types():
     """Get list of available feature types."""
     return FEATURE_TYPES
+
+def move_folder(source_path, dest_parent_path):
+    """
+    Move a folder or project to a new parent directory.
+    source_path: relative path of the folder to move (e.g. "folder/subfolder")
+    dest_parent_path: relative path of the new parent (e.g. "archive"). Use "" or "." for root.
+    """
+    source_normalized = _posix_path(source_path)
+    dest_normalized = _posix_path(dest_parent_path) if dest_parent_path else ""
+    
+    if '..' in source_normalized or '..' in dest_normalized:
+        return False, "Invalid path"
+
+    full_source = _to_fs_path(source_normalized)
+    full_dest_parent = _to_fs_path(dest_normalized) if dest_normalized else get_projects_dir()
+    
+    if not os.path.exists(full_source):
+        return False, "Source folder not found"
+    
+    folder_name = os.path.basename(full_source)
+    full_dest = os.path.join(full_dest_parent, folder_name)
+    
+    if os.path.exists(full_dest):
+        return False, "Destination folder already exists"
+        
+    try:
+        shutil.move(full_source, full_dest)
+        return True, "Folder moved successfully"
+    except Exception as e:
+        logger.error(f"Failed to move folder: {e}")
+        return False, str(e)
+
+def copy_sequence(source_project_path, sequence_id, dest_project_path):
+    """
+    Copy a sequence from one project to another.
+    """
+    success, source_data, msg = get_project(source_project_path)
+    if not success:
+        return False, f"Source project error: {msg}"
+    
+    # Find sequence
+    sequence = next((s for s in source_data.get('sequences', []) if s['id'] == sequence_id), None)
+    if not sequence:
+        return False, "Sequence not found"
+        
+    # Add to dest
+    # We create a deep copy of the sequence to avoid reference issues
+    import copy
+    new_sequence = copy.deepcopy(sequence)
+    
+    # If copying to same project, append " Copy" to ID/Name
+    if source_project_path == dest_project_path:
+         new_sequence['id'] = f"{new_sequence['id']}_copy"
+         new_sequence['description'] = f"{new_sequence.get('description', '')} (Copy)"
+
+    return add_sequences_to_project(dest_project_path, [new_sequence])
+
+def move_sequence(source_project_path, sequence_id, dest_project_path):
+    """
+    Move a sequence from one project to another.
+    """
+    # 1. Copy
+    success, data, msg = copy_sequence(source_project_path, sequence_id, dest_project_path)
+    if not success:
+        return False, msg
+    
+    # 2. Delete from source
+    # Only if copy was successful and it's not the same project (though copy logic handles same project by renaming, moving in same project is basically a no-op or rename, but let's allow the delete for consistency if requested, though typically move in same project is weird unless it's reordering which we don't support yet. Actually, let's just delete.)
+    if source_project_path != dest_project_path:
+        del_success, del_data, del_msg = remove_sequence_from_project(source_project_path, sequence_id)
+        if not del_success:
+            return False, f"Copied but failed to delete from source: {del_msg}"
+            
+    return True, "Sequence moved successfully"
+

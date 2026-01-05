@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}序列管理 v3 - BioLab Workbench{% endblock %}
+
+{% block head %}
+{{ super() }}
+<!-- 新的UI组件样式 -->
+<link rel="stylesheet" href="/static/css/ui-components.css">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid h-100" style="padding-top: 1rem; padding-bottom: 1rem;">
+    <div class="row h-100">
+        <!-- Left Panel: Project Tree -->
+        <div class="col-lg-3 h-100 d-flex flex-column">
+            <div class="card flex-grow-1 d-flex flex-column">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">项目库</h5>
+                    <div>
+                        <button class="btn btn-sm btn-primary me-2" onclick="window.bioLabApp.projectTree.showNewProjectModal()">
+                            <i class="bi bi-plus-circle"></i> 新建项目
+                        </button>
+                        <button class="btn btn-sm btn-secondary" onclick="window.bioLabApp.projectTree.showNewFolderModal()">
+                            <i class="bi bi-folder-plus"></i> 新建文件夹
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body flex-grow-1 overflow-auto" id="projectTreeContainer">
+                    <!-- Project tree will be rendered here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Middle Panel: File Uploader -->
+        <div class="col-lg-4 h-100 d-flex flex-column">
+            <div class="card flex-grow-1 d-flex flex-column">
+                <div class="card-header">
+                    <h5 class="mb-0">文件上传</h5>
+                </div>
+                <div class="card-body d-flex flex-column" id="fileUploaderContainer">
+                    <!-- File uploader will be rendered here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Sequence Viewer -->
+        <div class="col-lg-5 h-100 d-flex flex-column">
+            <div class="card flex-grow-1 d-flex flex-column">
+                <div class="card-header">
+                    <h5 class="mb-0">序列查看器</h5>
+                </div>
+                <div class="card-body flex-grow-1 overflow-auto" id="sequenceViewerContainer">
+                    <!-- Sequence viewer will be rendered here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 新的前端库 (优化后) -->
+<script src="/static/js/lib/ui-helpers.js"></script>
+<script src="/static/js/lib/api-client.js"></script>
+<script src="/static/js/lib/base-component.js"></script>
+
+<!-- 原有Scripts (保持向后兼容) -->
+<script src="/static/js/sequence-manager.js"></script>
+<script src="/static/js/project-tree.js"></script>
+<script src="/static/js/file-uploader.js"></script>
+<script src="/static/js/sequence-viewer.js"></script>
+<script src="/static/js/ove-editor.js"></script>
+<script src="/static/js/main.js"></script>
+{% endblock %}
