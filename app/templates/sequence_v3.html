@@ -1,566 +1,72 @@
 {% extends "base.html" %}
 
+{% block title %}序列管理 v3 - BioLab Workbench{% endblock %}
+
 {% block head %}
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
-
-:root {
-    --primary: #2563eb;
-    --secondary: #6c757d;
-    --success: #52c41a;
-    --warning: #fadb14;
-    --danger: #dc3545;
-    --info: #17a2b8;
-    --light: #f8f9fa;
-    --dark: #1a1a2e;
-    --border: #dee2e6;
-    --background: #ffffff;
-    --surface: #f8f9fa;
-    --text: #374151;
-    --text-muted: #6c757d;
-    --text-light: #495057;
-}
-
-body {
-    background: linear-gradient(135deg, #f5f7fa 0%, #e8eaf6 100%);
-    font-family: 'Space Grotesk', 'IBM Plex Sans', sans-serif;
-    color: var(--text);
-    line-height: 1.6;
-    margin: 0;
-    padding: 0;
-}
-
-/* Layout */
-.app-layout {
-    display: grid;
-    grid-template-columns: 280px 1fr 320px;
-    gap: 16px;
-    height: calc(100vh - 60px);
-    padding: 16px;
-    background: var(--background);
-}
-
-/* Panels */
-.panel {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-}
-
-.panel-header {
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
-    background: var(--light);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.panel-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text);
-    margin: 0;
-}
-
-.panel-actions {
-    display: flex;
-    gap: 8px;
-}
-
-/* Buttons */
-.btn {
-    padding: 6px 12px;
-    border: none;
-    border-radius: 6px;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    text-decoration: none;
-}
-
-.btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
-}
-
-.btn-sm {
-    padding: 4px 8px;
-    font-size: 12px;
-}
-
-.btn-primary {
-    background: var(--primary);
-    color: white;
-}
-
-.btn-primary:hover {
-    background: #1a4e80;
-}
-
-.btn-secondary {
-    background: var(--surface);
-    color: var(--text);
-    border: 1px solid var(--border);
-}
-
-.btn-secondary:hover {
-    background: var(--light);
-}
-
-.btn-outline-primary {
-    background: transparent;
-    color: var(--primary);
-    border: 1px solid var(--primary);
-}
-
-.btn-outline-primary:hover {
-    background: var(--primary);
-    color: white;
-}
-
-.btn-outline-secondary {
-    background: transparent;
-    color: var(--text);
-    border: 1px solid var(--border);
-}
-
-.btn-outline-secondary:hover {
-    background: var(--light);
-}
-
-.btn-danger {
-    background: var(--danger);
-    color: white;
-}
-
-/* Tree */
-.tree-container {
-    height: 100%;
-    overflow-y: auto;
-}
-
-.tree-node {
-    padding: 8px 12px;
-    border-radius: 6px;
-    margin: 2px 0;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border-left: 3px solid transparent;
-}
-
-.tree-node:hover {
-    background: var(--light);
-    border-left-color: var(--primary);
-}
-
-.tree-node.selected {
-    background: var(--primary);
-    color: white;
-    border-left-color: var(--primary);
-}
-
-.tree-content {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: 1;
-}
-
-.tree-icon {
-    width: 16px;
-    height: 16px;
-    color: var(--text-muted);
-}
-
-.tree-info {
-    flex: 1;
-    min-width: 0;
-}
-
-.tree-name {
-    font-weight: 500;
-    color: var(--text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.tree-meta {
-    font-size: 12px;
-    color: var(--text-muted);
-}
-
-.tree-actions {
-    display: flex;
-    gap: 4px;
-}
-
-/* Upload Area */
-.upload-area {
-    border: 2px dashed var(--border);
-    border-radius: 8px;
-    padding: 32px;
-    text-align: center;
-    background: var(--light);
-    transition: all 0.2s ease;
-}
-
-.upload-area:hover {
-    border-color: var(--primary);
-    background: var(--surface);
-}
-
-.upload-area.dragover {
-    border-color: var(--primary);
-    background: var(--surface);
-}
-
-.upload-icon {
-    width: 48px;
-    height: 48px;
-    margin-bottom: 16px;
-    color: var(--text-muted);
-}
-
-.upload-text h4 {
-    margin: 0 0 8px;
-    color: var(--text);
-}
-
-.upload-text p {
-    margin: 0;
-    color: var(--text-muted);
-    font-size: 14px;
-}
-
-.file-input {
-    display: none;
-}
-
-/* Progress */
-.upload-progress {
-    margin-top: 16px;
-}
-
-.progress-bar {
-    height: 4px;
-    background: var(--border);
-    border-radius: 2px;
-    overflow: hidden;
-}
-
-.progress-fill {
-    height: 100%;
-    background: var(--primary);
-    transition: width 0.3s ease;
-}
-
-.progress-text {
-    font-size: 12px;
-    color: var(--text);
-    text-align: center;
-    margin-top: 8px;
-}
-
-/* Sequence Viewer */
-.sequence-viewer {
-    height: 100%;
-    overflow-y: auto;
-}
-
-.viewer-header {
-    padding: 16px;
-    border-bottom: 1px solid var(--border);
-    background: var(--light);
-}
-
-.viewer-title {
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--text);
-}
-
-.viewer-stats {
-    display: flex;
-    gap: 16px;
-    font-size: 14px;
-}
-
-.stat-item {
-    color: var(--text-muted);
-}
-
-.stat-item strong {
-    color: var(--text);
-}
-
-.viewer-content {
-    padding: 16px;
-    height: calc(100% - 140px);
-    overflow-y: auto;
-}
-
-.no-sequence-message {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    color: var(--text-muted);
-    text-align: center;
-}
-
-.no-sequence-message i {
-    font-size: 48px;
-    margin-bottom: 16px;
-    color: var(--text-muted);
-}
-
-.sequence-text-container {
-    background: var(--light);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 16px;
-    max-height: 400px;
-    overflow-y: auto;
-}
-
-.sequence-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-}
-
-.sequence-text {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 12px;
-    line-height: 1.4;
-    color: var(--text);
-    white-space: pre;
-    overflow-x: auto;
-}
-
-/* Tools */
-.viewer-tools {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-}
-
-.tool-section h4 {
-    margin: 0 0 8px;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text);
-}
-
-.tool-buttons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-
-/* OVE Editor */
-.ove-editor {
-    height: 100%;
-    min-height: 400px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-}
-
-.editor-loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 200px;
-}
-
-.loading-spinner {
-    width: 32px;
-    height: 32px;
-    border: 3px solid var(--border);
-    border-top: 3px solid var(--primary);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-/* Messages */
-.message {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    z-index: 1000;
-    padding: 12px 16px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    max-width: 300px;
-}
-
-.message.success {
-    background: var(--success);
-    color: white;
-    border-left: 4px solid var(--success);
-}
-
-.message.error {
-    background: var(--danger);
-    color: white;
-    border-left: 4px solid var(--danger);
-}
-
-.message.info {
-    background: var(--info);
-    color: white;
-    border-left: 4px solid var(--info);
-}
-
-/* Modal */
-.modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.modal-content {
-    background: var(--surface);
-    border-radius: 12px;
-    padding: 24px;
-    max-width: 500px;
-    width: 90%;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-}
-
-.modal-content h3 {
-    margin: 0 0 16px;
-    color: var(--text);
-}
-
-.modal-actions {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-    margin-top: 24px;
-}
-
-/* Responsive */
-@media (max-width: 1200px) {
-    .app-layout {
-        grid-template-columns: 240px 1fr 280px;
-        gap: 12px;
-        padding: 12px;
-    }
-}
-
-@media (max-width: 768px) {
-    .app-layout {
-        grid-template-columns: 1fr;
-        gap: 12px;
-        padding: 12px;
-    }
-    
-    .panel {
-        border-radius: 8px;
-    }
-    
-    .tree-meta {
-        font-size: 11px;
-    }
-    
-    .tool-buttons {
-        flex-direction: column;
-        gap: 6px;
-    }
-}
-</style>
+{{ super() }}
+<!-- 新的UI组件样式 -->
+<link rel="stylesheet" href="/static/css/ui-components.css">
 {% endblock %}
 
 {% block content %}
-<div class="app-layout">
-    <!-- Left Panel: Project Tree -->
-    <div class="panel">
-        <div class="panel-header">
-            <div class="panel-title">项目库</div>
-            <div class="panel-actions">
-                <button class="btn btn-sm btn-primary" onclick="window.bioLabApp.projectTree.showNewProjectModal()">
-                    <i class="bi bi-plus-circle"></i> 新建项目
-                </button>
-                <button class="btn btn-sm btn-secondary" onclick="window.bioLabApp.projectTree.showNewFolderModal()">
-                    <i class="bi bi-folder-plus"></i> 新建文件夹
-                </button>
-            </div>
-        </div>
-        <div class="tree-container" id="projectTreeContainer">
-            <!-- Project tree will be rendered here -->
-        </div>
-    </div>
-
-    <!-- Middle Panel: File Uploader -->
-    <div class="panel">
-        <div class="panel-header">
-            <div class="panel-title">文件上传</div>
-        </div>
-        <div class="upload-area" id="fileUploaderContainer">
-            <div class="upload-icon">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                    <path d="M14 2v6h20v12H14z"/>
-                    <path d="M20 12h4v4h-4v-4H20z"/>
-                    <circle cx="12" cy="12" r="2"/>
-                </svg>
-            </div>
-            <div class="upload-text">
-                <h4>拖拽文件到此处</h4>
-                <p>或点击选择文件</p>
-                <p class="upload-hint">支持 .gb, .fasta, .fa, .fna, .dna 等格式</p>
-            </div>
-            <input type="file" id="fileInput" class="file-input" multiple accept=".gb,.genbank,.fasta,.fa,.faa,.fna,.dna" />
-            <button class="btn btn-primary" id="uploadButton">
-                <i class="bi bi-upload"></i> 选择文件上传
-            </button>
-            <div class="upload-progress" id="uploadProgress" style="display: none;">
-                <div class="progress-bar">
-                    <div class="progress-fill" id="progressFill"></div>
+<div class="container-fluid h-100" style="padding-top: 1rem; padding-bottom: 1rem;">
+    <div class="row h-100">
+        <!-- Left Panel: Project Tree -->
+        <div class="col-lg-3 h-100 d-flex flex-column">
+            <div class="card flex-grow-1 d-flex flex-column">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">项目库</h5>
+                    <div>
+                        <button class="btn btn-sm btn-primary me-2" onclick="window.bioLabApp.projectTree.showNewProjectModal()">
+                            <i class="bi bi-plus-circle"></i> 新建项目
+                        </button>
+                        <button class="btn btn-sm btn-secondary" onclick="window.bioLabApp.projectTree.showNewFolderModal()">
+                            <i class="bi bi-folder-plus"></i> 新建文件夹
+                        </button>
+                    </div>
                 </div>
-                <div class="progress-text" id="progressText">上传中...</div>
+                <div class="card-body flex-grow-1 overflow-auto" id="projectTreeContainer">
+                    <!-- Project tree will be rendered here -->
+                </div>
             </div>
         </div>
-    </div>
 
-    <!-- Right Panel: Sequence Viewer -->
-    <div class="panel">
-        <div class="panel-header">
-            <div class="panel-title">序列查看器</div>
+        <!-- Middle Panel: File Uploader -->
+        <div class="col-lg-4 h-100 d-flex flex-column">
+            <div class="card flex-grow-1 d-flex flex-column">
+                <div class="card-header">
+                    <h5 class="mb-0">文件上传</h5>
+                </div>
+                <div class="card-body d-flex flex-column" id="fileUploaderContainer">
+                    <!-- File uploader will be rendered here -->
+                </div>
+            </div>
         </div>
-        <div class="sequence-viewer" id="sequenceViewerContainer">
-            <!-- Sequence viewer will be rendered here -->
+
+        <!-- Right Panel: Sequence Viewer -->
+        <div class="col-lg-5 h-100 d-flex flex-column">
+            <div class="card flex-grow-1 d-flex flex-column">
+                <div class="card-header">
+                    <h5 class="mb-0">序列查看器</h5>
+                </div>
+                <div class="card-body flex-grow-1 overflow-auto" id="sequenceViewerContainer">
+                    <!-- Sequence viewer will be rendered here -->
+                </div>
+            </div>
         </div>
     </div>
 </div>
 
-<!-- Scripts -->
+<!-- 新的前端库 (优化后) -->
+<script src="/static/js/lib/ui-helpers.js"></script>
+<script src="/static/js/lib/api-client.js"></script>
+<script src="/static/js/lib/base-component.js"></script>
+
+<!-- 原有Scripts (保持向后兼容) -->
 <script src="/static/js/sequence-manager.js"></script>
 <script src="/static/js/project-tree.js"></script>
 <script src="/static/js/file-uploader.js"></script>
 <script src="/static/js/sequence-viewer.js"></script>
 <script src="/static/js/ove-editor.js"></script>
 <script src="/static/js/main.js"></script>
-
 {% endblock %}

@@ -2,9 +2,13 @@
 Sequence processing utilities for BioLab Workbench.
 """
 import re
+import io
+import os
+import json
+from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqUtils import gc_fraction, molecular_weight
-
+import config
 
 # Standard codon table
 CODON_TABLE = {
@@ -29,24 +33,29 @@ CODON_TABLE = {
 # Amino acid specific characters (not in DNA/RNA)
 AA_ONLY_CHARS = set('EFILPQ')
 
-# Common gene ID patterns for plants and model organisms (compiled at module level)
-# Pattern examples: Mp3g11110.1, AT1G01010.1, Os01g0100100, Zm00001d002345, etc.
-GENE_ID_PATTERN = re.compile(
-    r'\b('
-    r'[A-Za-z]{2,4}\d+g\d+(?:\.\d+)?|'   # Mp3g11110.1, AT1G01010.1
-    r'[A-Za-z]{2,10}\d{2,}(?:\.\d+)?|'      # ATCG00280.1, generic letters+digits(+version)
-    r'Os\d{2}g\d{7}|'                        # Os01g0100100 (Rice)
-    r'LOC_Os\d{2}g\d{5}(?:\.\d+)?|'        # LOC_Os01g01010.1
-    r'GRMZM\d+G\d+(?:_[A-Z]\d+)?|'          # GRMZM2G001000 (Maize)
-    r'Solyc\d{2}g\d{6}(?:\.\d+)?|'         # Solyc01g001000.1 (Tomato)
-    r'Potri\.\d{3}G\d{6}(?:\.\d+)?|'      # Potri.001G001000.1 (Poplar)
-    r'Pp\d+s\d+(?:\.\d+)?|'                # Pp3c1_12345 (Physcomitrella)
-    r'[A-Za-z]\d+\.\d+|'                    # Generic: A12345.1
-    r'[A-Za-z]{1,6}_[A-Za-z0-9]+|'             # Gene_Name format
-    r'[A-Z][a-z]{0,4}\d+[gG]\d+(?:\.\d+)?' # General gene format
-    r')\b'
-)
+# Pre-compiled Regex Patterns
+GENE_ID_PATTERN = re.compile(r'([a-zA-Z0-9]+[\w.-]*)')
+KV_PAIR_PATTERN = re.compile(r'(\w+)=([\w.:-]+)')
+TOKEN_SPLIT_PATTERN = re.compile(r'[\s,;|]+')
+VERSION_SUFFIX_PATTERN = re.compile(r'[._-]v?\d+$')
 
+SOURCE_FASTA_LIBRARY_FILE = os.path.join(config.UPLOADS_DIR, 'source_fasta_library.json')
+
+def load_source_fasta_library():
+    """Load the source FASTA library from disk."""
+    if os.path.exists(SOURCE_FASTA_LIBRARY_FILE):
+        try:
+            with open(SOURCE_FASTA_LIBRARY_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+def save_source_fasta_library(entries):
+    """Save the source FASTA library to disk."""
+    os.makedirs(os.path.dirname(SOURCE_FASTA_LIBRARY_FILE), exist_ok=True)
+    with open(SOURCE_FASTA_LIBRARY_FILE, 'w', encoding='utf-8') as f:
+        json.dump(entries, f, ensure_ascii=False, indent=2)
 
 def detect_sequence_type(sequence):
     """
@@ -68,9 +77,76 @@ def detect_sequence_type(sequence):
     return 'nucleotide'
 
 
+def parse_upload_file(content: bytes, filename: str):
+    """
+    Parse uploaded file content using Biopython.
+    Supports FASTA, GenBank, and SnapGene (if Biopython supports it or via extension).
+    Returns list of sequence dictionaries.
+    """
+    filename = filename.lower()
+    sequences = []
+    
+    # Determine format based on extension
+    fmt = 'fasta' # default
+    if filename.endswith(('.gb', '.gbk', '.genbank')):
+        fmt = 'genbank'
+    elif filename.endswith('.dna'):
+        fmt = 'snapgene' # Bio.SeqIO might need 'snapgene' plugin or treat as binary
+    
+    try:
+        # Use StringIO for text formats, BytesIO for binary might be needed for some
+        # Biopython's SeqIO.parse takes a handle.
+        
+        handle = io.StringIO(content.decode('utf-8')) if fmt in ['fasta', 'genbank'] else io.BytesIO(content)
+        
+        # SnapGene support in Biopython is strictly speaking 'snapgene' in recent versions
+        # If not, we might fail. Let's stick to standard formats first.
+        
+        for record in SeqIO.parse(handle, fmt):
+            # Extract features
+            features = []
+            for f in record.features:
+                qualifiers = {}
+                for k, v in f.qualifiers.items():
+                    # Flatten lists to strings if len 1
+                    qualifiers[k] = v[0] if len(v) == 1 else v
+                    
+                features.append({
+                    'type': f.type,
+                    'start': int(f.location.start) + 1, # Convert 0-based to 1-based
+                    'end': int(f.location.end),
+                    'strand': '+' if f.location.strand != -1 else '-',
+                    'label': qualifiers.get('label') or qualifiers.get('gene') or qualifiers.get('note') or f.type,
+                    'color': '#4CAF50', # Default color
+                    'qualifiers': qualifiers
+                })
+            
+            sequences.append({
+                'id': record.id,
+                'description': record.description,
+                'sequence': str(record.seq),
+                'type': 'nucleotide', # GenBank usually nucleotide
+                'length': len(record.seq),
+                'annotation': '',
+                'features': features
+            })
+            
+    except Exception as e:
+        print(f"Error parsing {fmt}: {e}")
+        # Fallback to simple FASTA if parsing fails and it looks like text
+        try:
+            text = content.decode('utf-8')
+            if text.strip().startswith('>'):
+                return parse_fasta(text)
+        except:
+            pass
+        return []
+
+    return sequences
+
 def parse_fasta(text):
     """
-    Parse FASTA format text into list of (id, description, sequence) tuples.
+    Parse FASTA format text into list of sequence dicts.
     """
     sequences = []
     current_id = None
@@ -81,7 +157,15 @@ def parse_fasta(text):
         line = line.strip()
         if line.startswith('>'):
             if current_id is not None:
-                sequences.append((current_id, current_desc, ''.join(current_seq)))
+                seq_str = ''.join(current_seq)
+                sequences.append({
+                    'id': current_id,
+                    'description': current_desc,
+                    'sequence': seq_str,
+                    'type': detect_sequence_type(seq_str),
+                    'length': len(seq_str),
+                    'features': []
+                })
             header_parts = line[1:].split(None, 1)
             current_id = header_parts[0] if header_parts else ''
             current_desc = header_parts[1] if len(header_parts) > 1 else ''
@@ -90,7 +174,15 @@ def parse_fasta(text):
             current_seq.append(line)
 
     if current_id is not None:
-        sequences.append((current_id, current_desc, ''.join(current_seq)))
+        seq_str = ''.join(current_seq)
+        sequences.append({
+            'id': current_id,
+            'description': current_desc,
+            'sequence': seq_str,
+            'type': detect_sequence_type(seq_str),
+            'length': len(seq_str),
+            'features': []
+        })
 
     return sequences
 
@@ -294,8 +386,7 @@ def normalize_gene_id(gene_id):
     normalized = original.lower()
     
     # Remove version suffix (e.g., .1, .2, etc.)
-    # Common patterns: .1, .2, _v1, -1, etc.
-    normalized = re.sub(r'[._-]v?\d+$', '', normalized)
+    normalized = VERSION_SUFFIX_PATTERN.sub('', normalized)
     
     return (normalized, original)
 
@@ -326,7 +417,7 @@ def parse_gene_ids_from_text(text):
             continue
 
         # Collect IDs from key=value pairs first
-        kv_pairs = re.findall(r'(\w+)=([\w.:-]+)', line)
+        kv_pairs = KV_PAIR_PATTERN.findall(line)
         for key, val in kv_pairs:
             if key.lower() in ['id', 'locus', 'gene', 'transcript', 'mrna', 'protein', 'pacid']:
                 match = GENE_ID_PATTERN.search(val)
@@ -352,7 +443,7 @@ def parse_gene_ids_from_text(text):
             continue
 
         # Fallback: split by whitespace or comma and test tokens
-        tokens = re.split(r'[\s,;|]+', line)
+        tokens = TOKEN_SPLIT_PATTERN.split(line)
         for token in tokens:
             token = token.strip()
             if not token:
@@ -374,6 +465,38 @@ def parse_gene_ids_from_text(text):
     return unique_ids
 
 
+def _parse_header_ids(header):
+    """
+    Helper to extract all possible IDs from a FASTA header line.
+    """
+    header_ids = set()
+    parts = header.split(None, 1)
+    if not parts:
+        return header_ids
+        
+    primary_id = parts[0]
+    header_ids.add(primary_id)
+
+    if len(parts) > 1:
+        tail = parts[1]
+        # Key=value pairs
+        for key, value in KV_PAIR_PATTERN.findall(tail):
+            if key.lower() in ['locus', 'id', 'gene', 'pacid', 'transcript', 'mrna', 'protein']:
+                header_ids.add(value)
+
+        # Token split for other IDs
+        for token in TOKEN_SPLIT_PATTERN.split(tail):
+            token = token.strip()
+            if not token:
+                continue
+            # Strip trailing punctuation often found in descriptions
+            token = token.strip(',;.:')
+            if GENE_ID_PATTERN.search(token):
+                header_ids.add(token)
+                
+    return header_ids
+
+
 def extract_sequences_fuzzy(source_fasta, gene_ids, output_file=None):
     """
     Extract sequences from a FASTA file using fuzzy matching.
@@ -382,7 +505,7 @@ def extract_sequences_fuzzy(source_fasta, gene_ids, output_file=None):
     - Exact match
     - Case-insensitive matching
     - Version suffix agnostic matching (Mp3g11110 matches Mp3g11110.1)
-    - Matching against common identifiers in the header (locus, id, gene, pacid, transcript)
+    - Matching against common identifiers in the header
     
     Args:
         source_fasta: Path to source FASTA file
@@ -390,13 +513,7 @@ def extract_sequences_fuzzy(source_fasta, gene_ids, output_file=None):
         output_file: Optional output file path
     
     Returns:
-        dict: {
-            'success': bool,
-            'sequences': list of (id, sequence) tuples,
-            'matched': list of matched IDs,
-            'unmatched': list of IDs that weren't found,
-            'output_file': path if written
-        }
+        dict: Result dictionary
     """
     if not gene_ids:
         return {
@@ -409,7 +526,8 @@ def extract_sequences_fuzzy(source_fasta, gene_ids, output_file=None):
     
     # Build fuzzy index for requested gene IDs
     fuzzy_index = {}
-    original_ids = set(gene_ids)
+    original_ids_set = set(gene_ids)
+    
     for gid in gene_ids:
         normalized, original = normalize_gene_id(gid)
         if normalized:
@@ -422,59 +540,45 @@ def extract_sequences_fuzzy(source_fasta, gene_ids, output_file=None):
     try:
         with open(source_fasta, 'r', encoding='utf-8') as f:
             current_header = None
-            current_seq = []
+            current_seq_parts = []
             
-            def process_sequence():
+            def process_current_sequence():
                 if current_header is None:
                     return
 
-                # Extract all possible IDs from the header
-                header_ids = set()
-                parts = current_header.split(None, 1)
-                primary_id = parts[0]
-                header_ids.add(primary_id)
-
-                tail = parts[1] if len(parts) > 1 else ''
-                # Key=value pairs
-                for key, value in re.findall(r'(\w+)=([\w.:-]+)', tail):
-                    if key.lower() in ['locus', 'id', 'gene', 'pacid', 'transcript', 'mrna', 'protein']:
-                        header_ids.add(value)
-
-                # Also split tail into tokens for plain IDs (handles headers like ">id desc")
-                for token in re.split(r'[\s,;|]+', tail):
-                    token = token.strip()
-                    if not token:
-                        continue
-                    # Strip trailing commas/semicolons
-                    token = token.strip(',;')
-                    if GENE_ID_PATTERN.search(token):
-                        header_ids.add(token)
-
+                header_ids = _parse_header_ids(current_header)
+                
                 # Check for a match
+                match_found = False
                 for hid in header_ids:
                     # Exact match
-                    if hid in original_ids:
-                        extracted.append((current_header, ''.join(current_seq)))
+                    if hid in original_ids_set:
                         matched_ids.add(hid)
-                        return
-                    # Fuzzy match
-                    norm_hid, _ = normalize_gene_id(hid)
-                    if norm_hid in fuzzy_index:
-                        extracted.append((current_header, ''.join(current_seq)))
-                        matched_ids.add(fuzzy_index[norm_hid])
-                        return
+                        match_found = True
+                    else:
+                        # Fuzzy match
+                        norm_hid, _ = normalize_gene_id(hid)
+                        if norm_hid in fuzzy_index:
+                            matched_ids.add(fuzzy_index[norm_hid])
+                            match_found = True
+                    
+                    if match_found:
+                        break
+                
+                if match_found:
+                    extracted.append((current_header, ''.join(current_seq_parts)))
 
             for line in f:
                 line = line.strip()
                 if line.startswith('>'):
-                    process_sequence()
+                    process_current_sequence()
                     current_header = line[1:]
-                    current_seq = []
+                    current_seq_parts = []
                 elif line:
-                    current_seq.append(line)
+                    current_seq_parts.append(line)
             
             # Handle last sequence
-            process_sequence()
+            process_current_sequence()
 
     except Exception as e:
         return {

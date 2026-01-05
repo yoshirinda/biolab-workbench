@@ -133,8 +133,11 @@ class SequenceViewer {
             // 更新界面
             this.updateSequenceDisplay();
             
-            // 初始化 OVE 编辑器
-            this.initOVEEditor(sequence);
+            // 临时禁用 OVE 初始化，避免加载错误导致页面异常
+            // this.initOVEEditor(sequence);
+
+            // 显示友好提示，表明图形编辑器开发中
+            this.showOVEPlaceholder();
             
             // 通知外部
             if (this.onSequenceUpdate) {

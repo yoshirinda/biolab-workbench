@@ -43,6 +43,9 @@ def create_app():
     from app.routes.docs import docs_bp
     from app.routes.pipeline import pipeline_bp
     from app.routes.database import database_bp
+    
+    # Register new API blueprints (优化后的API)
+    from app.api import api_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(sequence_bp, url_prefix='/sequence')
@@ -54,6 +57,9 @@ def create_app():
     app.register_blueprint(docs_bp, url_prefix='/docs')
     app.register_blueprint(pipeline_bp, url_prefix='/pipeline')
     app.register_blueprint(database_bp, url_prefix='/database')
+    
+    # 注册新的优化API
+    app.register_blueprint(api_bp)
 
     # Return JSON for API-style requests to avoid HTML breaking fetch()
     @app.errorhandler(Exception)

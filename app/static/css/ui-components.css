@@ -1,0 +1,364 @@
+/**
+ * UI组件样式 - 统一的UI组件样式
+ */
+
+/* ========== 消息提示 ========== */
+.ui-message {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10000;
+    min-width: 300px;
+    max-width: 500px;
+    padding: 0;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    opacity: 0;
+    transform: translateX(400px);
+    transition: all 0.3s ease;
+}
+
+.ui-message.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.ui-message-content {
+    display: flex;
+    align-items: center;
+    padding: 16px;
+    gap: 12px;
+}
+
+.ui-message-icon {
+    font-size: 24px;
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+.ui-message-text {
+    flex: 1;
+    color: #333;
+}
+
+.ui-message-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    color: #999;
+    cursor: pointer;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.ui-message-close:hover {
+    color: #333;
+}
+
+/* 消息类型 */
+.ui-message-success {
+    border-left: 4px solid #52c41a;
+}
+
+.ui-message-success .ui-message-icon {
+    color: #52c41a;
+}
+
+.ui-message-error {
+    border-left: 4px solid #ff4d4f;
+}
+
+.ui-message-error .ui-message-icon {
+    color: #ff4d4f;
+}
+
+.ui-message-warning {
+    border-left: 4px solid #faad14;
+}
+
+.ui-message-warning .ui-message-icon {
+    color: #faad14;
+}
+
+.ui-message-info {
+    border-left: 4px solid #1890ff;
+}
+
+.ui-message-info .ui-message-icon {
+    color: #1890ff;
+}
+
+/* ========== 加载指示器 ========== */
+.ui-loader {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.ui-loader.show {
+    opacity: 1;
+}
+
+.ui-loader-content {
+    background: white;
+    padding: 32px;
+    border-radius: 8px;
+    text-align: center;
+    min-width: 200px;
+}
+
+.ui-loader-spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #1890ff;
+    border-radius: 50%;
+    margin: 0 auto 16px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.ui-loader-text {
+    color: #666;
+    font-size: 14px;
+}
+
+/* ========== 模态框 ========== */
+.ui-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9998;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.ui-modal.show {
+    opacity: 1;
+}
+
+.ui-modal.show .ui-modal-content {
+    transform: scale(1);
+}
+
+.ui-modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.ui-modal-content {
+    position: relative;
+    background: white;
+    border-radius: 8px;
+    min-width: 400px;
+    max-width: 600px;
+    max-height: 80vh;
+    overflow: auto;
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+}
+
+.ui-modal-header {
+    padding: 20px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.ui-modal-header h3 {
+    margin: 0;
+    font-size: 18px;
+    color: #333;
+}
+
+.ui-modal-body {
+    padding: 20px;
+}
+
+.ui-modal-body p {
+    margin: 0 0 16px 0;
+    color: #666;
+}
+
+.ui-modal-body input,
+.ui-modal-body textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #d9d9d9;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.ui-modal-footer {
+    padding: 16px 20px;
+    border-top: 1px solid #f0f0f0;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+/* ========== 组件状态 ========== */
+.component-loading,
+.component-error,
+.component-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    text-align: center;
+    color: #999;
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #1890ff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 16px;
+}
+
+.error-icon,
+.empty-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+}
+
+.error-icon {
+    color: #ff4d4f;
+}
+
+.component-error p,
+.component-empty p {
+    margin: 0 0 16px 0;
+    color: #666;
+}
+
+/* ========== 按钮样式 ========== */
+.btn {
+    display: inline-block;
+    padding: 8px 16px;
+    font-size: 14px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.3s ease;
+    outline: none;
+}
+
+.btn:hover {
+    opacity: 0.8;
+}
+
+.btn:active {
+    transform: scale(0.98);
+}
+
+.btn-primary {
+    background: #1890ff;
+    color: white;
+    border-color: #1890ff;
+}
+
+.btn-secondary {
+    background: white;
+    color: #666;
+    border-color: #d9d9d9;
+}
+
+.btn-success {
+    background: #52c41a;
+    color: white;
+    border-color: #52c41a;
+}
+
+.btn-danger {
+    background: #ff4d4f;
+    color: white;
+    border-color: #ff4d4f;
+}
+
+.btn-sm {
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+.btn-outline-primary {
+    background: white;
+    color: #1890ff;
+    border-color: #1890ff;
+}
+
+.btn-outline-secondary {
+    background: white;
+    color: #666;
+    border-color: #d9d9d9;
+}
+
+/* ========== 表单控件 ========== */
+.form-control {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #d9d9d9;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: border-color 0.3s ease;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: #1890ff;
+    box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: #333;
+    font-weight: 500;
+}
+
+/* ========== 响应式 ========== */
+@media (max-width: 768px) {
+    .ui-message {
+        right: 10px;
+        left: 10px;
+        min-width: auto;
+    }
+    
+    .ui-modal-content {
+        min-width: 300px;
+        margin: 0 20px;
+    }
+}
