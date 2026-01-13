@@ -7,7 +7,8 @@ from werkzeug.exceptions import HTTPException
 import config
 from app.core.blast_wrapper import (
     list_blast_databases, create_blast_database, run_blast,
-    extract_sequences, parse_blast_tsv, delete_blast_database
+    extract_sequences, parse_blast_tsv, delete_blast_database,
+    generate_identity_summary
 )
 from app.utils.file_utils import save_uploaded_file, resolve_input_file
 from app.utils.logger import get_app_logger
@@ -141,8 +142,12 @@ def search():
         if success:
             # Parse results for display
             hits = []
-            if output_format == 'tsv' and output_files.get('main'):
-                hits = parse_blast_tsv(output_files['main'])
+            identity_summary = None
+            
+            if output_format in ['tsv', 'detailed'] and output_files.get('main'):
+                format_type = 'detailed' if output_format == 'detailed' else 'standard'
+                hits = parse_blast_tsv(output_files['main'], format_type)
+                identity_summary = generate_identity_summary(hits)
 
             return jsonify({
                 'success': True,
@@ -150,6 +155,7 @@ def search():
                 'output_files': output_files,
                 'hits': hits[:100],  # First 100 for display
                 'total_hits': len(hits),
+                'identity_summary': identity_summary,
                 'command': command
             })
         else:

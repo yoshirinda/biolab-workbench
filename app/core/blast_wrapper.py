@@ -597,14 +597,25 @@ def extract_sequences(database, hit_ids, output_file):
         return False, f"Sequence extraction failed: {stderr}. No source FASTA available for fallback."
 
 
-def parse_blast_tsv(filepath):
+def parse_blast_tsv(filepath, format_type='standard'):
     """
     Parse BLAST TSV output file.
-    Returns list of hit dicts.
+    Returns list of hit dicts with identity classification.
+    
+    Args:
+        filepath: Path to TSV file
+        format_type: 'standard' or 'detailed'
     """
     hits = []
-    headers = ['qseqid', 'sseqid', 'pident', 'length', 'mismatch', 'gapopen',
-               'qstart', 'qend', 'sstart', 'send', 'evalue', 'bitscore']
+    
+    # Define headers based on format
+    if format_type == 'detailed':
+        headers = ['qseqid', 'sseqid', 'pident', 'length', 'mismatch', 'gapopen',
+                   'qstart', 'qend', 'sstart', 'send', 'evalue', 'bitscore',
+                   'qlen', 'slen', 'qcovs', 'stitle']
+    else:
+        headers = ['qseqid', 'sseqid', 'pident', 'length', 'mismatch', 'gapopen',
+                   'qstart', 'qend', 'sstart', 'send', 'evalue', 'bitscore']
     
     # Set of expected header field names for robust detection
     header_fields = set(headers)
@@ -620,10 +631,8 @@ def parse_blast_tsv(filepath):
             
             parts = line.split('\t')
             
-            # Skip header row if present - check if all fields match expected headers
-            # This handles both standard and detailed format headers
+            # Skip header row if present
             if parts and parts[0] in header_fields:
-                # Check if this looks like a header row (first few fields match headers)
                 first_fields = set(parts[:min(len(parts), 6)])
                 if first_fields <= header_fields.union({'qlen', 'slen', 'qcovs', 'stitle'}):
                     continue
@@ -632,6 +641,55 @@ def parse_blast_tsv(filepath):
             for i, header in enumerate(headers):
                 if i < len(parts):
                     hit[header] = parts[i]
+            
+            # Add identity classification
+            try:
+                pident = float(hit.get('pident', 0))
+                if pident >= 90:
+                    hit['identity_level'] = 'HIGH_ID'
+                    hit['identity_class'] = 'high'
+                elif pident >= 70:
+                    hit['identity_level'] = 'MEDIUM_ID'
+                    hit['identity_class'] = 'medium'
+                else:
+                    hit['identity_level'] = 'LOW_ID'
+                    hit['identity_class'] = 'low'
+            except (ValueError, TypeError):
+                hit['identity_level'] = 'UNKNOWN'
+                hit['identity_class'] = 'unknown'
+            
             hits.append(hit)
 
     return hits
+
+
+def generate_identity_summary(hits):
+    """
+    Generate identity level summary from BLAST hits.
+    Returns dict with counts and percentages.
+    """
+    if not hits:
+        return {
+            'total': 0,
+            'high': 0,
+            'medium': 0,
+            'low': 0,
+            'high_pct': 0,
+            'medium_pct': 0,
+            'low_pct': 0
+        }
+    
+    total = len(hits)
+    high = sum(1 for h in hits if h.get('identity_class') == 'high')
+    medium = sum(1 for h in hits if h.get('identity_class') == 'medium')
+    low = sum(1 for h in hits if h.get('identity_class') == 'low')
+    
+    return {
+        'total': total,
+        'high': high,
+        'medium': medium,
+        'low': low,
+        'high_pct': round(high / total * 100, 1) if total > 0 else 0,
+        'medium_pct': round(medium / total * 100, 1) if total > 0 else 0,
+        'low_pct': round(low / total * 100, 1) if total > 0 else 0
+    }

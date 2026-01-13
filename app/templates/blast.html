@@ -162,6 +162,29 @@
                     <!-- Command Display -->
                     <div id="commandDisplay" class="d-none"></div>
 
+                    <!-- Identity Summary -->
+                    <div id="identitySummary" class="d-none mb-3">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-title">Identity Distribution</h6>
+                                <div class="row text-center">
+                                    <div class="col-4">
+                                        <div class="badge bg-success fs-6" id="highIdBadge">0</div>
+                                        <div class="small text-muted">High (≥90%)</div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="badge bg-warning fs-6" id="mediumIdBadge">0</div>
+                                        <div class="small text-muted">Medium (70-90%)</div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="badge bg-secondary fs-6" id="lowIdBadge">0</div>
+                                        <div class="small text-muted">Low (<70%)</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div id="resultsTable" class="d-none">
                         <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
                             <table class="table table-sm table-hover">
@@ -171,6 +194,7 @@
                                         <th>Query</th>
                                         <th>Subject</th>
                                         <th>Identity</th>
+                                        <th>Length</th>
                                         <th>E-value</th>
                                         <th>Bit Score</th>
                                     </tr>
@@ -292,6 +316,22 @@
         }
     });
 
+    function displayIdentitySummary(summary) {
+        document.getElementById('identitySummary').classList.remove('d-none');
+        document.getElementById('highIdBadge').textContent = `${summary.high} (${summary.high_pct}%)`;
+        document.getElementById('mediumIdBadge').textContent = `${summary.medium} (${summary.medium_pct}%)`;
+        document.getElementById('lowIdBadge').textContent = `${summary.low} (${summary.low_pct}%)`;
+    }
+
+    function getIdentityBadgeClass(identityClass) {
+        const classes = {
+            'high': 'bg-success',
+            'medium': 'bg-warning',
+            'low': 'bg-secondary'
+        };
+        return classes[identityClass] || 'bg-secondary';
+    }
+
     function displayHits(hits, total) {
         const tbody = document.getElementById('hitsTableBody');
 
@@ -303,19 +343,25 @@
 
         document.getElementById('resultsTable').classList.remove('d-none');
 
-        tbody.innerHTML = hits.map((hit, idx) => `
+        tbody.innerHTML = hits.map((hit, idx) => {
+            const badgeClass = getIdentityBadgeClass(hit.identity_class);
+            const pident = parseFloat(hit.pident).toFixed(1);
+            
+            return `
             <tr>
                 <td><input type="checkbox" class="hit-checkbox" data-index="${idx}" data-id="${hit.sseqid}"></td>
                 <td>${hit.qseqid}</td>
                 <td title="${hit.sseqid}">${hit.sseqid.substring(0, 30)}...</td>
-                <td>${parseFloat(hit.pident).toFixed(1)}%</td>
+                <td><span class="badge ${badgeClass}">${pident}%</span></td>
+                <td>${hit.length || '-'}</td>
                 <td>${hit.evalue}</td>
                 <td>${parseFloat(hit.bitscore).toFixed(1)}</td>
             </tr>
-        `).join('');
+            `;
+        }).join('');
 
         if (total > hits.length) {
-            tbody.innerHTML += `<tr><td colspan="6" class="text-center text-muted">Showing ${hits.length} of ${total} hits</td></tr>`;
+            tbody.innerHTML += `<tr><td colspan="7" class="text-center text-muted">Showing ${hits.length} of ${total} hits</td></tr>`;
         }
     }
 
