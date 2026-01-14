@@ -14,10 +14,10 @@
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-        <div class="container">
+    <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom">
+        <div class="container-fluid">
             <a class="navbar-brand" href="/">
-                <i class="bi bi-broadcast"></i> BioLab Workbench
+                <i class="bi bi-broadcast text-primary"></i> BioLab Workbench
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -28,7 +28,7 @@
                         <a class="nav-link" href="{{ url_for('main.index') }}"><i class="bi bi-house"></i> Home</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('sequence.sequence_page') }}"><i class="bi bi-file-earmark-text"></i> Sequence</a>
+                        <a class="nav-link" href="{{ url_for('sequence.sequence_v3_page') }}"><i class="bi bi-file-earmark-text"></i> Sequence</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('blast.blast_page') }}"><i class="bi bi-search"></i> BLAST</a>
