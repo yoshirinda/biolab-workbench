@@ -321,7 +321,7 @@
                 }
 
                 // Show alignment statistics
-                displayAlignmentStats(data);
+                displayAlignmentStats(data.stats || data);
 
                 showAlert('success', 'Alignment completed');
             } else {
@@ -348,27 +348,27 @@
         }
     }
 
-    function displayAlignmentStats(data) {
-        if (data.sequence_count && data.alignment_length) {
+    function displayAlignmentStats(stats) {
+        if (stats && stats.num_sequences && stats.alignment_length) {
             const statsCard = document.getElementById('alignmentStatsCard');
             const statsDiv = document.getElementById('alignmentStats');
 
             statsDiv.innerHTML = `
                 <div class="col-md-4">
                     <div class="text-center p-3 bg-light rounded">
-                        <h4 class="text-primary">${data.sequence_count}</h4>
+                        <h4 class="text-primary">${stats.num_sequences}</h4>
                         <small class="text-muted">Sequences</small>
                     </div>
                 </div>
                 <div class="col-md-4">
                     <div class="text-center p-3 bg-light rounded">
-                        <h4 class="text-success">${data.alignment_length}</h4>
+                        <h4 class="text-success">${stats.alignment_length}</h4>
                         <small class="text-muted">Alignment Positions</small>
                     </div>
                 </div>
                 <div class="col-md-4">
                     <div class="text-center p-3 bg-light rounded">
-                        <h4 class="text-info">${data.tool || 'N/A'}</h4>
+                        <h4 class="text-info">${stats.tool || 'N/A'}</h4>
                         <small class="text-muted">Tool Used</small>
                     </div>
                 </div>

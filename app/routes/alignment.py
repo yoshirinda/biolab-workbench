@@ -81,7 +81,7 @@ def run():
         if request.form.get('matrix'):
             options['matrix'] = request.form.get('matrix')
 
-        success, result_dir, output_file, command = run_alignment(input_file, tool, options)
+        success, result_dir, output_file, stats = run_alignment(input_file, tool, options)
 
         if success:
             # Parse alignment for visualization
@@ -102,10 +102,11 @@ def run():
                 'sequence_count': len(sequences),
                 'alignment_length': len(sequences[0][1]) if sequences else 0,
                 'tool': tool,
-                'command': command
+                'command': stats.get('command', ''),
+                'stats': stats
             })
         else:
-            return jsonify({'success': False, 'error': result_dir, 'command': command})
+            return jsonify({'success': False, 'error': result_dir, 'command': stats.get('command', '')})
 
     except Exception as e:
         logger.error(f"Alignment error: {str(e)}")

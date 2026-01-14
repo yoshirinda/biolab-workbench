@@ -217,64 +217,70 @@ def run_muscle(input_file, output_file, options=None):
 def run_alignment(input_file, tool='mafft', options=None):
     """
     Run sequence alignment with the specified tool.
-    Returns (success, result_dir, output_file, command).
+    This is a simplified wrapper around the more powerful alignment_wrapper.
+    Returns (success, result_dir, output_file, stats_dict).
     """
     if options is None:
         options = {}
 
-    result_dir = create_result_dir('alignment', tool)
-    output_file = os.path.join(result_dir, f'alignment.fasta')
-
-    # Save parameters
-    params = {
-        'input_file': input_file,
-        'tool': tool,
-        'options': options,
-        'timestamp': datetime.now().isoformat()
-    }
-    save_params(result_dir, params)
-
-    # Run alignment
-    command = None
+    # Map simplified options to the more detailed structure of alignment_wrapper
+    threads = options.get('threads', config.DEFAULT_THREADS)
+    output_format = options.get('output_format', 'fasta')
+    
+    extra_params = {}
     if tool == 'mafft':
-        success, message, command = run_mafft(input_file, output_file, options)
+        extra_params['algorithm'] = options.get('algorithm', 'auto')
+        extra_params['maxiterate'] = options.get('maxiterate', 1000)
     elif tool == 'clustalw':
-        success, message, command = run_clustalw(input_file, output_file, options)
-    elif tool == 'muscle':
-        success, message, command = run_muscle(input_file, output_file, options)
-    else:
-        return False, f"Unknown alignment tool: {tool}", None, None
+        extra_params['matrix'] = options.get('matrix', 'BLOSUM')
+    
+    from app.core.alignment_wrapper import run_alignment as run_multi_tool_alignment
+    
+    success, result_dir, output_file, stats = run_multi_tool_alignment(
+        input_file, tool, output_format, threads, extra_params
+    )
 
     if success:
         logger.info(f"Alignment completed with {tool}")
-        return True, result_dir, output_file, command
+        return True, result_dir, output_file, stats
     else:
-        logger.error(f"Alignment failed: {message}")
-        return False, message, None, command
+        error_message = stats.get('error', 'Unknown alignment error')
+        logger.error(f"Alignment failed: {error_message}")
+        return False, error_message, None, stats
 
 
-def parse_alignment(filepath):
+def parse_alignment(filepath_or_content):
     """
-    Parse alignment file and return sequences.
+    Parse alignment file or content string and return sequences.
     Returns list of (id, sequence) tuples.
     """
     sequences = []
     current_id = None
     current_seq = []
+    
+    lines = []
+    try:
+        if os.path.exists(filepath_or_content):
+            with open(filepath_or_content, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+        else:
+            lines = filepath_or_content.splitlines()
+    except (IOError, TypeError):
+        # Handle cases where input is not a valid path or string
+        return []
 
-    with open(filepath, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if line.startswith('>'):
-                if current_id is not None:
-                    sequences.append((current_id, ''.join(current_seq)))
-                current_id = line[1:].split()[0]
-                current_seq = []
-            elif line:
-                current_seq.append(line)
+    for line in lines:
+        line = line.strip()
+        if line.startswith('>'):
+            if current_id is not None:
+                sequences.append((current_id, ''.join(current_seq)))
+            current_id = line[1:].split()[0]
+            current_seq = []
+        elif line:
+            current_seq.append(line)
 
-        if current_id is not None:
-            sequences.append((current_id, ''.join(current_seq)))
+    if current_id is not None:
+        sequences.append((current_id, ''.join(current_seq)))
 
     return sequences
 
