@@ -127,7 +127,8 @@ def get_species_from_tree(tree_string):
 def visualize_tree(tree_file, output_file=None, layout='rectangular',
                    colored_species=None, highlighted_genes=None,
                    show_bootstrap=True, font_size=10, v_scale=1.0,
-                   center_gene=None, radius_edges=3, highlight_species=None):
+                   center_gene=None, radius_edges=3, highlight_species=None,
+                   fixed_branch_length=False):
     """
     Visualize a phylogenetic tree.
 
@@ -174,6 +175,7 @@ def visualize_tree(tree_file, output_file=None, layout='rectangular',
         'v_scale': v_scale,
         'timestamp': datetime.now().isoformat()
     }
+    params['fixed_branch_length'] = fixed_branch_length
     save_params(result_dir, params)
 
     if output_file is None:
@@ -222,6 +224,11 @@ def visualize_tree(tree_file, output_file=None, layout='rectangular',
                 tree.set_outgroup(center_gene)
             except Exception:
                 pass
+
+        # Apply fixed branch length if requested
+        if fixed_branch_length:
+            for n in tree.traverse():
+                n.dist = 1.0
 
         # Calculate adaptive width based on number of leaves
         num_leaves = len(tree.get_leaves())

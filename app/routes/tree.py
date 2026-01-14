@@ -112,7 +112,8 @@ def visualize():
             v_scale=v_scale,
             center_gene=center_gene,
             radius_edges=radius_edges,
-            highlight_species=highlight_species
+            highlight_species=highlight_species,
+            fixed_branch_length=data.get('fixed_branch_length', False)
         )
 
         if success:

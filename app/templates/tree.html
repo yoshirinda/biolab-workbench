@@ -137,7 +137,7 @@
         downloadBase: '{{ url_for("tree.download", filepath="") }}'
     };
 
-    const defaultColors = {{ default_colors | tojson | safe if default_colors else '[]' }};
+    const defaultColors = JSON.parse('{{ default_colors | tojson | safe if default_colors else "[]" }}');
     let speciesColors = {};
     let treePath = null;
     let treeInfo = null;
@@ -281,7 +281,8 @@
             show_bootstrap: document.getElementById('showBootstrap').checked,
             fixed_branch_length: document.getElementById('fixedBranch').checked,
             colored_species: coloredSpecies,
-            highlight_species: highlightSpecies
+            highlight_species: highlightSpecies,
+            fixed_branch_length: document.getElementById('fixedBranch').checked
         };
 
         document.getElementById('loadingSpinner').classList.remove('d-none');
