@@ -234,7 +234,7 @@
         taxonChildren: '{{ url_for("uniprot.taxonomy_children", taxon_id=0) }}'.slice(0, -1),
         taxonLineage: '{{ url_for("uniprot.taxonomy_lineage", taxon_id=0) }}'.slice(0, -1)
     };
-    const MAJOR_CLASSIFICATIONS = {{ major_classifications | tojson }};
+    const MAJOR_CLASSIFICATIONS = JSON.parse('{{ major_classifications | tojson | safe }}');
 
     // Global state
     const state = {
@@ -452,7 +452,14 @@
     }
 
     function prepareEntry(entry) {
-        const safeEntry = { accession: entry.accession || '', entry_name: entry.entry_name || '', protein_name: entry.protein_name || '', gene_names: entry.gene_names || '', organism: entry.organism || '', sequence_length: entry.sequence_length || 0 };
+        const safeEntry = {
+            accession: entry.accession || '',
+            entry_name: entry.entry_name || '',
+            protein_name: entry.protein_name || '',
+            gene_names: entry.gene_names || '',
+            organism: entry.organism || '',
+            sequence_length: entry.sequence_length || 0
+        };
         const searchValues = [safeEntry.accession, safeEntry.entry_name, safeEntry.protein_name, safeEntry.gene_names, safeEntry.organism];
         safeEntry.search_content = searchValues.map((value) => String(value).toLowerCase()).join(' ');
         return safeEntry;

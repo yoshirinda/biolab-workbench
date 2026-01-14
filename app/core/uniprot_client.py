@@ -36,12 +36,12 @@ def search_uniprot(query, taxonomy_id=None, database_type='all', limit=500):
     search_query = query
 
     if taxonomy_id:
-        search_query += f" AND taxonomy_id:{taxonomy_id}"
+        search_query += f" AND (taxonomy_id:{taxonomy_id})"
 
     if database_type == 'reviewed':
-        search_query += " AND reviewed:true"
+        search_query += " AND (reviewed:true)"
     elif database_type == 'unreviewed':
-        search_query += " AND reviewed:false"
+        search_query += " AND (reviewed:false)"
 
     params = {
         'query': search_query,

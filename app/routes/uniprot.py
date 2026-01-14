@@ -103,10 +103,22 @@ def search():
             # Format results for display
             formatted_results = []
             for entry in results:
+                protein_description = entry.get('proteinDescription', {})
+                if isinstance(protein_description, list):
+                    protein_description = protein_description[0] if protein_description else {}
+                
+                recommended_name = protein_description.get('recommendedName', {})
+                if isinstance(recommended_name, list):
+                    recommended_name = recommended_name[0] if recommended_name else {}
+
+                full_name = recommended_name.get('fullName', {})
+                if isinstance(full_name, list):
+                    full_name = full_name[0] if full_name else {}
+
                 formatted_results.append({
                     'accession': entry.get('primaryAccession', ''),
                     'entry_name': entry.get('uniProtkbId', ''),
-                    'protein_name': entry.get('proteinDescription', {}).get('recommendedName', {}).get('fullName', {}).get('value', ''),
+                    'protein_name': full_name.get('value', ''),
                     'gene_names': ', '.join([g.get('geneName', {}).get('value', '') for g in entry.get('genes', []) if g.get('geneName')]),
                     'organism': entry.get('organism', {}).get('scientificName', ''),
                     'sequence_length': entry.get('sequence', {}).get('length', 0)
