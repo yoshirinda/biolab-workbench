@@ -57,7 +57,7 @@ def sequence_v2_page():
 @sequence_bp.route('/v3')
 def sequence_v3_page():
     """Render the new Geneious-style sequence management page (v3)."""
-    return render_template('sequence_v3.html')
+    return render_template('react_app.html')
 
 
 @sequence_bp.route('/import', methods=['POST'])

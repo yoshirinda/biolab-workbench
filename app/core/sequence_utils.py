@@ -146,7 +146,7 @@ def parse_upload_file(content: bytes, filename: str):
 
 def parse_fasta(text):
     """
-    Parse FASTA format text into list of sequence dicts.
+    Parse FASTA format text into list of (id, description, sequence) tuples.
     """
     sequences = []
     current_id = None
@@ -157,15 +157,8 @@ def parse_fasta(text):
         line = line.strip()
         if line.startswith('>'):
             if current_id is not None:
-                seq_str = ''.join(current_seq)
-                sequences.append({
-                    'id': current_id,
-                    'description': current_desc,
-                    'sequence': seq_str,
-                    'type': detect_sequence_type(seq_str),
-                    'length': len(seq_str),
-                    'features': []
-                })
+                sequences.append((current_id, current_desc, ''.join(current_seq)))
+            
             header_parts = line[1:].split(None, 1)
             current_id = header_parts[0] if header_parts else ''
             current_desc = header_parts[1] if len(header_parts) > 1 else ''
@@ -174,15 +167,7 @@ def parse_fasta(text):
             current_seq.append(line)
 
     if current_id is not None:
-        seq_str = ''.join(current_seq)
-        sequences.append({
-            'id': current_id,
-            'description': current_desc,
-            'sequence': seq_str,
-            'type': detect_sequence_type(seq_str),
-            'length': len(seq_str),
-            'features': []
-        })
+        sequences.append((current_id, current_desc, ''.join(current_seq)))
 
     return sequences
 
