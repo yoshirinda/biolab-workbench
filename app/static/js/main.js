@@ -14,8 +14,17 @@ class BioLabApp {
     /**
      * 初始化应用
      */
-    init() {
+    async init() {
         console.log('Initializing BioLab Workbench...');
+
+        // Dynamically load required components
+        await this.loadScripts([
+            '/static/js/project-tree.js',
+            '/static/js/sequence-viewer.js',
+            '/static/js/file-uploader.js',
+            '/static/js/sequence-manager.js',
+            '/static/js/ove-editor.js'
+        ]);
         
         // 初始化各个组件
         this.projectTree = new ProjectTree(
@@ -58,6 +67,18 @@ class BioLabApp {
         
         // 加载初始数据
         this.loadInitialData();
+    }
+
+    loadScripts(urls) {
+        return Promise.all(urls.map(url => {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = url;
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        }));
     }
 
     /**
