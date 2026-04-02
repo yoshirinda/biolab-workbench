@@ -3,10 +3,10 @@ Sequence management routes for BioLab Workbench.
 """
 import os
 import json
-import sys
+import time
 from uuid import uuid4
 from datetime import datetime
-from flask import Blueprint, render_template, request, jsonify, session
+from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, current_app
 from app.core.sequence_utils import (
     parse_fasta, format_fasta, detect_sequence_type,
     translate_dna, reverse_complement, find_orfs,
@@ -44,20 +44,22 @@ def _save_source_fasta_library(entries):
 
 @sequence_bp.route('/')
 def sequence_page():
-    """Render the integrated React sequence management page."""
-    return render_template('sequence_integrated.html')
+    """Render the main React sequence management page."""
+    assets_dir = os.path.join(current_app.static_folder, 'react', 'assets')
+    asset_version = int(os.path.getmtime(assets_dir)) if os.path.isdir(assets_dir) else 1
+    return render_template('react_app.html', asset_version=asset_version)
 
 
 @sequence_bp.route('/v2')
 def sequence_v2_page():
-    """Render the legacy sequence management page (v2)."""
-    return render_template('sequence_v2.html')
+    """Backward-compatible route. Redirect old v2 entry to /sequence."""
+    return redirect(url_for('sequence.sequence_page'))
 
 
 @sequence_bp.route('/v3')
 def sequence_v3_page():
-    """Render the new Geneious-style sequence management page (v3)."""
-    return render_template('react_app.html')
+    """Backward-compatible route. Redirect old v3 entry to /sequence."""
+    return redirect(url_for('sequence.sequence_page'))
 
 
 @sequence_bp.route('/import', methods=['POST'])
@@ -67,9 +69,17 @@ def import_sequences():
     """
     try:
         project_path = request.form.get('project_path')
-        print(f"!!! DEBUG: Received import request for project_path: '{project_path}'", file=sys.stderr)
 
         source = request.form.get('source', 'text')
+        raw_provenance = (request.form.get('provenance_json') or '').strip()
+        provenance_payload = None
+        if raw_provenance:
+            try:
+                provenance_payload = json.loads(raw_provenance)
+            except json.JSONDecodeError:
+                return jsonify({'success': False, 'error': 'Invalid provenance_json'}), 400
+            if not isinstance(provenance_payload, dict):
+                return jsonify({'success': False, 'error': 'provenance_json must be a JSON object'}), 400
         sequences_to_parse = []
 
         if source == 'file':
@@ -78,8 +88,22 @@ def import_sequences():
             file = request.files['file']
             if file.filename == '':
                 return jsonify({'success': False, 'error': 'No file selected'}), 400
-            
+
             text_content = file.read().decode('utf-8')
+            sequences_to_parse = parse_fasta(text_content)
+
+        elif source == 'server_file':
+            file_path = (request.form.get('file_path') or '').strip()
+            if not file_path:
+                return jsonify({'success': False, 'error': 'No file_path provided'}), 400
+            abs_path = os.path.abspath(file_path)
+            allowed_roots = [os.path.abspath(config.RESULTS_DIR), os.path.abspath(config.UPLOADS_DIR)]
+            if not any(abs_path.startswith(root) for root in allowed_roots):
+                return jsonify({'success': False, 'error': 'file_path must be inside results or uploads directory'}), 403
+            if not os.path.exists(abs_path):
+                return jsonify({'success': False, 'error': 'Server file not found'}), 404
+            with open(abs_path, 'r', encoding='utf-8', errors='replace') as handle:
+                text_content = handle.read()
             sequences_to_parse = parse_fasta(text_content)
 
         else: # source == 'text'
@@ -94,12 +118,50 @@ def import_sequences():
         formatted_sequences = []
         for seq_id, desc, seq in sequences_to_parse:
             seq_type = detect_sequence_type(seq)
-            formatted_sequences.append({
+            seq_entry = {
                 'id': seq_id,
                 'description': desc,
                 'sequence': seq,
                 'type': seq_type
-            })
+            }
+            effective_provenance = provenance_payload
+            if effective_provenance is None:
+                desc_lower = (desc or '').strip().lower()
+                if desc_lower.startswith('translated from '):
+                    effective_provenance = {
+                        'operation': 'translate',
+                        'source_sequence_id': (desc or '').strip()[16:],
+                        'source_project': project_path
+                    }
+                elif desc_lower.startswith('reverse complement of '):
+                    effective_provenance = {
+                        'operation': 'reverse_complement',
+                        'source_sequence_id': (desc or '').strip()[22:],
+                        'source_project': project_path
+                    }
+
+            if effective_provenance:
+                operation = str(effective_provenance.get('operation') or 'derived')
+                source_sequence_id = effective_provenance.get('source_sequence_id')
+                source_project = effective_provenance.get('source_project') or project_path
+                details = {
+                    key: value for key, value in effective_provenance.items()
+                    if key not in {'operation', 'source_sequence_id', 'source_project'}
+                }
+                provenance_event = {
+                    'operation': operation,
+                    'source_sequence_id': source_sequence_id,
+                    'source_project': source_project,
+                    'created_at': datetime.now().isoformat(),
+                    'details': details
+                }
+                if source_sequence_id:
+                    seq_entry['source_sequence_id'] = source_sequence_id
+                if source_project:
+                    seq_entry['source_project'] = source_project
+                seq_entry['derivation'] = {'operation': operation, **details}
+                seq_entry['provenance'] = [provenance_event]
+            formatted_sequences.append(seq_entry)
 
         updated_project = None
         message = 'Sequences parsed successfully'
@@ -809,18 +871,26 @@ def parse_gene_ids():
     Extracts gene IDs from various formats including BLAST result tables.
     """
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         text = data.get('text', '')
         
         if not text.strip():
             return jsonify({'success': False, 'error': 'No text provided'})
         
         gene_ids = parse_gene_ids_from_text(text)
-        
+        if len(gene_ids) > 50000:
+            return jsonify({
+                'success': False,
+                'error': 'Too many IDs in one request (max: 50000)'
+            }), 400
+        normalized_text = '\n'.join(gene_ids)
+
         return jsonify({
             'success': True,
             'gene_ids': gene_ids,
-            'count': len(gene_ids)
+            'normalized_text': normalized_text,
+            'count': len(gene_ids),
+            'preview': gene_ids[:20]
         })
 
     except Exception as e:
@@ -835,21 +905,45 @@ def extract_by_ids():
     Uses fuzzy matching for flexible ID matching.
     """
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
+        def _as_bool(value, default=False):
+            if value is None:
+                return default
+            if isinstance(value, bool):
+                return value
+            return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
+
         gene_ids = data.get('gene_ids', [])
+        if isinstance(gene_ids, str):
+            gene_ids = parse_gene_ids_from_text(gene_ids)
         source_fasta_id = data.get('source_fasta_id')
+        use_latest_database = _as_bool(data.get('use_latest_database', False), default=False)
         source_fasta = data.get('source_fasta') or session.get(SOURCE_FASTA_KEY)
-        entries = None
+        entries = _load_source_fasta_library()
         if source_fasta_id:
-            entries = _load_source_fasta_library()
             entry = next((e for e in entries if e.get('id') == source_fasta_id), None)
+            if not entry:
+                return jsonify({'success': False, 'error': f'Source FASTA not found: {source_fasta_id}'})
             if entry:
                 source_fasta = entry.get('filepath')
                 session[SOURCE_FASTA_KEY] = source_fasta
                 session[SOURCE_FASTA_ID_KEY] = source_fasta_id
         
+        if (not source_fasta or not os.path.exists(source_fasta)) and entries and use_latest_database:
+            fallback_entry = next(
+                (e for e in entries if e.get('filepath') and os.path.exists(e.get('filepath'))),
+                None
+            )
+            if fallback_entry:
+                source_fasta = fallback_entry.get('filepath')
+                session[SOURCE_FASTA_KEY] = source_fasta
+                session[SOURCE_FASTA_ID_KEY] = fallback_entry.get('id')
+        
         if not gene_ids:
             return jsonify({'success': False, 'error': 'No gene IDs provided'})
+
+        if len(gene_ids) > 50000:
+            return jsonify({'success': False, 'error': 'Too many IDs in one request (max: 50000)'})
         
         if not source_fasta:
             return jsonify({'success': False, 'error': 'No source FASTA file set. Please upload a source FASTA first.'})
@@ -857,8 +951,14 @@ def extract_by_ids():
         if not os.path.exists(source_fasta):
             return jsonify({'success': False, 'error': 'Source FASTA file not found. Please upload again.'})
         
+        strict_single_id = _as_bool(data.get('strict_single_id', len(gene_ids) == 1), default=(len(gene_ids) == 1))
+
         # Extract sequences with fuzzy matching
-        result = extract_sequences_fuzzy(source_fasta, gene_ids)
+        result = extract_sequences_fuzzy(
+            source_fasta,
+            gene_ids,
+            strict_single_id=strict_single_id
+        )
         
         if not result['success']:
             return jsonify({'success': False, 'error': result.get('error', 'Extraction failed')})
@@ -887,6 +987,9 @@ def extract_by_ids():
             'success': True,
             'sequences': formatted_sequences,
             'fasta': fasta_output,
+            'strict_single_id': strict_single_id,
+            'requested_count': len(gene_ids),
+            'extracted_count': len(formatted_sequences),
             'matched_count': len(result['matched']),
             'unmatched_count': len(result['unmatched']),
             'matched_ids': result['matched'],
