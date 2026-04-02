@@ -43,6 +43,14 @@ def create_app():
     from app.routes.docs import docs_bp
     from app.routes.pipeline import pipeline_bp
     from app.routes.database import database_bp
+    ara_blast_bp = None
+    try:
+        from app.routes.ara_blast import ara_blast_bp
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "Ara BLAST blueprint unavailable; skipping /ara-blast registration: %s",
+            exc
+        )
     
     # Register new API blueprints (优化后的API)
     from app.api import api_bp
@@ -50,6 +58,8 @@ def create_app():
     app.register_blueprint(main_bp)
     app.register_blueprint(sequence_bp, url_prefix='/sequence')
     app.register_blueprint(blast_bp, url_prefix='/blast')
+    if ara_blast_bp is not None:
+        app.register_blueprint(ara_blast_bp, url_prefix='/ara-blast')
     app.register_blueprint(phylo_bp, url_prefix='/phylo')
     app.register_blueprint(alignment_bp, url_prefix='/alignment')
     app.register_blueprint(uniprot_bp, url_prefix='/uniprot')
@@ -68,9 +78,13 @@ def create_app():
         if isinstance(err, HTTPException):
             status = err.code or 500
 
+        is_sequence_html_page = request.path in {'/sequence/', '/sequence/v2', '/sequence/v3'}
+        is_sequence_api = request.path.startswith('/sequence/') and not is_sequence_html_page
         wants_json = (
             request.accept_mimetypes.best == 'application/json' or
             request.headers.get('X-Requested-With') == 'XMLHttpRequest' or
+            request.path.startswith('/api/') or
+            is_sequence_api or
             request.path.startswith(('/phylo', '/blast', '/pipeline', '/alignment', '/tree'))
         )
 
