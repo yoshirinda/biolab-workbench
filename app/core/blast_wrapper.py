@@ -14,19 +14,118 @@ from app.core.sequence_utils import detect_sequence_type, normalize_gene_id
 
 logger = get_tools_logger()
 
+IUPAC_NUC_SET = set('ACGTUNRYSWKMBDHV')
+AA_ONLY_HINT_SET = set('EFILPQZX*')
+SUPPORTED_BLASTN_REWARD_PENALTY_PAIRS = {
+    (1, -5),
+    (1, -4),
+    (1, -3),
+    (1, -2),
+    (1, -1),
+    (2, -7),
+    (2, -5),
+    (2, -3),
+    (2, -2),
+}
+PROTEIN_WORD_SIZE_LIMITS = {
+    'blastp': (2, 7),
+    'blastx': (2, 7),
+    'tblastn': (2, 7),
+    'tblastx': (2, 3),
+}
+TASK_WORD_SIZE_DEFAULTS = {
+    'blastn': 11,
+    'blastn-short': 7,
+    'dc-megablast': 11,
+    'megablast': 28,
+    'blastp': 6,
+    'blastx': 3,
+    'tblastn': 3,
+    'tblastx': 3,
+}
+
 
 def sanitize_path(path):
     """Sanitize file path to prevent command injection."""
     if not path:
         return path
     # Remove any shell metacharacters
-    # Only allow alphanumeric, underscore, hyphen, dot, forward slash
-    if not re.match(r'^[\w\-./]+$', path):
+    # Allow common safe path chars including spaces.
+    if not re.match(r'^[\w\-./ ]+$', path):
         raise ValueError(f"Invalid characters in path: {path}")
     # Prevent directory traversal
     if '..' in path:
         raise ValueError(f"Directory traversal not allowed: {path}")
     return path
+
+
+def get_supported_blastn_reward_penalty_pairs():
+    """Return supported blastn reward/penalty pairs as a stable sorted list."""
+    return sorted(SUPPORTED_BLASTN_REWARD_PENALTY_PAIRS, key=lambda pair: (pair[0], pair[1]))
+
+
+def get_blast_word_size_limits(program, task=None):
+    """
+    Return program-specific word_size bounds when BLAST documents them clearly.
+
+    For blastp / blastx / tblastn / tblastx the supported ranges are explicit.
+    For blastn tasks we keep the broader CLI validation because task-specific
+    defaults are better suited for guidance than hard rejection here.
+    """
+    if program in PROTEIN_WORD_SIZE_LIMITS:
+        return PROTEIN_WORD_SIZE_LIMITS[program]
+    return (2, 128)
+
+
+def get_blast_word_size_default(program, task=None):
+    """Return a task-aware default word_size suggestion for UI / auto-tuning."""
+    if program == 'blastn':
+        return TASK_WORD_SIZE_DEFAULTS.get(task or 'blastn')
+    return TASK_WORD_SIZE_DEFAULTS.get(program)
+
+
+def normalize_blast_scoring_options(program, task=None, word_size=None, reward=None, penalty=None):
+    """
+    Validate and normalize scientific BLAST options that depend on program/task.
+
+    Returns (success, message, normalized_dict, warnings).
+    """
+    warnings = []
+    normalized = {
+        'word_size': word_size,
+        'reward': reward,
+        'penalty': penalty,
+    }
+
+    if (reward is None) ^ (penalty is None):
+        return False, "reward and penalty must be provided together for blastn scoring", None, warnings
+
+    if program == 'blastn' and reward is not None and penalty is not None:
+        if (reward, penalty) not in SUPPORTED_BLASTN_REWARD_PENALTY_PAIRS:
+            pair_text = ', '.join(f'{r}/{p}' for r, p in get_supported_blastn_reward_penalty_pairs())
+            return (
+                False,
+                f"Unsupported blastn reward/penalty pair {reward}/{penalty}. Supported pairs: {pair_text}",
+                None,
+                warnings,
+            )
+
+    limits = get_blast_word_size_limits(program, task=task)
+    if normalized['word_size'] is not None and limits is not None:
+        min_word_size, max_word_size = limits
+        if not (min_word_size <= normalized['word_size'] <= max_word_size):
+            return (
+                False,
+                f"word_size must be between {min_word_size} and {max_word_size} for {program}",
+                None,
+                warnings,
+            )
+
+    if program == 'blastn' and task == 'blastn-short' and normalized['word_size'] is None:
+        normalized['word_size'] = TASK_WORD_SIZE_DEFAULTS['blastn-short']
+        warnings.append("task=blastn-short: auto-set word_size=7 for short nucleotide queries.")
+
+    return True, "", normalized, warnings
 
 
 def run_conda_command(command, timeout=3600):
@@ -355,7 +454,14 @@ def create_blast_database(input_file, db_name, db_type='auto', title=None):
     # This ensures the database is found by list_blast_databases()
     db_path = os.path.join(config.DATABASES_DIR, db_name)
 
-    command = f'makeblastdb -in {shlex.quote(input_file)} -dbtype {shlex.quote(db_type)} -out {shlex.quote(db_path)} -title {shlex.quote(title)}'
+    # Use -parse_seqids so blastdbcmd can reliably extract records by subject IDs.
+    command = (
+        f'makeblastdb -in {shlex.quote(input_file)} '
+        f'-dbtype {shlex.quote(db_type)} '
+        f'-out {shlex.quote(db_path)} '
+        f'-title {shlex.quote(title)} '
+        f'-parse_seqids'
+    )
 
     success, stdout, stderr = run_conda_command(command)
 
@@ -386,6 +492,62 @@ def select_blast_program(query_type, db_type):
         return 'blastn'  # Default
 
 
+def infer_sequence_type_robust(sequence: str) -> str:
+    """
+    Robust sequence type inference for BLAST dispatch.
+    """
+    if not sequence:
+        return 'nucleotide'
+
+    seq = re.sub(r'[^A-Za-z*]', '', sequence.upper())
+    if not seq:
+        return 'nucleotide'
+
+    if any(ch in AA_ONLY_HINT_SET for ch in seq):
+        return 'protein'
+
+    nuc_ratio = sum(1 for ch in seq if ch in IUPAC_NUC_SET) / len(seq)
+    return 'nucleotide' if nuc_ratio >= 0.9 else 'protein'
+
+
+def infer_first_query_length(query_file: str) -> int:
+    """
+    Infer the length of the first query sequence in a FASTA file.
+    Returns 0 when it cannot be inferred.
+    """
+    try:
+        first_seq = []
+        in_first = False
+        with open(query_file, 'r', encoding='utf-8', errors='ignore') as handle:
+            for raw in handle:
+                line = raw.strip()
+                if not line:
+                    continue
+                if line.startswith('>'):
+                    if in_first:
+                        break
+                    in_first = True
+                    continue
+                if in_first:
+                    first_seq.append(re.sub(r'[^A-Za-z*]', '', line))
+        if first_seq:
+            return len(''.join(first_seq))
+    except Exception:
+        pass
+    return 0
+
+
+def is_program_compatible(program, query_type, db_type):
+    """Check whether selected BLAST program matches query/database molecule types."""
+    compat = {
+        ('nucleotide', 'nucleotide'): {'blastn', 'tblastx'},
+        ('protein', 'protein'): {'blastp'},
+        ('nucleotide', 'protein'): {'blastx'},
+        ('protein', 'nucleotide'): {'tblastn'},
+    }
+    return program in compat.get((query_type, db_type), {'blastn'})
+
+
 def add_tsv_header(filepath, output_format):
     """
     Add a header row to TSV BLAST output files.
@@ -399,7 +561,7 @@ def add_tsv_header(filepath, output_format):
     
     # Define headers based on format
     if output_format == 'tsv':
-        header = "qseqid\tsseqid\tpident\tlength\tmismatch\tgapopen\tqstart\tqend\tsstart\tsend\tevalue\tbitscore\n"
+        header = "qseqid\tsseqid\tpident\tlength\tmismatch\tgapopen\tqstart\tqend\tsstart\tsend\tevalue\tbitscore\tqcovs\n"
     elif output_format == 'detailed':
         header = "qseqid\tsseqid\tpident\tlength\tmismatch\tgapopen\tqstart\tqend\tsstart\tsend\tevalue\tbitscore\tqlen\tslen\tqcovs\tstitle\n"
     else:
@@ -429,7 +591,12 @@ def add_tsv_header(filepath, output_format):
 
 
 def run_blast(query_file, database, output_format='tsv', evalue=1e-5,
-              num_threads=None, max_hits=500, program=None, outfmt=None):
+              num_threads=None, max_hits=500, program=None, outfmt=None,
+              min_identity=None, min_query_coverage=None,
+              task=None, word_size=None, dust=None, seg=None,
+              soft_masking=None, max_hsps=None, culling_limit=None,
+              comp_based_stats=None, reward=None, penalty=None,
+              gapopen=None, gapextend=None, db_type_override=None):
     """
     Run BLAST search.
     output_format: 'tsv', 'txt', 'html', 'detailed'
@@ -444,26 +611,41 @@ def run_blast(query_file, database, output_format='tsv', evalue=1e-5,
     if not os.path.exists(query_file):
         return False, f"Query file not found: {query_file}", None, None
 
-    # Auto-detect query type
+    # Auto-detect query type (robust heuristic to avoid protein->DNA misclassification)
     with open(query_file, 'r') as f:
         content = f.read(10000)
         lines = content.split('\n')
         seq_lines = [l for l in lines if not l.startswith('>')]
         sample_seq = ''.join(seq_lines)[:500]
-        query_type = detect_sequence_type(sample_seq)
+        query_type = infer_sequence_type_robust(sample_seq)
 
-    # Determine database type from metadata or file extensions
+    # Determine database type from metadata/extensions, optionally overridden by UI hint.
     db_type = get_db_type(database)
+    if db_type_override in {'nucleotide', 'protein'}:
+        db_type = db_type_override
+
+    run_warnings = []
 
     # Normalize and select BLAST program
     program = program or None
     if program is None:
         program = select_blast_program(query_type, db_type)
 
+    query_length = infer_first_query_length(query_file)
+
     # Validate program
     valid_programs = ['blastn', 'blastp', 'blastx', 'tblastn', 'tblastx']
     if program not in valid_programs:
         return False, f"Invalid BLAST program: {program}", None, None
+    if not is_program_compatible(program, query_type, db_type):
+        suggested_program = select_blast_program(query_type, db_type)
+        msg = (
+            f"Incompatible program '{program}' for query={query_type} vs db={db_type}. "
+            f"Auto-switched to '{suggested_program}'."
+        )
+        logger.warning(msg)
+        run_warnings.append(msg)
+        program = suggested_program
 
     # Create result directory
     result_dir = create_result_dir('blast', 'search')
@@ -471,7 +653,7 @@ def run_blast(query_file, database, output_format='tsv', evalue=1e-5,
     # Output format codes
     if outfmt is None:
         format_codes = {
-            'tsv': '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore',
+            'tsv': '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs',
             'txt': '0',  # Pairwise
             'html': '5',  # XML (for conversion)
             'detailed': '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen qcovs stitle',
@@ -488,27 +670,184 @@ def run_blast(query_file, database, output_format='tsv', evalue=1e-5,
         evalue = float(evalue)
         num_threads = int(num_threads)
         max_hits = int(max_hits)
+        min_identity = None if min_identity in [None, ''] else float(min_identity)
+        min_query_coverage = None if min_query_coverage in [None, ''] else float(min_query_coverage)
+        word_size = None if word_size in [None, ''] else int(word_size)
+        max_hsps = None if max_hsps in [None, ''] else int(max_hsps)
+        culling_limit = None if culling_limit in [None, ''] else int(culling_limit)
+        comp_based_stats = None if comp_based_stats in [None, ''] else int(comp_based_stats)
+        reward = None if reward in [None, ''] else int(reward)
+        penalty = None if penalty in [None, ''] else int(penalty)
+        gapopen = None if gapopen in [None, ''] else int(gapopen)
+        gapextend = None if gapextend in [None, ''] else int(gapextend)
     except (ValueError, TypeError):
         return False, "Invalid numeric parameter", None, None
+    if evalue <= 0:
+        return False, "E-value must be > 0", None, None
+    if num_threads < 1:
+        return False, "num_threads must be >= 1", None, None
+    if max_hits < 1:
+        return False, "max_hits must be >= 1", None, None
+    if min_identity is not None and not (0 <= min_identity <= 100):
+        return False, "min_identity must be between 0 and 100", None, None
+    if min_query_coverage is not None and not (0 <= min_query_coverage <= 100):
+        return False, "min_query_coverage must be between 0 and 100", None, None
+    if max_hsps is not None and max_hsps < 1:
+        return False, "max_hsps must be >= 1", None, None
+    if culling_limit is not None and culling_limit < 0:
+        return False, "culling_limit must be >= 0", None, None
+    if comp_based_stats is not None and comp_based_stats not in {0, 1, 2, 3}:
+        return False, "comp_based_stats must be one of 0, 1, 2, 3", None, None
+    if reward is not None and not (1 <= reward <= 100):
+        return False, "reward must be between 1 and 100", None, None
+    if penalty is not None and not (-100 <= penalty <= -1):
+        return False, "penalty must be between -100 and -1", None, None
+    if gapopen is not None and not (0 <= gapopen <= 100):
+        return False, "gapopen must be between 0 and 100", None, None
+    if gapextend is not None and not (0 <= gapextend <= 100):
+        return False, "gapextend must be between 0 and 100", None, None
+
+    if task:
+        task = str(task).strip()
+    if dust is not None:
+        dust = str(dust).strip().lower()
+        if dust not in {'yes', 'no'}:
+            return False, "dust must be 'yes' or 'no'", None, None
+    if seg is not None:
+        seg = str(seg).strip().lower()
+        if seg not in {'yes', 'no'}:
+            return False, "seg must be 'yes' or 'no'", None, None
+    if soft_masking is not None:
+        if isinstance(soft_masking, str):
+            soft_masking = soft_masking.strip().lower() in {'1', 'true', 'yes', 'on'}
+        else:
+            soft_masking = bool(soft_masking)
+
+    blastn_tasks = {'blastn', 'blastn-short', 'dc-megablast', 'megablast'}
+    if task:
+        if program == 'blastn':
+            if task not in blastn_tasks:
+                return False, f"Invalid blastn task: {task}", None, None
+        else:
+            msg = f"Ignoring task={task} for program={program}"
+            logger.warning(msg)
+            run_warnings.append(msg)
+            task = None
+    elif program == 'blastn' and query_length and query_length <= 50:
+        # For short nucleotide queries, blastn-short is generally more appropriate.
+        task = 'blastn-short'
+        run_warnings.append(
+            f"Detected short nucleotide query ({query_length} bp); auto-set task=blastn-short."
+        )
+
+    nucleotide_programs = {'blastn', 'tblastx'}
+    protein_programs = {'blastp', 'blastx', 'tblastn'}
+    if dust is not None and program not in nucleotide_programs:
+        msg = f"Ignoring dust={dust} for program={program}"
+        logger.warning(msg)
+        run_warnings.append(msg)
+        dust = None
+    if seg is not None and program not in protein_programs:
+        msg = f"Ignoring seg={seg} for program={program}"
+        logger.warning(msg)
+        run_warnings.append(msg)
+        seg = None
+    if comp_based_stats is not None and program not in protein_programs:
+        msg = f"Ignoring comp_based_stats={comp_based_stats} for program={program}"
+        logger.warning(msg)
+        run_warnings.append(msg)
+        comp_based_stats = None
+    if (reward is not None or penalty is not None) and program != 'blastn':
+        msg = f"Ignoring reward/penalty for program={program}"
+        logger.warning(msg)
+        run_warnings.append(msg)
+        reward = None
+        penalty = None
+    if (gapopen is not None or gapextend is not None) and program == 'tblastx':
+        msg = "Ignoring gapopen/gapextend for program=tblastx because tblastx is ungapped."
+        logger.warning(msg)
+        run_warnings.append(msg)
+        gapopen = None
+        gapextend = None
+
+    scoring_ok, scoring_message, normalized_scoring, scoring_warnings = normalize_blast_scoring_options(
+        program=program,
+        task=task,
+        word_size=word_size,
+        reward=reward,
+        penalty=penalty,
+    )
+    if not scoring_ok:
+        return False, scoring_message, None, None
+    if scoring_warnings:
+        run_warnings.extend(scoring_warnings)
+    word_size = normalized_scoring['word_size']
+    reward = normalized_scoring['reward']
+    penalty = normalized_scoring['penalty']
 
     command = (
         f'{program} -query {shlex.quote(query_file)} -db {shlex.quote(database)} '
         f'-out {shlex.quote(output_file)} -outfmt {shlex.quote(outfmt)} '
         f'-evalue {evalue} -num_threads {num_threads} -max_target_seqs {max_hits}'
     )
+    if task:
+        command += f' -task {shlex.quote(task)}'
+    if word_size is not None:
+        command += f' -word_size {word_size}'
+    if dust is not None:
+        command += f' -dust {dust}'
+    if seg is not None:
+        command += f' -seg {seg}'
+    if soft_masking is not None:
+        command += f' -soft_masking {"true" if soft_masking else "false"}'
+    if max_hsps is not None:
+        command += f' -max_hsps {max_hsps}'
+    if culling_limit is not None:
+        command += f' -culling_limit {culling_limit}'
+    if comp_based_stats is not None:
+        command += f' -comp_based_stats {comp_based_stats}'
+    if reward is not None:
+        command += f' -reward {reward}'
+    if penalty is not None:
+        command += f' -penalty {penalty}'
+    if gapopen is not None:
+        command += f' -gapopen {gapopen}'
+    if gapextend is not None:
+        command += f' -gapextend {gapextend}'
 
-    # Full command for display (with conda wrapper)
-    full_command = f"conda run -n {config.CONDA_ENV} {command}"
+    # Full command for display
+    if config.USE_CONDA and config.CONDA_ENV:
+        full_command = f"conda run -n {config.CONDA_ENV} {command}"
+    else:
+        full_command = command
 
     # Save parameters
     params = {
         'query_file': query_file,
         'database': database,
+        'query_type': query_type,
+        'db_type': db_type,
         'program': program,
         'evalue': evalue,
         'num_threads': num_threads,
         'max_hits': max_hits,
+        'min_identity': min_identity,
+        'min_query_coverage': min_query_coverage,
         'output_format': output_format,
+        'query_length': query_length,
+        'task': task,
+        'word_size': word_size,
+        'dust': dust,
+        'seg': seg,
+        'soft_masking': soft_masking,
+        'max_hsps': max_hsps,
+        'culling_limit': culling_limit,
+        'comp_based_stats': comp_based_stats,
+        'reward': reward,
+        'penalty': penalty,
+        'gapopen': gapopen,
+        'gapextend': gapextend,
+        'run_warnings': run_warnings,
         'timestamp': datetime.now().isoformat()
     }
     save_params(result_dir, params)
@@ -519,7 +858,16 @@ def run_blast(query_file, database, output_format='tsv', evalue=1e-5,
         # Add header to TSV output files
         add_tsv_header(output_file, output_format)
         logger.info(f"BLAST search completed: {output_file}")
-        return True, result_dir, {'main': output_file}, full_command
+        return True, result_dir, {
+            'main': output_file,
+            'query_type': query_type,
+            'query_length': query_length,
+            'db_type': db_type,
+            'program': program,
+            'meta': {
+                'run_warnings': run_warnings
+            }
+        }, full_command
     else:
         logger.error(f"BLAST search failed: {stderr}")
         return False, stderr, None, full_command
@@ -542,11 +890,15 @@ def extract_sequences(database, hit_ids, output_file):
     except ValueError as e:
         return False, str(e)
 
-    # Sanitize hit IDs - only allow alphanumeric, underscore, hyphen, dot, pipe
+    # Sanitize hit IDs - allow common accession delimiters while still blocking whitespace/shell chars.
     sanitized_ids = []
+    seen_ids = set()
     for hit_id in hit_ids:
-        if re.match(r'^[\w\-.|]+$', hit_id):
-            sanitized_ids.append(hit_id)
+        if re.match(r'^[A-Za-z0-9._|:-]+$', str(hit_id or '')):
+            normalized_id = str(hit_id).strip()
+            if normalized_id and normalized_id not in seen_ids:
+                seen_ids.add(normalized_id)
+                sanitized_ids.append(normalized_id)
         else:
             logger.warning(f"Skipping invalid hit ID: {hit_id}")
 
@@ -578,8 +930,8 @@ def extract_sequences(database, hit_ids, output_file):
         logger.info(f"Extracted {len(sanitized_ids)} sequences to {output_file}")
         return True, f"Extracted {len(sanitized_ids)} sequences"
     
-    # Fallback: try to extract from source FASTA
-    logger.info(f"blastdbcmd failed, attempting fallback extraction from source FASTA")
+    # Fallback 1: try to extract from source FASTA
+    logger.info("blastdbcmd failed, attempting fallback extraction from source FASTA")
     source_fasta = get_source_fasta(database)
     
     if source_fasta:
@@ -589,12 +941,38 @@ def extract_sequences(database, hit_ids, output_file):
         if fallback_success and extracted_count > 0:
             logger.info(f"Fallback extraction succeeded: {extracted_count} sequences")
             return True, f"Extracted {extracted_count} sequences (from source FASTA)"
-        else:
-            logger.error(f"Fallback extraction failed")
-            return False, f"blastdbcmd failed and fallback extraction found no matching sequences"
-    else:
-        logger.error(f"No source FASTA available for fallback extraction")
-        return False, f"Sequence extraction failed: {stderr}. No source FASTA available for fallback."
+
+        logger.error("Fallback extraction failed")
+        return False, "blastdbcmd failed and fallback extraction found no matching sequences"
+
+    # Fallback 2: dump DB entries then fuzzy-extract from dumped FASTA.
+    # This supports legacy DBs created without -parse_seqids metadata.
+    logger.info("No source FASTA metadata found; attempting blastdbcmd -entry all fallback")
+    dump_file = output_file + '.dbdump.fa'
+    try:
+        dump_command = (
+            f'blastdbcmd -db {shlex.quote(database)} '
+            f'-entry all -out {shlex.quote(dump_file)}'
+        )
+        dump_success, _, dump_stderr = run_conda_command(dump_command)
+        if dump_success and os.path.exists(dump_file) and os.path.getsize(dump_file) > 0:
+            fallback_success, extracted_count = extract_from_fasta(dump_file, sanitized_ids, output_file)
+            if fallback_success and extracted_count > 0:
+                logger.info(f"Fallback extraction from DB dump succeeded: {extracted_count} sequences")
+                return True, f"Extracted {extracted_count} sequences (from DB dump fallback)"
+            return False, "No matching sequences found in DB dump fallback"
+
+        logger.error(f"DB dump fallback failed: {dump_stderr}")
+        return False, (
+            f"Sequence extraction failed: {stderr}. "
+            f"DB has no accession index; recreate database with -parse_seqids for reliable ID extraction."
+        )
+    finally:
+        if os.path.exists(dump_file):
+            try:
+                os.remove(dump_file)
+            except Exception:
+                pass
 
 
 def parse_blast_tsv(filepath, format_type='standard'):
@@ -615,7 +993,7 @@ def parse_blast_tsv(filepath, format_type='standard'):
                    'qlen', 'slen', 'qcovs', 'stitle']
     else:
         headers = ['qseqid', 'sseqid', 'pident', 'length', 'mismatch', 'gapopen',
-                   'qstart', 'qend', 'sstart', 'send', 'evalue', 'bitscore']
+                   'qstart', 'qend', 'sstart', 'send', 'evalue', 'bitscore', 'qcovs']
     
     # Set of expected header field names for robust detection
     header_fields = set(headers)

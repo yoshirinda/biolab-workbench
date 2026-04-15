@@ -1,4 +1,5 @@
 from flask import Blueprint, request
+import re
 from app.utils.decorators import api_route, validate_json, log_request
 from app.utils.errors import ValidationError
 from app.core.project_manager import (
@@ -13,7 +14,13 @@ from app.core.project_manager import (
     get_feature_types,
     get_project
 )
-from app.core.sequence_utils import parse_upload_file, detect_sequence_type, extract_sequences_fuzzy, parse_gene_ids_from_text, load_source_fasta_library
+from app.core.sequence_utils import (
+    parse_upload_file,
+    detect_sequence_type,
+    extract_sequences_fuzzy,
+    parse_gene_ids_from_text,
+    load_source_fasta_library
+)
 from app.utils.logger import get_app_logger
 import os
 import tempfile
@@ -21,13 +28,29 @@ import tempfile
 logger = get_app_logger()
 sequences_bp = Blueprint('sequences', __name__, url_prefix='/sequences')
 
+
+def _as_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
 @sequences_bp.route('/sources', methods=['GET'])
 @api_route
 def get_source_library():
     """
     Get the list of available source FASTA files (databases).
     """
-    return load_source_fasta_library()
+    library = load_source_fasta_library()
+    return [
+        {
+            **entry,
+            'exists': bool(entry.get('filepath') and os.path.exists(entry.get('filepath')))
+        }
+        for entry in library
+    ]
 
 @sequences_bp.route('/extract', methods=['POST'])
 @api_route
@@ -43,9 +66,23 @@ def extract_sequences():
     source_fasta_id = data.get('source_fasta_id')
     target_project = data['target_project']
     gene_ids_text = data['gene_ids']
-    
-    if not source_project and not source_fasta_id:
-        raise ValidationError("Either source_project or source_fasta_id is required")
+    use_latest_database = bool(data.get('use_latest_database', False))
+    strict_single_id_raw = data.get('strict_single_id', None)
+
+    library = load_source_fasta_library()
+    if not source_project and not source_fasta_id and not use_latest_database:
+        # Prefer database mode when available for better UX.
+        if library:
+            source_fasta_id = library[0].get('id')
+        else:
+            raise ValidationError("Either source_project or source_fasta_id is required")
+    elif not source_fasta_id and use_latest_database:
+        latest_available = next(
+            (e for e in library if e.get('filepath') and os.path.exists(e.get('filepath'))),
+            None
+        )
+        if latest_available:
+            source_fasta_id = latest_available.get('id')
 
     tmp_path = None
 
@@ -53,14 +90,24 @@ def extract_sequences():
         # Determine Source Path
         if source_fasta_id:
             # Case A: Extract from Source FASTA Library (Database)
-            library = load_source_fasta_library()
             entry = next((e for e in library if e['id'] == source_fasta_id), None)
             if not entry:
-                raise ValidationError("Source FASTA database not found")
+                # Do not silently switch to an unrelated database when an explicit ID was provided.
+                raise ValidationError(f"Source FASTA database not found: {source_fasta_id}")
             
             source_path = entry.get('filepath')
+            if (not source_path or not os.path.exists(source_path)) and use_latest_database:
+                fallback_entry = next(
+                    (e for e in library if e.get('filepath') and os.path.exists(e.get('filepath'))),
+                    None
+                )
+                if fallback_entry:
+                    entry = fallback_entry
+                    source_fasta_id = entry.get('id')
+                    source_path = entry.get('filepath')
+
             if not source_path or not os.path.exists(source_path):
-                 raise ValidationError("Source FASTA file is missing on server disk")
+                raise ValidationError("Source FASTA file is missing on server disk")
             
             # Use this path directly
             tmp_path = None 
@@ -87,9 +134,23 @@ def extract_sequences():
         gene_ids = parse_gene_ids_from_text(gene_ids_text)
         if not gene_ids:
              raise ValidationError("No valid gene IDs found in input text")
+        if len(gene_ids) > 50000:
+            raise ValidationError("Too many IDs in one request (max: 50000)")
+
+        # Safety default: single-ID extraction should be precision-first unless explicitly disabled.
+        if strict_single_id_raw is None:
+            strict_single_id = (len(gene_ids) == 1)
+            strict_mode_source = 'auto'
+        else:
+            strict_single_id = _as_bool(strict_single_id_raw, default=False)
+            strict_mode_source = 'user'
 
         # Perform Extraction
-        result = extract_sequences_fuzzy(source_path, gene_ids)
+        result = extract_sequences_fuzzy(
+            source_path,
+            gene_ids,
+            strict_single_id=strict_single_id
+        )
         
         if not result['success']:
             raise ValidationError(result['error'])
@@ -105,15 +166,34 @@ def extract_sequences():
                 'type': detect_sequence_type(seq_content)
             })
             
+        saved_count = 0
         if extracted_seqs:
             add_success, _, add_msg = add_sequences_to_project(target_project, extracted_seqs)
             if not add_success:
                 raise ValidationError(f"Failed to save results: {add_msg}")
-                
+            match = re.search(r'Added\s+(\d+)\s+sequences', str(add_msg))
+            if match:
+                saved_count = int(match.group(1))
+        unmatched = result['unmatched']
+        unmatched_preview = unmatched[:20]
+        extracted_ids = [seq_id for seq_id, _ in result.get('sequences', [])]
+
         return {
-            'message': f"Extracted {len(extracted_seqs)} sequences",
+            'message': f"Matched {len(result['matched'])} IDs, added {saved_count} new sequences",
+            'source_mode': 'database' if source_fasta_id else 'project',
+            'source_fasta_id': source_fasta_id,
+            'source_project': source_project,
+            'strict_single_id': strict_single_id,
+            'strict_mode_source': strict_mode_source,
+            'requested_count': len(gene_ids),
+            'matched_count': len(result['matched']),
+            'extracted_count': len(extracted_seqs),
+            'saved_count': saved_count,
+            'unmatched_count': len(unmatched),
             'matched': result['matched'],
-            'unmatched': result['unmatched']
+            'unmatched': unmatched,
+            'unmatched_preview': unmatched_preview,
+            'extracted_ids': extracted_ids[:50]
         }
         
     finally:

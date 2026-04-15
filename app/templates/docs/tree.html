@@ -100,6 +100,18 @@
                                     <td>Display bootstrap support values</td>
                                     <td>Values are shown on internal branches</td>
                                 </tr>
+                                <tr>
+                                    <td><strong>Low Bootstrap Threshold</strong></td>
+                                    <td>Disabled</td>
+                                    <td>Highlight internal branches below a selected support cutoff.</td>
+                                    <td>Common thresholds: <code>70</code> (weak support) or <code>90</code> (strict).</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Fixed Branch Length</strong></td>
+                                    <td>Disabled</td>
+                                    <td>Render all branches with equal length for layout readability.</td>
+                                    <td>Use only for visualization convenience, not for evolutionary distance interpretation.</td>
+                                </tr>
                             </tbody>
                         </table>
                     </div>
@@ -198,6 +210,11 @@
                             </div>
                         </div>
                     </div>
+                    <div class="alert alert-warning mt-3 mb-0">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        Bootstrap support is conditional on your alignment, trimming strategy, model, and taxon sampling.
+                        Low support is often a signal to revisit upstream data quality, not only tree rendering.
+                    </div>
                 </div>
             </div>
         </div>
@@ -223,6 +240,16 @@
                         <li><strong>&lt;20 taxa:</strong> 10-12 pt</li>
                         <li><strong>20-50 taxa:</strong> 8-10 pt</li>
                         <li><strong>&gt;50 taxa:</strong> 6-8 pt</li>
+                    </ul>
+
+                    <hr>
+
+                    <h6>Bootstrap Guide:</h6>
+                    <ul class="small">
+                        <li><strong>≥95:</strong> Strong support</li>
+                        <li><strong>70-94:</strong> Moderate support</li>
+                        <li><strong>&lt;70:</strong> Weak support</li>
+                        <li>Set low-support highlight threshold to <code>70</code> for review.</li>
                     </ul>
 
                     <hr>

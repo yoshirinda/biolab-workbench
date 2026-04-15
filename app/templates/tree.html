@@ -60,7 +60,33 @@
 
                         <div class="form-check mb-3">
                             <input class="form-check-input" type="checkbox" id="showBootstrap" checked>
-                            <label class="form-check-label" for="showBootstrap">Show Bootstrap Values</label>
+                            <label class="form-check-label" for="showBootstrap">Show Support Labels</label>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="supportMetric" class="form-label">Composite Support Metric</label>
+                            <select class="form-select" id="supportMetric">
+                                <option value="trailing">Trailing value (recommended for IQ-TREE SH-aLRT/UFBoot labels)</option>
+                                <option value="leading">Leading value</option>
+                            </select>
+                            <small class="form-text text-muted" id="supportMetricHint">
+                                Upload a tree to inspect whether branch labels are single-value or composite.
+                            </small>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-8 mb-3">
+                                <label for="lowBootstrapThreshold" class="form-label">Highlight Low Support &lt; (%)</label>
+                                <input type="number" class="form-control" id="lowBootstrapThreshold" min="0" max="100" placeholder="e.g. 70">
+                                <small class="form-text text-muted">Optional. Highlight branches below this support threshold using the selected support metric.</small>
+                            </div>
+                            <div class="col-4 mb-3">
+                                <label for="lowBootstrapColor" class="form-label">Color</label>
+                                <input type="color" class="form-control form-control-color" id="lowBootstrapColor" value="#d62828">
+                            </div>
+                        </div>
+                        <div id="supportThresholdGuidance" class="alert alert-light border small py-2 px-3 mb-3">
+                            Upload a tree to inspect support labels before choosing a low-support cutoff.
                         </div>
 
                         <div class="form-check mb-3">
@@ -120,6 +146,8 @@
                     <div id="treeContainer" style="text-align: center; overflow: auto;">
                         <p class="text-muted">Upload a tree file to visualize</p>
                     </div>
+                    <div id="supportStats" class="mt-3"></div>
+                    <div id="treeInterpretation" class="mt-3"></div>
                 </div>
             </div>
         </div>
@@ -141,12 +169,100 @@
     let speciesColors = {};
     let treePath = null;
     let treeInfo = null;
+    let currentZoom = 1.0;
+    const IQTREE_SUPPORT_REFERENCES = {
+        leading: {
+            threshold: 80,
+            label: 'SH-aLRT',
+            note: 'For IQ-TREE SH-aLRT/UFBoot labels, the leading value is usually SH-aLRT and values below about 80 should be treated cautiously.'
+        },
+        trailing: {
+            threshold: 95,
+            label: 'UFBoot',
+            note: 'For IQ-TREE SH-aLRT/UFBoot labels, the trailing value is usually UFBoot and values below about 95 are not strongly supported.'
+        }
+    };
 
-    document.getElementById('uploadForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
+    function getSelectedSupportMetric() {
+        return document.getElementById('supportMetric')?.value === 'leading' ? 'leading' : 'trailing';
+    }
 
+    function renderSupportThresholdGuidance(info = null) {
+        const box = document.getElementById('supportThresholdGuidance');
+        const thresholdInput = document.getElementById('lowBootstrapThreshold');
+        if (!box || !thresholdInput) return;
+
+        const supportStats = info?.support_stats || null;
+        const selectedMetric = getSelectedSupportMetric();
+        const enteredThreshold = thresholdInput.value === '' ? null : Number.parseFloat(thresholdInput.value);
+
+        if (!info || !supportStats) {
+            thresholdInput.placeholder = 'e.g. 70';
+            box.textContent = 'Upload a tree to inspect support labels before choosing a low-support cutoff.';
+            return;
+        }
+
+        if (!info.has_support) {
+            thresholdInput.placeholder = 'Support labels not detected';
+            box.textContent = 'No support labels were detected in the uploaded tree. Leave low-support highlighting empty unless you know the file contains interpretable numeric branch labels.';
+            return;
+        }
+
+        if (supportStats.composite_support_labels) {
+            const metricRef = IQTREE_SUPPORT_REFERENCES[selectedMetric];
+            const strictnessNote = enteredThreshold === null || !Number.isFinite(enteredThreshold)
+                ? `A practical exploratory cutoff here is around ${metricRef.threshold}.`
+                : enteredThreshold < metricRef.threshold
+                    ? `Your current cutoff (${enteredThreshold}) is looser than the common ${metricRef.label} reference of ${metricRef.threshold}, so fewer branches will be flagged as weak.`
+                    : enteredThreshold > metricRef.threshold
+                        ? `Your current cutoff (${enteredThreshold}) is stricter than the common ${metricRef.label} reference of ${metricRef.threshold}, so more branches will be flagged as weak.`
+                        : `Your current cutoff matches the common ${metricRef.label} reference of ${metricRef.threshold}.`;
+            thresholdInput.placeholder = `e.g. ${metricRef.threshold}`;
+            box.textContent = `${metricRef.note} ${strictnessNote}`;
+            return;
+        }
+
+        thresholdInput.placeholder = 'e.g. 70';
+        const singleThresholdNote = enteredThreshold === null || !Number.isFinite(enteredThreshold)
+            ? 'If these are classical bootstrap percentages, starting around 70 is a reasonable exploratory cutoff.'
+            : enteredThreshold < 70
+                ? `The current cutoff (${enteredThreshold}) is looser than the common bootstrap screening threshold of 70.`
+                : enteredThreshold > 70
+                    ? `The current cutoff (${enteredThreshold}) is stricter than the common bootstrap screening threshold of 70.`
+                    : 'The current cutoff matches the common exploratory bootstrap threshold of 70.';
+        box.textContent = `Single-value support labels were detected. Confirm which support method generated the labels before using a hard cutoff. ${singleThresholdNote}`;
+    }
+
+    function syncSupportMetricControls(info = null) {
+        const select = document.getElementById('supportMetric');
+        const hint = document.getElementById('supportMetricHint');
+        if (!select || !hint) return;
+
+        const supportStats = info?.support_stats || null;
+        if (!info || !supportStats) {
+            select.disabled = true;
+            hint.textContent = 'Upload a tree to inspect whether branch labels are single-value or composite.';
+            renderSupportThresholdGuidance(info);
+            return;
+        }
+
+        if (supportStats.composite_support_labels) {
+            select.disabled = false;
+            hint.textContent = 'Composite support labels were detected (for example 80/95). This selector controls which value drives low-support highlighting and summary; the full label remains visible on the tree.';
+            renderSupportThresholdGuidance(info);
+            return;
+        }
+
+        select.disabled = true;
+        hint.textContent = info.has_support
+            ? 'Single numeric support labels were detected. This selector is only needed for composite labels such as 80/95.'
+            : 'No support labels were detected in the uploaded tree.';
+        renderSupportThresholdGuidance(info);
+    }
+
+    async function loadTreeFromFile(file) {
         const formData = new FormData();
-        formData.append('file', document.getElementById('treeFile').files[0]);
+        formData.append('file', file);
 
         try {
             const response = await fetch(TREE_URLS.upload, {
@@ -163,45 +279,218 @@
                 document.getElementById('treePath').value = treePath;
                 document.getElementById('visualizeCard').style.display = 'block';
 
-                // Display tree info
                 if (treeInfo) {
                     document.getElementById('treeInfo').textContent =
                         `${treeInfo.leaf_count || '?'} leaves, ${treeInfo.species?.length || '?'} species`;
                 }
 
-                // Build species color list
                 buildSpeciesColorList(treeInfo.species || [], speciesColors);
-
-                // Build target gene search list with fuzzy search
                 buildTargetGeneSearch(treeInfo.all_nodes || [], treeInfo.leaves || []);
+                syncSupportMetricControls(treeInfo);
 
                 showAlert('success', 'Tree loaded successfully');
-            } else {
-                showAlert('danger', data.error);
+                if (treeInfo?.support_stats?.composite_support_labels) {
+                    showAlert(
+                        'info',
+                        'Composite branch-support labels detected. Review the "Composite Support Metric" selector before interpreting highlighted low-support branches.',
+                        7000
+                    );
+                }
+                return true;
             }
+
+            showAlert('danger', data.error);
+            return false;
         } catch (error) {
             showAlert('danger', 'Upload failed: ' + error.message);
+            return false;
         }
+    }
+
+    document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const file = document.getElementById('treeFile').files[0];
+        if (!file) {
+            showAlert('warning', 'Please choose a tree file.');
+            return;
+        }
+
+        await loadTreeFromFile(file);
     });
+
+    async function preloadTreeFromQuery() {
+        const params = new URLSearchParams(window.location.search);
+        const treeFileParam = params.get('tree_file');
+        if (!treeFileParam) return;
+
+        try {
+            const response = await fetch(TREE_URLS.visualize, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ tree_file: treeFileParam })
+            });
+            const result = await response.json();
+            if (!result.success) {
+                showAlert('warning', result.error || 'Unable to preload tree visualization.');
+                return;
+            }
+
+            treePath = treeFileParam;
+            treeInfo = null;
+            document.getElementById('treePath').value = treePath;
+            document.getElementById('visualizeCard').style.display = 'block';
+            renderTreeResultImage(result.output_file);
+            const btn = document.getElementById('downloadSvgBtn');
+            btn.href = buildTreeFileUrl(TREE_URLS.downloadBase, result.output_file);
+            btn.classList.remove('d-none');
+            renderSupportStats(result.support_stats || null);
+            renderTreeInterpretation(treeInfo, result.support_stats || null);
+            const treeInfoEl = document.getElementById('treeInfo');
+            if (treeInfoEl) {
+                treeInfoEl.textContent = treeFileParam.split('/').pop() || 'Pipeline tree';
+            }
+            showAlert('success', 'Loaded tree from pipeline output.');
+        } catch (error) {
+            showAlert('warning', 'Unable to preload tree visualization: ' + error.message);
+        }
+    }
+
+    function clearElement(element) {
+        while (element.firstChild) {
+            element.removeChild(element.firstChild);
+        }
+    }
+
+    function renderMutedMessage(container, text) {
+        clearElement(container);
+        const p = document.createElement('p');
+        p.className = 'text-muted';
+        p.textContent = text;
+        container.appendChild(p);
+    }
+
+    function buildTreeFileUrl(basePath, filePath) {
+        if (!filePath) {
+            return '';
+        }
+        return `${basePath}${encodeURIComponent(String(filePath)).replace(/%2F/g, '/')}`;
+    }
+
+    function setDatalistOptions(datalist, options) {
+        clearElement(datalist);
+        options.forEach((gene) => {
+            const option = document.createElement('option');
+            option.value = gene;
+            datalist.appendChild(option);
+        });
+    }
+
+    function parseBoundedInt(rawValue, label, minimum, maximum) {
+        const parsed = Number.parseInt(String(rawValue), 10);
+        if (!Number.isFinite(parsed)) {
+            throw new Error(`${label} must be an integer.`);
+        }
+        if (parsed < minimum || parsed > maximum) {
+            throw new Error(`${label} must be between ${minimum} and ${maximum}.`);
+        }
+        return parsed;
+    }
+
+    function parseOptionalBoundedFloat(rawValue, label, minimum, maximum) {
+        if (rawValue === null || rawValue === undefined || String(rawValue).trim() === '') {
+            return '';
+        }
+        const parsed = Number.parseFloat(String(rawValue));
+        if (!Number.isFinite(parsed)) {
+            throw new Error(`${label} must be a number.`);
+        }
+        if (parsed < minimum || parsed > maximum) {
+            throw new Error(`${label} must be between ${minimum} and ${maximum}.`);
+        }
+        return parsed;
+    }
+
+    function collectVisualizationSettings() {
+        const treeFile = document.getElementById('treePath').value.trim();
+        if (!treeFile) {
+            throw new Error('Please upload a tree file first.');
+        }
+
+        const fontSize = parseBoundedInt(document.getElementById('fontSize').value, 'Font Size', 6, 72);
+        const vScaleParsed = parseOptionalBoundedFloat(
+            document.getElementById('vScale').value,
+            'V. Scale',
+            0.1,
+            20
+        );
+        const lowBootstrapThreshold = parseOptionalBoundedFloat(
+            document.getElementById('lowBootstrapThreshold').value,
+            'Low-support threshold',
+            0,
+            100
+        );
+
+        return {
+            treeFile,
+            fontSize,
+            vScale: vScaleParsed === '' ? 1.0 : vScaleParsed,
+            lowBootstrapThreshold
+        };
+    }
+
+    function collectAndValidateCladeForm() {
+        const base = collectVisualizationSettings();
+        const targetGene = document.getElementById('targetGene').value.trim();
+        if (!targetGene) {
+            throw new Error('Please enter a target gene.');
+        }
+
+        const levelsUp = parseBoundedInt(document.getElementById('levelsUp').value, 'Levels Up', 0, 1000);
+        return {
+            ...base,
+            targetGene,
+            levelsUp
+        };
+    }
 
     function buildSpeciesColorList(species, colors) {
         const container = document.getElementById('speciesColorList');
 
-        if (species.length === 0) {
-            container.innerHTML = '<p class="text-muted">No species detected</p>';
+        if (!Array.isArray(species) || species.length === 0) {
+            renderMutedMessage(container, 'No species detected');
             return;
         }
 
-        container.innerHTML = species.map((sp, idx) => `
-            <div class="d-flex align-items-center mb-2">
-                <input type="checkbox" class="form-check-input me-2"
-                    id="highlight_${idx}" data-species="${sp}">
-                <input type="color" class="form-control form-control-color me-2"
-                    id="color_${idx}" value="${colors[sp] || defaultColors[idx % defaultColors.length] || '#000000'}"
-                    data-species="${sp}" style="width: 50px;">
-                <label class="form-label mb-0" for="color_${idx}" style="flex-grow: 1;">${sp}</label>
-            </div>
-        `).join('');
+        clearElement(container);
+        species.forEach((speciesName, idx) => {
+            const row = document.createElement('div');
+            row.className = 'd-flex align-items-center mb-2';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'form-check-input me-2';
+            checkbox.id = `highlight_${idx}`;
+            checkbox.dataset.species = speciesName;
+
+            const colorInput = document.createElement('input');
+            colorInput.type = 'color';
+            colorInput.className = 'form-control form-control-color me-2';
+            colorInput.id = `color_${idx}`;
+            colorInput.value = colors[speciesName] || defaultColors[idx % defaultColors.length] || '#000000';
+            colorInput.dataset.species = speciesName;
+            colorInput.style.width = '50px';
+
+            const label = document.createElement('label');
+            label.className = 'form-label mb-0';
+            label.setAttribute('for', colorInput.id);
+            label.style.flexGrow = '1';
+            label.textContent = speciesName;
+
+            row.appendChild(checkbox);
+            row.appendChild(colorInput);
+            row.appendChild(label);
+            container.appendChild(row);
+        });
     }
 
     function buildTargetGeneSearch(allNodes, leaves) {
@@ -211,54 +500,196 @@
         const datalist = document.getElementById('geneList');
         
         // Populate with all nodes (leaves + internal nodes for clade extraction)
-        const uniqueGenes = [...new Set([...leaves, ...allNodes.filter(n => n)])];
-        
-        // Initial population with first 50 genes
-        datalist.innerHTML = uniqueGenes.slice(0, 50).map(gene => 
-            `<option value="${gene}">`
-        ).join('');
+        const uniqueGenes = [...new Set(
+            [...(Array.isArray(leaves) ? leaves : []), ...(Array.isArray(allNodes) ? allNodes : [])]
+                .filter((node) => typeof node === 'string')
+                .map((node) => node.trim())
+                .filter(Boolean)
+        )];
 
-        // Add fuzzy search filter
-        let searchTimeout;
-        input.addEventListener('input', function() {
-            clearTimeout(searchTimeout);
-            const val = this.value.toLowerCase().trim();
-            
+        const showTopGenes = (val) => {
             if (!val) {
-                // Show first 50 when empty
-                datalist.innerHTML = uniqueGenes.slice(0, 50).map(gene =>
-                    `<option value="${gene}">`
-                ).join('');
+                setDatalistOptions(datalist, uniqueGenes.slice(0, 50));
                 return;
             }
-            
-            // Debounce search for better performance
-            searchTimeout = setTimeout(() => {
-                const filtered = uniqueGenes.filter(gene => 
-                    gene.toLowerCase().includes(val)
-                ).slice(0, 50);  // Show top 50 matches
+            const filtered = uniqueGenes
+                .filter((gene) => gene.toLowerCase().includes(val))
+                .slice(0, 50);
+            setDatalistOptions(datalist, filtered);
+        };
 
-                datalist.innerHTML = filtered.map(gene =>
-                    `<option value="${gene}">`
-                ).join('');
+        showTopGenes('');
+
+        input.oninput = function onGeneInput() {
+            clearTimeout(input._geneSearchTimeout);
+            const val = this.value.toLowerCase().trim();
+            input._geneSearchTimeout = setTimeout(() => {
+                showTopGenes(val);
             }, 150);
-        });
+        };
 
-        // Show options on focus
-        input.addEventListener('focus', function() {
+        input.onfocus = function onGeneFocus() {
             if (!this.value) {
-                datalist.innerHTML = uniqueGenes.slice(0, 50).map(gene => 
-                    `<option value="${gene}">`
-                ).join('');
+                showTopGenes('');
             }
-        });
+        };
+    }
+
+    function clearSupportStats() {
+        clearElement(document.getElementById('supportStats'));
+        clearElement(document.getElementById('treeInterpretation'));
+    }
+
+    function renderSupportStats(support) {
+        const supportStats = document.getElementById('supportStats');
+        clearElement(supportStats);
+        if (!support || !(support.internal_nodes_with_support > 0)) {
+            return;
+        }
+
+        const supportSummary = support.composite_support_labels
+            ? `Support Stats (${support.support_metric_label}): min=${support.support_min}, mean=${support.support_mean}, max=${support.support_max}`
+            : `Support Stats: min=${support.support_min}, mean=${support.support_mean}, max=${support.support_max}`;
+        const secondarySummary = support.composite_support_labels && support.support_other_mean !== null && support.support_other_mean !== undefined
+            ? ` | ${support.support_other_metric_label} mean=${support.support_other_mean}`
+            : '';
+        const lowText = (support.low_support_threshold !== null && support.low_support_threshold !== undefined)
+            ? `${support.low_support_count} / ${support.internal_nodes_with_support} below ${support.low_support_threshold}`
+            : 'No low-support threshold set';
+        const referenceText = support.composite_support_labels
+            ? ` | IQ-TREE-style reference: ${getSelectedSupportMetric() === 'leading' ? 'SH-aLRT >=80' : 'UFBoot >=95'}`
+            : '';
+
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-info py-2 mb-0';
+        alert.textContent = `${supportSummary}${secondarySummary} | low-support: ${lowText}${referenceText}`;
+        supportStats.appendChild(alert);
+    }
+
+    function renderTreeInterpretation(cladeInfo, support) {
+        const box = document.getElementById('treeInterpretation');
+        clearElement(box);
+
+        const items = [];
+        if (cladeInfo?.leaf_count) {
+            items.push(`The extracted clade contains ${cladeInfo.leaf_count} leaves after tracing ${cladeInfo.levels_up} ancestor levels from the target gene. Interpret this as a local neighborhood, not necessarily the full gene family.`);
+        }
+        if (!support || !support.internal_nodes_with_support) {
+            items.push('No branch-support values were detected in this view. Topology can still be visualized, but branch confidence cannot be judged from support labels.');
+        } else {
+            if (support.composite_support_labels) {
+                items.push(`Composite support labels were detected. Summary and low-support highlighting currently use the ${support.support_metric_label} in each label, while the full label is still shown on the tree.`);
+                if (support.support_other_mean !== null && support.support_other_mean !== undefined) {
+                    items.push(`The alternate ${support.support_other_metric_label} averages ${support.support_other_mean}, which helps you compare the two support scales before drawing conclusions.`);
+                }
+                if (getSelectedSupportMetric() === 'leading') {
+                    items.push('For IQ-TREE-style SH-aLRT/UFBoot labels, leading values are usually SH-aLRT; branches below about 80 should be treated cautiously even if the paired UFBoot value looks stronger.');
+                } else {
+                    items.push('For IQ-TREE-style SH-aLRT/UFBoot labels, trailing values are usually UFBoot; branches below about 95 are not strongly supported even when topology looks plausible.');
+                }
+            }
+            if (support.support_mean >= 90) {
+                items.push('Average branch support is high. Major internal splits are relatively stable under the current support metric.');
+            } else if (support.support_mean >= 70) {
+                items.push('Average branch support is moderate. Broad groupings may be usable, but fine-scale branching should be interpreted cautiously.');
+            } else {
+                items.push('Average branch support is low. Treat local branching order as tentative and consider improving alignment quality or taxon sampling.');
+            }
+            if (support.low_support_threshold !== null && support.low_support_count > 0) {
+                items.push(`${support.low_support_count} internal branches fall below the chosen support threshold, so highlighted branches should be treated as unstable hypotheses rather than firm conclusions.`);
+            }
+            if (support.low_support_threshold !== null && support.composite_support_labels) {
+                const metricRef = IQTREE_SUPPORT_REFERENCES[getSelectedSupportMetric()];
+                if (support.low_support_threshold < metricRef.threshold) {
+                    items.push(`The chosen low-support cutoff (${support.low_support_threshold}) is looser than the common ${metricRef.label} reference of ${metricRef.threshold}, so weak branches may be under-flagged.`);
+                } else if (support.low_support_threshold > metricRef.threshold) {
+                    items.push(`The chosen low-support cutoff (${support.low_support_threshold}) is stricter than the common ${metricRef.label} reference of ${metricRef.threshold}, which is useful for conservative screening but will highlight more branches.`);
+                }
+            }
+        }
+
+        box.innerHTML = `
+            <div class="alert alert-light border mb-0">
+                <div class="fw-semibold mb-2">Result Interpretation</div>
+                <ul class="mb-0 small">
+                    ${items.map((item) => `<li>${item.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    }
+
+    function renderTreeError(message) {
+        const treeContainer = document.getElementById('treeContainer');
+        clearElement(treeContainer);
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'alert alert-danger';
+        errorDiv.textContent = message || 'Clade extraction failed.';
+        treeContainer.appendChild(errorDiv);
+    }
+
+    function renderTreeResultImage(outputFile) {
+        const container = document.getElementById('treeContainer');
+        clearElement(container);
+        currentZoom = 1.0;
+
+        const controls = document.createElement('div');
+        controls.className = 'mb-2 text-center';
+
+        const zoomOutBtn = document.createElement('button');
+        zoomOutBtn.type = 'button';
+        zoomOutBtn.className = 'btn btn-sm btn-outline-secondary';
+        zoomOutBtn.innerHTML = '<i class="bi bi-zoom-out"></i>';
+        zoomOutBtn.addEventListener('click', () => zoomTree(0.8));
+
+        const zoomResetBtn = document.createElement('button');
+        zoomResetBtn.type = 'button';
+        zoomResetBtn.className = 'btn btn-sm btn-outline-secondary';
+        zoomResetBtn.textContent = '100%';
+        zoomResetBtn.addEventListener('click', () => zoomTree(1.0));
+
+        const zoomInBtn = document.createElement('button');
+        zoomInBtn.type = 'button';
+        zoomInBtn.className = 'btn btn-sm btn-outline-secondary';
+        zoomInBtn.innerHTML = '<i class="bi bi-zoom-in"></i>';
+        zoomInBtn.addEventListener('click', () => zoomTree(1.2));
+
+        const zoomLabel = document.createElement('span');
+        zoomLabel.className = 'ms-2 text-muted';
+        zoomLabel.id = 'zoomLevel';
+        zoomLabel.textContent = '100%';
+
+        controls.appendChild(zoomOutBtn);
+        controls.appendChild(zoomResetBtn);
+        controls.appendChild(zoomInBtn);
+        controls.appendChild(zoomLabel);
+
+        const imageWrapper = document.createElement('div');
+        imageWrapper.style.overflow = 'auto';
+        imageWrapper.style.maxHeight = '800px';
+        imageWrapper.style.border = '1px solid #ddd';
+        imageWrapper.style.padding = '10px';
+
+        const treeImage = document.createElement('img');
+        treeImage.id = 'treeImage';
+        treeImage.alt = 'Extracted clade tree';
+        treeImage.src = buildTreeFileUrl(TREE_URLS.viewBase, outputFile);
+        treeImage.style.display = 'block';
+        treeImage.style.margin = '0 auto';
+        treeImage.style.maxWidth = 'none';
+        treeImage.style.width = '100%';
+
+        imageWrapper.appendChild(treeImage);
+        container.appendChild(controls);
+        container.appendChild(imageWrapper);
     }
 
     // Clade extraction handler
     document.getElementById('extractCladeBtn').addEventListener('click', async function() {
-        const targetGene = document.getElementById('targetGene').value.trim();
-        if (!targetGene) {
-            showAlert('warning', 'Please enter a target gene');
+        let validated;
+        try {
+            validated = collectAndValidateCladeForm();
+        } catch (validationError) {
+            showAlert('warning', validationError.message);
             return;
         }
 
@@ -273,20 +704,24 @@
         const highlightSpecies = Array.from(highlightChecks).map(cb => cb.dataset.species);
 
         const data = {
-            tree_file: document.getElementById('treePath').value,
-            target_gene: targetGene,
-            levels_up: document.getElementById('levelsUp').value,
+            tree_file: validated.treeFile,
+            target_gene: validated.targetGene,
+            levels_up: validated.levelsUp,
             layout: document.getElementById('layout').value,
-            font_size: document.getElementById('fontSize').value,
+            font_size: validated.fontSize,
+            v_scale: validated.vScale,
             show_bootstrap: document.getElementById('showBootstrap').checked,
+            support_metric: document.getElementById('supportMetric').value,
             fixed_branch_length: document.getElementById('fixedBranch').checked,
+            low_bootstrap_threshold: validated.lowBootstrapThreshold,
+            low_bootstrap_color: document.getElementById('lowBootstrapColor').value,
             colored_species: coloredSpecies,
-            highlight_species: highlightSpecies,
-            fixed_branch_length: document.getElementById('fixedBranch').checked
+            highlight_species: highlightSpecies
         };
 
         document.getElementById('loadingSpinner').classList.remove('d-none');
-        document.getElementById('treeContainer').innerHTML = '';
+        clearElement(document.getElementById('treeContainer'));
+        clearSupportStats();
 
         try {
             const response = await fetch('/tree/extract-clade', {
@@ -299,36 +734,108 @@
             document.getElementById('loadingSpinner').classList.add('d-none');
 
             if (result.success) {
-                const container = document.getElementById('treeContainer');
-                container.innerHTML = `
-                    <div class="mb-2 text-center">
-                        <button class="btn btn-sm btn-outline-secondary" onclick="zoomTree(0.8)"><i class="bi bi-zoom-out"></i></button>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="zoomTree(1.0)">100%</button>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="zoomTree(1.2)"><i class="bi bi-zoom-in"></i></button>
-                        <span class="ms-2 text-muted" id="zoomLevel">100%</span>
-                    </div>
-                    <div style="overflow: auto; max-height: 800px; border: 1px solid #ddd; padding: 10px;">
-                        <img id="treeImage" src="${TREE_URLS.viewBase + result.output_file}" style="display: block; margin: 0 auto; max-width: none; width: 100%;">
-                    </div>
-                `;
+                renderTreeResultImage(result.output_file);
 
                 const btn = document.getElementById('downloadSvgBtn');
-                btn.href = TREE_URLS.downloadBase + result.output_file;
+                btn.href = buildTreeFileUrl(TREE_URLS.downloadBase, result.output_file);
                 btn.classList.remove('d-none');
 
                 const info = result.clade_info;
+                const support = result.support_stats || info.support_stats || null;
+                renderSupportStats(support);
+                renderTreeInterpretation(info, support);
                 showAlert('success', `Clade extracted: ${info.leaf_count} leaves, ${info.levels_up} levels up`);
             } else {
-                document.getElementById('treeContainer').innerHTML = `<div class="alert alert-danger">${result.error}</div>`;
+                renderTreeError(result.error);
+                clearSupportStats();
+                showAlert('danger', result.error || 'Clade extraction failed.');
             }
         } catch (error) {
             document.getElementById('loadingSpinner').classList.add('d-none');
+            clearSupportStats();
             showAlert('danger', 'Clade extraction failed: ' + error.message);
         }
     });
 
+    // Main Visualize Flow
+    document.getElementById('visualizeForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        if (!treePath) {
+            showAlert('warning', 'Please upload a tree file first.');
+            return;
+        }
+
+        let validated;
+        try {
+            validated = collectVisualizationSettings();
+        } catch (validationError) {
+            showAlert('warning', validationError.message);
+            return;
+        }
+
+        const colorInputs = document.querySelectorAll('#speciesColorList input[type="color"]');
+        const coloredSpecies = {};
+        colorInputs.forEach(input => {
+            coloredSpecies[input.dataset.species] = input.value;
+        });
+
+        const highlightChecks = document.querySelectorAll('#speciesColorList input[type="checkbox"]:checked');
+        const highlightSpecies = Array.from(highlightChecks).map(cb => cb.dataset.species);
+
+        const data = {
+            tree_file: treePath,
+            layout: document.getElementById('layout').value,
+            font_size: validated.fontSize,
+            v_scale: validated.vScale,
+            show_bootstrap: document.getElementById('showBootstrap').checked,
+            support_metric: document.getElementById('supportMetric').value,
+            fixed_branch_length: document.getElementById('fixedBranch').checked,
+            low_bootstrap_threshold: validated.lowBootstrapThreshold,
+            low_bootstrap_color: document.getElementById('lowBootstrapColor').value,
+            colored_species: coloredSpecies,
+            highlight_species: highlightSpecies
+        };
+
+        document.getElementById('loadingSpinner').classList.remove('d-none');
+        clearElement(document.getElementById('treeContainer'));
+        clearSupportStats();
+
+        try {
+            const response = await fetch(TREE_URLS.visualize, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            const result = await response.json();
+            document.getElementById('loadingSpinner').classList.add('d-none');
+
+            if (result.success) {
+                renderTreeResultImage(result.output_file);
+
+                const btn = document.getElementById('downloadSvgBtn');
+                btn.href = buildTreeFileUrl(TREE_URLS.downloadBase, result.output_file);
+                btn.classList.remove('d-none');
+
+                const info = result.clade_info || treeInfo;
+                const support = result.support_stats || (info ? info.support_stats : null);
+                renderSupportStats(support);
+                renderTreeInterpretation(info, support);
+                showAlert('success', 'Tree visualization updated.');
+            } else {
+                renderTreeError(result.error);
+                clearSupportStats();
+                showAlert('danger', result.error || 'Visualization failed.');
+            }
+        } catch (error) {
+            document.getElementById('loadingSpinner').classList.add('d-none');
+            clearSupportStats();
+            showAlert('danger', 'Visualization failed: ' + error.message);
+        }
+    });
+
+    preloadTreeFromQuery();
+
     // Zoom control for tree image
-    let currentZoom = 1.0;
     function zoomTree(factor) {
         const img = document.getElementById('treeImage');
         if (!img) return;
@@ -345,5 +852,14 @@
         img.style.width = (currentZoom * 100) + '%';
         document.getElementById('zoomLevel').textContent = Math.round(currentZoom * 100) + '%';
     }
+
+    ['supportMetric', 'lowBootstrapThreshold'].forEach((id) => {
+        const element = document.getElementById(id);
+        if (!element) return;
+        element.addEventListener('change', () => renderSupportThresholdGuidance(treeInfo));
+        element.addEventListener('input', () => renderSupportThresholdGuidance(treeInfo));
+    });
+
+    syncSupportMetricControls(null);
 </script>
 {% endblock %}

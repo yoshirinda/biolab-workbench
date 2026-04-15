@@ -69,8 +69,11 @@
                                         <label class="form-label small text-muted">Common Species</label>
                                         <div>
                                             {% for name, taxid in common_species.items() %}
-                                                <button type="button" class="btn btn-sm btn-outline-secondary mb-1"
-                                                    onclick="selectTaxon('{{ name }}', '{{ taxid }}')">
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-sm btn-outline-secondary mb-1 common-taxon-btn"
+                                                    data-taxon-name="{{ name | e }}"
+                                                    data-taxon-id="{{ taxid }}">
                                                     {{ name }}
                                                 </button>
                                             {% endfor %}
@@ -132,6 +135,15 @@
                             </select>
                         </div>
 
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="dedupGeneSpecies">
+                            <label class="form-check-label" for="dedupGeneSpecies">
+                                Deduplicate by Gene + Species (keep first accession)
+                            </label>
+                        </div>
+
+                        <div id="uniprotScientificHints" class="mb-3"></div>
+
                         <div class="d-grid gap-2">
                             <button type="submit" class="btn btn-danger" id="searchBtn">
                                 <i class="bi bi-search"></i> Search
@@ -163,6 +175,8 @@
                     <div id="resultsArea">
                         <p class="text-muted text-center mb-0">Enter a search query to find sequences</p>
                     </div>
+
+                    <div id="uniprotInterpretation" class="d-none mb-3"></div>
 
                     <div id="resultsTable" class="d-none">
                         <div id="selectionSummary" class="bg-light border rounded p-3 mb-3">
@@ -251,8 +265,11 @@
         form: document.getElementById('uniprotForm'),
         searchBtn: document.getElementById('searchBtn'),
         downloadBtn: document.getElementById('downloadBtn'),
+        queryInput: document.getElementById('query'),
+        limitInput: document.getElementById('limit'),
         loadingSpinner: document.getElementById('loadingSpinner'),
         resultsArea: document.getElementById('resultsArea'),
+        interpretationBox: document.getElementById('uniprotInterpretation'),
         resultsTableWrapper: document.getElementById('resultsTable'),
         resultsTableBody: document.getElementById('resultsTableBody'),
         quickFilter: document.getElementById('quickFilter'),
@@ -260,6 +277,10 @@
         selectAllBtn: document.getElementById('selectAllBtn'),
         clearSelectionBtn: document.getElementById('clearSelectionBtn'),
         selectAllCheckbox: document.getElementById('selectAllCheckbox'),
+        dbTypeInput: document.getElementById('dbType'),
+        headerFormatInput: document.getElementById('headerFormat'),
+        dedupCheckbox: document.getElementById('dedupGeneSpecies'),
+        scientificHintsBox: document.getElementById('uniprotScientificHints'),
         resultCount: document.getElementById('resultCount'),
         totalCount: document.getElementById('totalCount'),
         selectedCount: document.getElementById('selectedCount'),
@@ -270,8 +291,164 @@
         selectedTaxonDisplay: document.getElementById('selectedTaxonDisplay'),
         taxonomyIdInput: document.getElementById('taxonomy_id'),
         taxonBrowser: document.getElementById('taxonBrowser'),
-        taxonBreadcrumb: document.getElementById('taxonBreadcrumb')
+        taxonBreadcrumb: document.getElementById('taxonBreadcrumb'),
+        commonTaxonButtons: Array.from(document.querySelectorAll('.common-taxon-btn'))
     };
+
+    function clearElement(element) {
+        while (element.firstChild) {
+            element.removeChild(element.firstChild);
+        }
+    }
+
+    function renderLoadingIndicator(container) {
+        clearElement(container);
+        const wrapper = document.createElement('div');
+        wrapper.className = 'text-center';
+        const spinner = document.createElement('div');
+        spinner.className = 'spinner-border spinner-border-sm';
+        spinner.setAttribute('role', 'status');
+        wrapper.appendChild(spinner);
+        container.appendChild(wrapper);
+    }
+
+    function renderTaxonMessage(container, message, tone = 'muted') {
+        clearElement(container);
+        const p = document.createElement('p');
+        p.className = `small p-2 text-${tone}`;
+        p.textContent = message;
+        container.appendChild(p);
+    }
+
+    function parseResultLimit(rawValue) {
+        const parsed = Number.parseInt(String(rawValue), 10);
+        if (!Number.isFinite(parsed)) {
+            return 500;
+        }
+        return Math.max(1, Math.min(5000, parsed));
+    }
+
+    function clearInterpretation() {
+        if (!elements.interpretationBox) return;
+        elements.interpretationBox.classList.add('d-none');
+        elements.interpretationBox.innerHTML = '';
+    }
+
+    function renderUniProtScientificHints() {
+        const box = elements.scientificHintsBox;
+        if (!box) return;
+
+        const limit = parseResultLimit(elements.limitInput.value);
+        const dbType = elements.dbTypeInput.value;
+        const headerFormat = elements.headerFormatInput.value;
+        const dedupAtDownload = elements.dedupCheckbox.checked;
+        const hasTaxonomy = Boolean(elements.taxonomyIdInput.value);
+        const items = [];
+
+        if (dbType === 'reviewed') {
+            items.push({ level: 'info', text: 'Reviewed (Swiss-Prot) narrows the search to curated entries. This is usually the cleaner starting point for downstream alignment or phylogeny.' });
+        } else if (dbType === 'unreviewed') {
+            items.push({ level: 'warning', text: 'Unreviewed (TrEMBL) broadens recall, but annotation quality is less consistent. Plan to curate names, lengths, and species coverage before downstream analysis.' });
+        } else {
+            items.push({ level: 'info', text: 'Searching all UniProt entries maximizes recall, but mixed reviewed/unreviewed hits usually need more curation before alignment or tree building.' });
+        }
+
+        if (!hasTaxonomy && limit > 1000) {
+            items.push({ level: 'warning', text: 'Large untargeted searches often mix distant homologs, fragments, and annotation styles. Add a taxonomy filter when you want a biologically tighter set.' });
+        }
+
+        if (headerFormat === 'gene_species_id') {
+            items.push({ level: 'info', text: 'Gene_Species_ID headers are easier to scan in alignment viewers and tree labels, but accession-centric provenance becomes less obvious.' });
+        } else {
+            items.push({ level: 'info', text: 'Standard UniProt headers preserve accession traceability and are safer when exact provenance matters more than display readability.' });
+        }
+
+        if (dedupAtDownload) {
+            items.push({ level: 'warning', text: 'Gene + species deduplication reduces redundancy, but it can hide isoforms, strain-level variants, or multiple curated accessions for one locus.' });
+        }
+
+        box.innerHTML = items.map((item) => {
+            const cls = item.level === 'warning' ? 'alert-warning' : 'alert-light border';
+            return `<div class="alert ${cls} py-2 px-3 mb-2 small">${escapeHtml(item.text)}</div>`;
+        }).join('');
+    }
+
+    function refreshUniProtInterpretation() {
+        if (!state.results.length) {
+            clearInterpretation();
+            return;
+        }
+        renderUniProtInterpretation(state.results, getFilteredResults());
+    }
+
+    function renderUniProtInterpretation(results, visibleResults = results) {
+        if (!elements.interpretationBox) return;
+        if (!Array.isArray(results) || !results.length) {
+            clearInterpretation();
+            return;
+        }
+
+        const items = [];
+        const total = results.length;
+        const shownResults = Array.isArray(visibleResults) ? visibleResults : results;
+        const interpretationResults = shownResults.length > 0 ? shownResults : results;
+        const uniqueOrganisms = new Set(interpretationResults.map((entry) => String(entry.organism || '').trim()).filter(Boolean));
+        const lengths = interpretationResults
+            .map((entry) => Number(entry.sequence_length || 0))
+            .filter((value) => Number.isFinite(value) && value > 0)
+            .sort((a, b) => a - b);
+        const dbType = elements.dbTypeInput.value;
+        const taxonomyLabel = String(elements.selectedTaxonDisplay?.textContent || '').trim();
+        const hasTaxonomy = Boolean(elements.taxonomyIdInput.value);
+        const limit = parseResultLimit(elements.limitInput.value);
+        const dedupAtDownload = elements.dedupCheckbox.checked;
+
+        items.push(`Search returned ${total} entries${hasTaxonomy ? ` within ${taxonomyLabel}` : ''}.`);
+        if (state.filterTerm) {
+            items.push(`Quick filter currently shows ${shownResults.length} of ${total} entries. Selection state is preserved while filtering.`);
+        }
+        if (selectedAccessions.size > 0) {
+            items.push(`Current curated selection contains ${selectedAccessions.size} accession${selectedAccessions.size === 1 ? '' : 's'} for download.`);
+        }
+
+        if (dbType === 'reviewed') {
+            items.push('Reviewed (Swiss-Prot) mode favors curated annotations and cleaner metadata, but it may miss valid homologs that only exist in unreviewed entries.');
+        } else if (dbType === 'unreviewed') {
+            items.push('Unreviewed (TrEMBL) mode broadens recall, but names and functional descriptions are less standardized and should be treated more cautiously.');
+        }
+
+        if (!hasTaxonomy && uniqueOrganisms.size >= 10) {
+            items.push(`Results span at least ${uniqueOrganisms.size} organisms. Add a taxonomy filter if you want a tighter, more biologically comparable set before downloading.`);
+        } else if (hasTaxonomy && uniqueOrganisms.size > 0 && uniqueOrganisms.size <= 3) {
+            items.push('The current result set is taxonomically focused, which is usually easier to curate for downstream alignment or phylogeny.');
+        }
+
+        if (lengths.length >= 5) {
+            const minLen = lengths[0];
+            const maxLen = lengths[lengths.length - 1];
+            if (minLen > 0 && maxLen / minLen >= 2.5) {
+                items.push(`Sequence lengths vary widely (${minLen} to ${maxLen} aa). That often signals fragments, alternative isoforms, or mixed domain architectures rather than one clean protein family.`);
+            }
+        }
+
+        if (total >= limit) {
+            items.push('Returned entries reached the current result limit, so the search may be truncated. Narrow the query or taxonomy if you need a more interpretable set.');
+        }
+
+        if (dedupAtDownload) {
+            items.push('Gene + species deduplication is enabled for download. This helps reduce near-redundant accessions but may also hide isoform-level differences.');
+        }
+
+        elements.interpretationBox.classList.remove('d-none');
+        elements.interpretationBox.innerHTML = `
+            <div class="alert alert-light border mb-0">
+                <div class="fw-semibold mb-2">Result Interpretation</div>
+                <ul class="mb-0 small">
+                    ${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    }
 
     // --- Event Listeners ---
     function initializeEventListeners() {
@@ -286,61 +463,89 @@
         elements.taxonSearchBtn.addEventListener('click', searchTaxonomy);
         elements.taxonSearchQuery.addEventListener('keyup', (e) => { if (e.key === 'Enter') searchTaxonomy(); });
         elements.clearTaxonBtn.addEventListener('click', () => selectTaxon('All Organisms', ''));
+        [elements.dbTypeInput, elements.limitInput, elements.headerFormatInput, elements.dedupCheckbox].forEach((element) => {
+            element.addEventListener('change', () => {
+                if (element === elements.limitInput) {
+                    elements.limitInput.value = parseResultLimit(elements.limitInput.value);
+                }
+                renderUniProtScientificHints();
+                refreshUniProtInterpretation();
+            });
+            if (element === elements.limitInput) {
+                element.addEventListener('input', () => renderUniProtScientificHints());
+            }
+        });
+        elements.commonTaxonButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                selectTaxon(button.dataset.taxonName || 'Unknown taxon', button.dataset.taxonId || '');
+            });
+        });
     }
 
     // --- Taxonomy Functions ---
     function selectTaxon(name, taxid) {
-        elements.taxonomyIdInput.value = taxid;
+        const normalizedTaxid = taxid ? String(taxid) : '';
+        elements.taxonomyIdInput.value = normalizedTaxid;
         elements.selectedTaxonDisplay.textContent = name;
-        elements.taxonSearchResults.innerHTML = '';
-        if (taxid) {
+        clearElement(elements.taxonSearchResults);
+        if (normalizedTaxid) {
             elements.selectedTaxonDisplay.classList.remove('alert-secondary');
             elements.selectedTaxonDisplay.classList.add('alert-success');
         } else {
             elements.selectedTaxonDisplay.classList.add('alert-secondary');
             elements.selectedTaxonDisplay.classList.remove('alert-success');
         }
-        navigateTaxon(taxid, name);
+        renderUniProtScientificHints();
+        refreshUniProtInterpretation();
+        navigateTaxon(normalizedTaxid, name);
     }
 
     async function searchTaxonomy() {
         const query = elements.taxonSearchQuery.value.trim();
         if (query.length < 3) {
-            elements.taxonSearchResults.innerHTML = `<p class="text-muted small p-2">Query must be at least 3 characters.</p>`;
+            renderTaxonMessage(elements.taxonSearchResults, 'Query must be at least 3 characters.');
             return;
         }
         const container = elements.taxonSearchResults;
-        container.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm"></div></div>';
+        renderLoadingIndicator(container);
         try {
             const response = await fetch(`${UNIPROT_URLS.taxonSearch}?query=${encodeURIComponent(query)}`);
             const data = await response.json();
             renderTaxonList(data.success ? data.results : null, container, true, data.error);
         } catch (error) {
-            container.innerHTML = `<p class="text-danger small p-2">Search failed: ${error.message}</p>`;
+            renderTaxonMessage(container, `Search failed: ${error.message}`, 'danger');
         }
     }
 
     function renderTaxonList(taxa, container, showLineage = false, errorMessage = 'No results found.') {
-        container.innerHTML = '';
+        clearElement(container);
         if (!taxa || taxa.length === 0) {
-            container.innerHTML = `<p class="text-muted small p-2">${errorMessage}</p>`;
+            renderTaxonMessage(container, errorMessage);
             return;
         }
         taxa.sort((a, b) => (a.scientificName || '').localeCompare(b.scientificName || ''));
         taxa.forEach(taxon => {
             const el = document.createElement('div');
             el.className = 'taxon-item';
-            const scientificName = escapeHtml(taxon.scientificName);
-            const commonName = taxon.commonName ? `(${escapeHtml(taxon.commonName)})` : '';
-            
-            let content = `<div class="fw-semibold">${scientificName} ${commonName}</div>`;
-            
+            const header = document.createElement('div');
+            header.className = 'fw-semibold';
+            const name = taxon.scientificName || 'Unnamed taxon';
+            const common = taxon.commonName ? ` (${taxon.commonName})` : '';
+            header.textContent = `${name}${common}`;
+            el.appendChild(header);
+
             if (showLineage && taxon.lineage) {
-                const lineage = (taxon.lineage || []).map(l => escapeHtml(l.scientificName)).slice(-3).join(' > ');
-                content += `<div class="lineage-path">${lineage}</div>`;
+                const lineage = document.createElement('div');
+                lineage.className = 'lineage-path';
+                lineage.textContent = (taxon.lineage || [])
+                    .map((lineageItem) => lineageItem.scientificName || '')
+                    .filter(Boolean)
+                    .slice(-3)
+                    .join(' > ');
+                el.appendChild(lineage);
             }
-            el.innerHTML = content;
-            el.onclick = () => selectTaxon(taxon.scientificName, taxon.taxonId);
+
+            el.addEventListener('click', () => selectTaxon(name, taxon.taxonId));
             container.appendChild(el);
         });
     }
@@ -353,17 +558,24 @@
             renderTaxonList(topLevel, elements.taxonBrowser);
             return;
         }
+        const normalizedTaxid = String(taxid);
         const lastInHistory = taxonState.history.length > 0 ? taxonState.history[taxonState.history.length - 1] : null;
-        if (!lastInHistory || lastInHistory.id !== taxid) {
-            const lineage = await fetchLineage(taxid);
-            taxonState.history = lineage ? lineage.map(l => ({ id: l.taxonId, name: l.scientificName })).reverse() : [{ id: taxid, name: name }];
+        if (!lastInHistory || String(lastInHistory.id) !== normalizedTaxid) {
+            const lineage = await fetchLineage(normalizedTaxid);
+            taxonState.history = lineage
+                ? lineage.map((l) => ({ id: String(l.taxonId), name: l.scientificName })).reverse()
+                : [{ id: normalizedTaxid, name: name }];
         }
         renderBreadcrumb();
         const container = elements.taxonBrowser;
-        container.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm"></div></div>';
-        const response = await fetch(`${UNIPROT_URLS.taxonChildren}${taxid}`);
-        const data = await response.json();
-        renderTaxonList(data.success ? data.results : null, container, false, data.error || 'No sub-classifications found.');
+        renderLoadingIndicator(container);
+        try {
+            const response = await fetch(`${UNIPROT_URLS.taxonChildren}${normalizedTaxid}`);
+            const data = await response.json();
+            renderTaxonList(data.success ? data.results : null, container, false, data.error || 'No sub-classifications found.');
+        } catch (error) {
+            renderTaxonMessage(container, `Failed to load taxonomy: ${error.message}`, 'danger');
+        }
     }
 
     async function fetchLineage(taxid) {
@@ -376,10 +588,17 @@
 
     function renderBreadcrumb() {
         const container = elements.taxonBreadcrumb;
-        container.innerHTML = '';
+        clearElement(container);
         const root = document.createElement('li');
         root.className = 'breadcrumb-item';
-        root.innerHTML = `<a onclick="navigateTaxon(null)">Root</a>`;
+        const rootLink = document.createElement('a');
+        rootLink.href = '#';
+        rootLink.textContent = 'Root';
+        rootLink.addEventListener('click', (event) => {
+            event.preventDefault();
+            navigateTaxon(null);
+        });
+        root.appendChild(rootLink);
         container.appendChild(root);
         taxonState.history.forEach((item, index) => {
             const li = document.createElement('li');
@@ -388,7 +607,14 @@
                 li.textContent = item.name;
                 li.setAttribute('aria-current', 'page');
             } else {
-                li.innerHTML = `<a onclick="jumpToHistory(${index})">${item.name}</a>`;
+                const link = document.createElement('a');
+                link.href = '#';
+                link.textContent = item.name;
+                link.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    jumpToHistory(index);
+                });
+                li.appendChild(link);
             }
             container.appendChild(li);
         });
@@ -402,15 +628,19 @@
 
     // --- Main Search, Results, and Download Functions ---
     async function performSearch() {
+        const query = elements.queryInput.value.trim();
+        const limit = parseResultLimit(elements.limitInput.value);
+        elements.limitInput.value = limit;
+
         const payload = {
-            query: document.getElementById('query').value,
+            query,
             taxonomy_id: elements.taxonomyIdInput.value,
             database_type: document.getElementById('dbType').value,
-            limit: parseInt(document.getElementById('limit').value, 10) || 500
+            limit
         };
-        if (!payload.query || !payload.query.trim()) { 
-            alert('Please enter a search query.'); 
-            return; 
+        if (!payload.query) {
+            showAlert('warning', 'Please enter a search query.');
+            return;
         }
         toggleLoading(true);
         try {
@@ -446,6 +676,7 @@
             elements.resultsTableWrapper.classList.remove('d-none');
             elements.quickFilter.disabled = false;
             elements.clearFilterBtn.disabled = true;
+            renderUniProtInterpretation(state.results);
             renderResultsTable();
         }
         elements.downloadBtn.disabled = state.results.length === 0;
@@ -467,9 +698,14 @@
 
     function showNoResults() {
         state.results = [];
+        clearInterpretation();
         elements.resultsTableWrapper.classList.add('d-none');
         elements.resultsArea.classList.remove('d-none');
-        elements.resultsArea.innerHTML = '<p class="text-muted text-center mb-0">No results found</p>';
+        clearElement(elements.resultsArea);
+        const noResultHint = document.createElement('p');
+        noResultHint.className = 'text-muted text-center mb-0';
+        noResultHint.textContent = 'No results found';
+        elements.resultsArea.appendChild(noResultHint);
         elements.resultCount.textContent = '0 entries';
         elements.totalCount.textContent = '0';
         elements.selectedCount.textContent = '0';
@@ -508,6 +744,7 @@
         updateResultCount(filtered.length);
         syncMasterCheckbox(filtered);
         updateSelectionSummary();
+        refreshUniProtInterpretation();
     }
 
     function getFilteredResults() {
@@ -600,13 +837,19 @@
     }
 
     async function handleDownload() {
-        if (!state.results.length) { alert('Run a search before downloading.'); return; }
+        if (!state.results.length) {
+            showAlert('warning', 'Run a search before downloading.');
+            return;
+        }
+        const limit = parseResultLimit(elements.limitInput.value);
+        elements.limitInput.value = limit;
         const payload = {
-            query: document.getElementById('query').value,
-            taxonomy_id: document.getElementById('taxonomy_id').value,
+            query: elements.queryInput.value.trim(),
+            taxonomy_id: elements.taxonomyIdInput.value,
             database_type: document.getElementById('dbType').value,
-            limit: parseInt(document.getElementById('limit').value, 10) || 500,
+            limit,
             header_format: document.getElementById('headerFormat').value,
+            deduplicate_genespecies: document.getElementById('dedupGeneSpecies').checked,
             selected_ids: Array.from(selectedAccessions)
         };
         elements.downloadBtn.disabled = true;
@@ -619,14 +862,21 @@
             });
             const data = await response.json();
             if (data.success && data.fasta_file) {
-                const message = selectedAccessions.size > 0 ? `Downloaded ${data.count} selected sequences` : `Downloaded ${data.count} sequences`;
-                alert(message);
+                const dedup = data.dedup_info || null;
+                let message = selectedAccessions.size > 0 ? `Downloaded ${data.count} selected sequences` : `Downloaded ${data.count} sequences`;
+                if (dedup && dedup.enabled) {
+                    message += ` (deduplicated: removed ${dedup.removed_count || 0})`;
+                }
+                showAlert('success', message);
                 window.open(UNIPROT_URLS.downloadFileBase + encodeURIComponent(data.fasta_file), '_blank');
+                if (dedup && dedup.report_file) {
+                    window.open(UNIPROT_URLS.downloadFileBase + encodeURIComponent(dedup.report_file), '_blank');
+                }
             } else {
-                alert(data.error || 'Download failed');
+                showAlert('danger', data.error || 'Download failed');
             }
         } catch (error) {
-            alert('Download failed: ' + error.message);
+            showAlert('danger', `Download failed: ${error.message}`);
         } finally {
             elements.downloadBtn.disabled = state.results.length === 0;
             updateDownloadButtonLabel();
@@ -634,11 +884,17 @@
     }
 
     function showError(message) {
+        clearInterpretation();
         elements.resultsArea.classList.remove('d-none');
-        elements.resultsArea.innerHTML = `<div class="alert alert-danger mb-0">${message}</div>`;
+        clearElement(elements.resultsArea);
+        const alertBox = document.createElement('div');
+        alertBox.className = 'alert alert-danger mb-0';
+        alertBox.textContent = message;
+        elements.resultsArea.appendChild(alertBox);
         elements.resultsTableWrapper.classList.add('d-none');
         elements.resultCount.textContent = '0 entries';
         selectedAccessions.clear();
+        elements.downloadBtn.disabled = true;
         updateDownloadButtonLabel();
     }
     
@@ -662,6 +918,7 @@
         elements.clearFilterBtn.disabled = true;
         elements.selectAllBtn.disabled = true;
         elements.clearSelectionBtn.disabled = true;
+        renderUniProtScientificHints();
         navigateTaxon(null);
     });
 

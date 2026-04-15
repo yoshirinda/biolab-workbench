@@ -14,6 +14,10 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 os.environ.setdefault('QT_LOGGING_RULES', '*.debug=false;qt.*=false')
 os.environ.setdefault('QT_DEBUG_PLUGINS', '0')
 
+# Ensure subprocesses prefer executables from the active Python environment.
+python_bin_dir = str(Path(sys.executable).resolve().parent)
+os.environ['PATH'] = f"{python_bin_dir}:{os.environ.get('PATH', '')}"
+
 # Ensure XDG_RUNTIME_DIR exists and is set (some Qt installs warn if not defined)
 xdg_dir = f"/tmp/runtime-{os.getuid()}"
 try:
@@ -67,7 +71,25 @@ def main():
     check_first_run()
     
     # Import app after potential config changes
-    from app import create_app
+    try:
+        from app import create_app
+    except ModuleNotFoundError as exc:
+        missing = getattr(exc, "name", None) or "unknown module"
+        print()
+        print("=" * 60)
+        print("  Dependency Error: missing Python module")
+        print("=" * 60)
+        print(f"  Missing module : {missing}")
+        print(f"  Python path    : {sys.executable}")
+        print()
+        print("  Your current environment does not contain all required packages.")
+        print("  Activate the intended environment first, then install dependencies:")
+        print("    python3 -m pip install -r requirements.txt")
+        print()
+        print("  Tip: if you use conda, run 'conda info --envs' to check env names.")
+        print("=" * 60)
+        print()
+        sys.exit(1)
     
     app = create_app()
     

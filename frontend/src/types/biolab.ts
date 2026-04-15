@@ -2,13 +2,16 @@
 
 export interface Feature {
   id: string;
-  name: string;
+  name?: string;
+  label?: string;
   type: 'CDS' | 'Promoter' | 'Gene' | 'Misc' | 'Enzyme' | 'Region' | string;
   start: number; // 1-based usually, but SeqViz uses 0-based. We will stick to 1-based in model, convert for view.
   end: number;
-  strand: 1 | -1; // 1: Forward, -1: Reverse
+  strand?: 1 | -1 | '+' | '-'; // historical data may store +/- strings
+  direction?: 1 | -1; // compatibility for viewer libs
   color?: string;
   notes?: Record<string, any>;
+  qualifiers?: Record<string, any>;
 }
 
 export interface BioSequence {
@@ -26,10 +29,35 @@ export interface BioSequence {
   id: string; // Internal ID
 }
 
+export interface Sequence {
+  id: string;
+  sequence?: string;
+  seq?: string;
+  type?: 'nucleotide' | 'protein' | string;
+  length: number;
+  description?: string;
+  annotation?: string;
+  features?: Feature[];
+  added?: string;
+  modified?: string;
+  meta?: BioSequence['meta'];
+}
+
+export interface ProjectNode {
+  name: string;
+  path: string;
+  is_project?: boolean;
+  description?: string;
+  sequences?: Sequence[];
+  children?: ProjectNode[];
+  modified?: string;
+}
+
 export interface FileNode {
   key: string;
   title: string;
   isFolder: boolean;
+  isProject?: boolean;
   parentId: string | null;
   data?: BioSequence | null; // 仅文件节点持有数据
   children?: FileNode[];

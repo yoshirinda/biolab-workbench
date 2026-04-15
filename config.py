@@ -55,7 +55,7 @@ RESULTS_DIR = os.path.join(BASE_DIR, "results")
 LOGS_DIR = os.path.join(BASE_DIR, "logs")
 
 # Conda environment name
-CONDA_ENV = os.environ.get('CONDA_DEFAULT_ENV') or os.environ.get('BIOLAB_CONDA_ENV')
+CONDA_ENV = os.environ.get('BIOLAB_CONDA_ENV') or os.environ.get('CONDA_DEFAULT_ENV')
 
 # Use Conda for tool execution
 USE_CONDA = os.environ.get('BIOLAB_USE_CONDA', 'true').lower() == 'true'

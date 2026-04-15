@@ -85,27 +85,32 @@ def _run_mafft(
 ) -> Tuple[bool, str, str]:
     """Run MAFFT alignment."""
     try:
-        # Build MAFFT command
-        cmd = [
-            'mafft',
-            '--thread', str(threads),
-            '--auto'  # Auto select algorithm
-        ]
-        
-        # Add extra parameters
-        if extra_params:
-            if extra_params.get('maxiterate') is not None:
-                cmd.extend(['--maxiterate', str(extra_params['maxiterate'])])
-            
-            if extra_params.get('algorithm') == 'linsi':
-                cmd = ['mafft', '--localpair', '--maxiterate', '1000', '--thread', str(threads)]
-            elif extra_params.get('algorithm') == 'ginsi':
-                cmd = ['mafft', '--globalpair', '--maxiterate', '1000', '--thread', str(threads)]
-            elif extra_params.get('algorithm') == 'einsi':
-                cmd = ['mafft', '--ep', '0', '--genafpair', '--maxiterate', '1000', '--thread', str(threads)]
-            
-            if extra_params.get('adjustdirection'):
-                cmd.append('--adjustdirection')
+        extra_params = extra_params or {}
+
+        algorithm = (extra_params.get('algorithm') or 'auto').lower()
+        maxiterate = extra_params.get('maxiterate')
+        auto_mode = bool(extra_params.get('auto')) or algorithm == 'auto'
+
+        cmd = ['mafft', '--thread', str(threads)]
+
+        if auto_mode:
+            cmd.append('--auto')
+            if isinstance(maxiterate, int) and maxiterate > 0:
+                cmd.extend(['--maxiterate', str(maxiterate)])
+        else:
+            if algorithm == 'linsi':
+                cmd.append('--localpair')
+            elif algorithm == 'ginsi':
+                cmd.append('--globalpair')
+            elif algorithm == 'einsi':
+                cmd.extend(['--genafpair', '--ep', '0'])
+            if isinstance(maxiterate, int) and maxiterate > 0:
+                cmd.extend(['--maxiterate', str(maxiterate)])
+            else:
+                cmd.extend(['--maxiterate', '1000'])
+
+        if extra_params.get('adjustdirection'):
+            cmd.append('--adjustdirection')
         
         # Output format
         if output_format == 'clustal':
@@ -157,6 +162,8 @@ def _run_clustalw(
 ) -> Tuple[bool, str]:
     """Run ClustalW alignment."""
     try:
+        extra_params = extra_params or {}
+
         # Build ClustalW command
         cmd = [
             'clustalw',
@@ -171,16 +178,30 @@ def _run_clustalw(
             cmd.append('-OUTPUT=PHYLIP')
         else:  # clustal
             cmd.append('-OUTPUT=CLUSTAL')
-        
+
         # Add extra parameters
-        if extra_params:
-            if 'gapopen' in extra_params:
-                cmd.append(f'-GAPOPEN={extra_params["gapopen"]}')
-            if 'gapext' in extra_params:
-                cmd.append(f'-GAPEXT={extra_params["gapext"]}')
-            if 'matrix' in extra_params:
-                cmd.append(f'-MATRIX={extra_params["matrix"]}')
-        
+        if 'gapopen' in extra_params:
+            cmd.append(f'-GAPOPEN={extra_params["gapopen"]}')
+        if 'gapext' in extra_params:
+            cmd.append(f'-GAPEXT={extra_params["gapext"]}')
+
+        sequence_type = str(extra_params.get('sequence_type') or '').strip().lower()
+        matrix = extra_params.get('matrix')
+        if sequence_type == 'nucleotide':
+            cmd.append('-TYPE=DNA')
+            if matrix:
+                cmd.append(f'-DNAMATRIX={matrix}')
+        elif sequence_type == 'protein':
+            cmd.append('-TYPE=PROTEIN')
+            if matrix:
+                cmd.append(f'-MATRIX={matrix}')
+        elif matrix:
+            if str(matrix).upper() in {'IUB', 'CLUSTALW'}:
+                cmd.append('-TYPE=DNA')
+                cmd.append(f'-DNAMATRIX={matrix}')
+            else:
+                cmd.append(f'-MATRIX={matrix}')
+
         # Run ClustalW
         logger.info(f"Running ClustalW: {' '.join(cmd)}")
         
@@ -301,27 +322,46 @@ def _calculate_alignment_stats(alignment_file: str) -> Dict:
         
         # Get alignment length
         alignment_length = len(list(sequences.values())[0])
-        
-        # Count gaps per position
+
+        gap_chars = {'-', '.'}
+
+        # Count gaps and residue patterns per position
         gap_counts = [0] * alignment_length
+        residue_sets = [set() for _ in range(alignment_length)]
         for seq in sequences.values():
             for i, char in enumerate(seq):
-                if char in '-':
+                if char in gap_chars:
                     gap_counts[i] += 1
+                else:
+                    residue_sets[i].add(char.upper())
         
         # Calculate gap statistics
         num_seqs = len(sequences)
         gap_percentages = [(count / num_seqs) * 100 for count in gap_counts]
-        
-        conserved_positions = sum(1 for pct in gap_percentages if pct == 0)
-        variable_positions = sum(1 for pct in gap_percentages if 0 < pct < 100)
-        gap_only_positions = sum(1 for pct in gap_percentages if pct == 100)
+
+        conserved_positions = 0
+        variable_positions = 0
+        gap_affected_positions = 0
+        gap_only_positions = 0
+
+        for idx, gap_count in enumerate(gap_counts):
+            residues = residue_sets[idx]
+            if gap_count == num_seqs:
+                gap_only_positions += 1
+                continue
+            if gap_count > 0:
+                gap_affected_positions += 1
+            if gap_count == 0 and len(residues) == 1:
+                conserved_positions += 1
+            elif len(residues) >= 2:
+                variable_positions += 1
         
         stats = {
             'num_sequences': num_seqs,
             'alignment_length': alignment_length,
             'conserved_positions': conserved_positions,
             'variable_positions': variable_positions,
+            'gap_affected_positions': gap_affected_positions,
             'gap_only_positions': gap_only_positions,
             'mean_gap_percentage': sum(gap_percentages) / len(gap_percentages),
             'max_gap_percentage': max(gap_percentages),

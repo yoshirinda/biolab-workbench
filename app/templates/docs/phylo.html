@@ -37,6 +37,22 @@
 
             <!-- Pipeline Chaining -->
             <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-shield-check"></i> Scientific Validity Checklist</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="mb-0">
+                        <li>Use molecule-compatible BLAST programs (auto-detect is enabled in step 2.5).</li>
+                        <li>Prefer strict Gold-ID matching to avoid substring false positives during BLAST filtering.</li>
+                        <li>For IQ-TREE support values, combine UFBoot with SH-aLRT whenever runtime allows.</li>
+                        <li>Do not compare branch lengths if visualization used fixed branch mode for readability.</li>
+                        <li>Record model, bootstrap strategy, and trimming mode in methods for reproducibility.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Pipeline Chaining -->
+            <div class="card shadow-sm mb-4">
                 <div class="card-header bg-success text-white">
                     <h5 class="mb-0"><i class="bi bi-link-45deg"></i> Pipeline Step Chaining</h5>
                 </div>
@@ -262,6 +278,24 @@ maxiterate: 1000</code></pre>
                                     </td>
                                 </tr>
                                 <tr>
+                                    <td><strong>Bootstrap Type</strong></td>
+                                    <td><code>ufboot</code></td>
+                                    <td>Support estimation strategy in IQ-TREE wrapper.</td>
+                                    <td>
+                                        <ul class="mb-0">
+                                            <li><code>ufboot</code>: Fast and commonly used default</li>
+                                            <li><code>boot</code>: Standard non-parametric bootstrap (slower)</li>
+                                            <li><code>both</code>: Use when you need cross-checks and runtime is acceptable</li>
+                                        </ul>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>SH-aLRT (-alrt)</strong></td>
+                                    <td><code>1000</code> (optional)</td>
+                                    <td>Approximate likelihood-ratio support for branches.</td>
+                                    <td>Enable together with bootstrap for more robust support interpretation.</td>
+                                </tr>
+                                <tr>
                                     <td><strong>Threads (-T)</strong></td>
                                     <td><code>AUTO</code></td>
                                     <td>Number of CPU threads to use.</td>
@@ -280,6 +314,12 @@ maxiterate: 1000</code></pre>
                         </table>
                     </div>
                 </div>
+            </div>
+
+            <div class="alert alert-warning">
+                <i class="bi bi-exclamation-triangle"></i>
+                <strong>Interpretation caution:</strong> low branch support can come from poor alignment quality, over-aggressive trimming, model misspecification, or weak phylogenetic signal.  
+                Re-check upstream steps before forcing a stronger tree model.
             </div>
 
             <!-- Example Commands -->
@@ -306,6 +346,11 @@ maxiterate: 1000</code></pre>
                     <h6 class="mt-4">IQ-Tree with fixed model:</h6>
                     <div class="command-display">
                         <pre>iqtree -s trimmed.fasta -m LG+G4 -B 1000 -T 4 -bnni</pre>
+                    </div>
+
+                    <h6 class="mt-4">IQ-Tree with UFBoot + SH-aLRT:</h6>
+                    <div class="command-display">
+                        <pre>iqtree -s trimmed.fasta -m MFP -bb 1000 -alrt 1000 -bnni -nt AUTO</pre>
                     </div>
                 </div>
             </div>

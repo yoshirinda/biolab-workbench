@@ -77,3 +77,14 @@ results/
 i18n_chinese_matches.txt
 node_modules/
 node_modules
+
+# Local machine artifacts / binary drops
+*.deb
+*.db
+result_dir/
+win_c
+
+# Frontend local scratch / generated leftovers
+frontend/src/components/*.bak
+app/static/react/index.html
+.trash/

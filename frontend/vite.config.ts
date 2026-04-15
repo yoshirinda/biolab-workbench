@@ -10,7 +10,19 @@ export default defineConfig({
       output: {
         entryFileNames: 'assets/[name].js',
         chunkFileNames: 'assets/[name].js',
-        assetFileNames: 'assets/[name].[ext]'
+        assetFileNames: 'assets/[name].[ext]',
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          if (id.includes('@ant-design/icons')) return 'vendor-ant-icons';
+          if (id.includes('@ant-design/cssinjs')) return 'vendor-antd-cssinjs';
+          if (id.includes('@rc-component')) return 'vendor-rc-components';
+          if (id.includes('antd') || id.includes('/rc-')) return 'vendor-antd-core';
+          if (id.includes('seqviz') || id.includes('react-alignment-viewer')) return 'vendor-bio-viz';
+          if (id.includes('lucide-react')) return 'vendor-lucide';
+          if (id.includes('react') || id.includes('scheduler')) return 'vendor-react';
+          if (id.includes('@babel/runtime')) return 'vendor-runtime';
+          return 'vendor-misc';
+        }
       }
     }
   },

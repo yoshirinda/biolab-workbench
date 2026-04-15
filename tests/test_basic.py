@@ -4,6 +4,7 @@ Basic tests for BioLab Workbench.
 import pytest
 import sys
 import os
+import io
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -125,35 +126,212 @@ class TestRoutes:
         assert response.status_code == 200
         assert b'BioLab Workbench' in response.data
 
+    def test_index_page_has_new_user_starter_tracks(self, client):
+        """Home page should expose newcomer-oriented starter tracks."""
+        response = client.get('/')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert 'New User Starter Tracks' in html
+        assert 'Find Homologs Quickly' in html
+
+    def test_index_page_has_runtime_context(self, client):
+        """Home page should show runtime context for reproducibility/debugging."""
+        response = client.get('/')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert 'Runtime Context' in html
+        assert 'Conda Env' in html
+
+    def test_index_page_has_system_readiness_panel(self, client):
+        """Home page should show tool readiness panel for newcomers."""
+        response = client.get('/')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert 'System Readiness' in html
+        assert 'BLAST search (blastn)' in html
+        assert 'Not checked (test mode)' in html
+
     def test_sequence_page(self, client):
         """Test sequence page loads."""
         response = client.get('/sequence/')
         assert response.status_code == 200
+
+    def test_sequence_page_uses_react_shell(self, client):
+        """Main sequence page should serve the React app shell."""
+        response = client.get('/sequence/')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert '<div id="root"></div>' in html
+        assert 'react/assets/index.js' in html
 
     def test_blast_page(self, client):
         """Test BLAST page loads."""
         response = client.get('/blast/')
         assert response.status_code == 200
 
+    def test_blast_page_has_result_interpretation_panel(self, client):
+        """BLAST page should expose a result interpretation container."""
+        response = client.get('/blast/')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert 'blastInterpretation' in html
+
     def test_phylo_page(self, client):
         """Test phylo page loads."""
         response = client.get('/phylo/')
         assert response.status_code == 200
+
+    def test_phylo_page_has_step_interpretation_blocks(self, client):
+        """Phylo pipeline should expose per-step interpretation placeholders."""
+        response = client.get('/phylo/')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert 'hmmInterpretation' in html
+        assert 'pipelineBlastInterpretation' in html
+        assert 'iqtreeInterpretation' in html
 
     def test_alignment_page(self, client):
         """Test alignment page loads."""
         response = client.get('/alignment/')
         assert response.status_code == 200
 
+    def test_alignment_page_has_result_interpretation_panel(self, client):
+        """Alignment page should expose a result interpretation card."""
+        response = client.get('/alignment/')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert 'alignmentInterpretationCard' in html
+        assert 'alignmentInterpretation' in html
+
     def test_uniprot_page(self, client):
         """Test UniProt page loads."""
         response = client.get('/uniprot/')
         assert response.status_code == 200
 
+    def test_uniprot_page_has_result_interpretation_panel(self, client):
+        """UniProt page should expose a result interpretation container."""
+        response = client.get('/uniprot/')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert 'uniprotInterpretation' in html
+        assert 'uniprotScientificHints' in html
+
+    def test_uniprot_search_rejects_invalid_limit(self, client):
+        """UniProt search should validate numeric limits before upstream calls."""
+        response = client.post('/uniprot/search', json={
+            'query': 'kinase',
+            'limit': 100000
+        })
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['success'] is False
+        assert 'limit' in data['error'].lower()
+
+    def test_uniprot_search_rejects_invalid_database_type(self, client):
+        """UniProt search should reject unsupported database type values."""
+        response = client.post('/uniprot/search', json={
+            'query': 'kinase',
+            'database_type': 'swissprot'
+        })
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['success'] is False
+        assert 'database_type' in data['error']
+
+    def test_tree_page_avoids_inline_onclick_handlers(self, client):
+        """Tree page should avoid inline onclick handlers for safer JS wiring."""
+        response = client.get('/tree/')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert 'onclick=' not in html
+
+    def test_uniprot_page_uses_non_blocking_alert_patterns(self, client):
+        """UniProt page should avoid native alert() usage in interactive flows."""
+        response = client.get('/uniprot/')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert 'alert(' not in html
+        assert 'common-taxon-btn' in html
+
+    def test_alignment_run_rejects_unavailable_tool(self, client, monkeypatch):
+        """Alignment run should fail fast with actionable error when tool is unavailable."""
+        from app.routes import alignment as alignment_routes
+
+        monkeypatch.setattr(
+            alignment_routes,
+            'check_available_tools',
+            lambda force=False: {'mafft': False, 'clustalw': False, 'muscle': False}
+        )
+
+        response = client.post('/alignment/run', data={
+            'sequences': '>seq1\nATGCATGC\n>seq2\nATGCATGA\n',
+            'tool': 'mafft'
+        })
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['success'] is False
+        assert 'not available' in data['error'].lower()
+
     def test_tree_page(self, client):
         """Test tree page loads."""
         response = client.get('/tree/')
         assert response.status_code == 200
+
+    def test_tree_page_has_main_visualize_submit_handler(self, client):
+        """Tree page should wire the main visualize form without requiring clade-only input."""
+        response = client.get('/tree/')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert "document.getElementById('visualizeForm').addEventListener('submit'" in html
+        assert 'collectVisualizationSettings()' in html
+
+    def test_tree_page_supports_pipeline_tree_preload(self, client):
+        """Tree page should support opening a generated tree directly from the pipeline flow."""
+        response = client.get('/tree/')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert 'preloadTreeFromQuery()' in html
+        assert "params.get('tree_file')" in html
+
+    def test_tree_page_has_result_interpretation_panel(self, client):
+        """Tree page should expose a result interpretation container."""
+        response = client.get('/tree/')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        assert 'treeInterpretation' in html
+        assert 'supportMetric' in html
+        assert 'supportThresholdGuidance' in html
+
+    def test_tree_extract_clade_passes_v_scale(self, client, monkeypatch, tmp_path):
+        """Tree clade extraction should forward V. Scale to the renderer."""
+        from app.routes import tree as tree_routes
+
+        tree_file = tmp_path / 'test.nwk'
+        tree_file.write_text('(A:1,B:1);', encoding='utf-8')
+        captured = {}
+
+        def fake_run_in_process(func, **kwargs):
+            captured.update(kwargs)
+            return True, 'result_dir', 'tree.svg', 'ok', {
+                'leaf_count': 2,
+                'levels_up': 1,
+                'support_stats': None
+            }
+
+        monkeypatch.setattr(tree_routes, 'run_in_process', fake_run_in_process)
+
+        response = client.post('/tree/extract-clade', json={
+            'tree_file': str(tree_file),
+            'target_gene': 'A',
+            'levels_up': 1,
+            'layout': 'rectangular',
+            'font_size': 10,
+            'v_scale': 1.7
+        })
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is True
+        assert captured['v_scale'] == 1.7
 
     def test_docs_index_page(self, client):
         """Test documentation index page loads."""
@@ -493,6 +671,57 @@ class TestBlastWrapper:
         assert hits[0]['qseqid'] == 'query1'
         assert hits[0]['sseqid'] == 'subject1'
 
+    def test_normalize_blast_scoring_options_requires_reward_penalty_pair(self):
+        from app.core.blast_wrapper import normalize_blast_scoring_options
+
+        success, message, normalized, warnings = normalize_blast_scoring_options(
+            program='blastn',
+            reward=1,
+            penalty=None
+        )
+
+        assert success is False
+        assert 'provided together' in message
+        assert normalized is None
+
+    def test_normalize_blast_scoring_options_rejects_unsupported_blastn_pair(self):
+        from app.core.blast_wrapper import normalize_blast_scoring_options
+
+        success, message, normalized, warnings = normalize_blast_scoring_options(
+            program='blastn',
+            reward=3,
+            penalty=-4
+        )
+
+        assert success is False
+        assert 'Unsupported blastn reward/penalty pair' in message
+        assert normalized is None
+
+    def test_normalize_blast_scoring_options_rejects_tblastx_word_size_out_of_range(self):
+        from app.core.blast_wrapper import normalize_blast_scoring_options
+
+        success, message, normalized, warnings = normalize_blast_scoring_options(
+            program='tblastx',
+            word_size=5
+        )
+
+        assert success is False
+        assert 'between 2 and 3 for tblastx' in message
+        assert normalized is None
+
+    def test_normalize_blast_scoring_options_sets_blastn_short_default_word_size(self):
+        from app.core.blast_wrapper import normalize_blast_scoring_options
+
+        success, message, normalized, warnings = normalize_blast_scoring_options(
+            program='blastn',
+            task='blastn-short',
+            word_size=None
+        )
+
+        assert success is True
+        assert normalized['word_size'] == 7
+        assert warnings
+
 
 class TestPhyloPipeline:
     """Tests for phylogenetic pipeline functions."""
@@ -678,6 +907,482 @@ seq3                       -          PF00001.1
         # CONDA_ENV should be set (either from environment or 'bio' default)
         assert config.CONDA_ENV is not None
         assert len(config.CONDA_ENV) > 0
+
+class TestBlastSearchValidation:
+    """Tests for BLAST search input validation and parameter parsing."""
+
+    def test_blast_search_rejects_invalid_output_format(self, client):
+        response = client.post('/blast/search', data={
+            'query_text': '>q1\nATGCATGC\n',
+            'database': 'dummy_db',
+            'output_format': 'xml'
+        })
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['success'] is False
+        assert 'Invalid output_format' in data['error']
+
+    def test_blast_search_rejects_invalid_evalue_format(self, client):
+        response = client.post('/blast/search', data={
+            'query_text': '>q1\nATGCATGC\n',
+            'database': 'dummy_db',
+            'evalue': 'abc'
+        })
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['success'] is False
+        assert 'Invalid evalue' in data['error']
+
+    def test_blast_search_rejects_too_small_evalue(self, client):
+        response = client.post('/blast/search', data={
+            'query_text': '>q1\nATGCATGC\n',
+            'database': 'dummy_db',
+            'evalue': '1e-301'
+        })
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['success'] is False
+        assert 'too small' in data['error']
+
+    def test_blast_search_accepts_scientific_notation_evalue(self, client, tmpdir, monkeypatch):
+        from app.routes import blast as blast_routes
+
+        captured = {}
+        result_dir = str(tmpdir.mkdir('blast_result'))
+        result_txt = os.path.join(result_dir, 'blast_result.txt')
+        with open(result_txt, 'w') as f:
+            f.write('Mock BLAST output\n')
+
+        def fake_run_blast(**kwargs):
+            captured.update(kwargs)
+            output_files = {
+                'main': result_txt,
+                'program': kwargs.get('program') or 'blastn',
+                'query_type': 'nucleotide',
+                'db_type': 'nucleotide',
+                'meta': {}
+            }
+            return True, result_dir, output_files, 'mock-blast-command'
+
+        monkeypatch.setattr(blast_routes, 'run_blast', fake_run_blast)
+
+        response = client.post('/blast/search', data={
+            'query_text': '>q1\nATGCATGC\n',
+            'database': 'dummy_db',
+            'output_format': 'txt',
+            'evalue': '2E-20',
+            'max_hits': '10'
+        })
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is True
+        assert captured['evalue'] == pytest.approx(2e-20)
+        assert captured['max_hits'] == 10
+
+
+class TestPhyloSupportValidation:
+    """Tests for phylogenetic support parameter validation."""
+
+    def test_iqtree_infer_rejects_unaligned_input(self, client, tmpdir, monkeypatch):
+        import config
+
+        results_dir = str(tmpdir.mkdir('results'))
+        uploads_dir = str(tmpdir.mkdir('uploads'))
+        monkeypatch.setattr(config, 'RESULTS_DIR', results_dir)
+        monkeypatch.setattr(config, 'UPLOADS_DIR', uploads_dir)
+
+        alignment_file = os.path.join(results_dir, 'unaligned.fasta')
+        with open(alignment_file, 'w') as f:
+            f.write('>seq1\nAAAAAA\n>seq2\nAAA\n')
+
+        response = client.post('/phylo/iqtree-infer', data={
+            'file_path': alignment_file,
+            'model': 'MFP',
+            'bootstrap': '1000',
+            'bootstrap_type': 'ufboot'
+        })
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['success'] is False
+        assert 'equal-length sequences' in data['error']
+
+    def test_iqtree_infer_rejects_protein_model_on_nucleotide_alignment(self, client, tmpdir, monkeypatch):
+        import config
+
+        results_dir = str(tmpdir.mkdir('results'))
+        uploads_dir = str(tmpdir.mkdir('uploads'))
+        monkeypatch.setattr(config, 'RESULTS_DIR', results_dir)
+        monkeypatch.setattr(config, 'UPLOADS_DIR', uploads_dir)
+
+        alignment_file = os.path.join(results_dir, 'alignment.fasta')
+        with open(alignment_file, 'w') as f:
+            f.write('>seq1\nATGCATGC\n>seq2\nATGTATGC\n')
+
+        response = client.post('/phylo/iqtree-infer', data={
+            'file_path': alignment_file,
+            'model': 'LG+G4',
+            'bootstrap': '1000',
+            'bootstrap_type': 'ufboot'
+        })
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['success'] is False
+        assert 'protein-oriented' in data['error']
+
+    def test_iqtree_infer_rejects_low_ufboot(self, client, tmpdir, monkeypatch):
+        import config
+
+        results_dir = str(tmpdir.mkdir('results'))
+        uploads_dir = str(tmpdir.mkdir('uploads'))
+        monkeypatch.setattr(config, 'RESULTS_DIR', results_dir)
+        monkeypatch.setattr(config, 'UPLOADS_DIR', uploads_dir)
+
+        alignment_file = os.path.join(results_dir, 'alignment.fasta')
+        with open(alignment_file, 'w') as f:
+            f.write('>seq1\nAAAA\n>seq2\nAAAT\n')
+
+        response = client.post('/phylo/iqtree-infer', data={
+            'file_path': alignment_file,
+            'model': 'MFP',
+            'bootstrap': '500',
+            'bootstrap_type': 'ufboot'
+        })
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['success'] is False
+        assert 'Ultrafast bootstrap requires >= 1000 replicates' in data['error']
+
+    def test_iqtree_infer_rejects_low_alrt_replicates(self, client, tmpdir, monkeypatch):
+        import config
+
+        results_dir = str(tmpdir.mkdir('results'))
+        uploads_dir = str(tmpdir.mkdir('uploads'))
+        monkeypatch.setattr(config, 'RESULTS_DIR', results_dir)
+        monkeypatch.setattr(config, 'UPLOADS_DIR', uploads_dir)
+
+        alignment_file = os.path.join(results_dir, 'alignment.fasta')
+        with open(alignment_file, 'w') as f:
+            f.write('>seq1\nAAAA\n>seq2\nAAAT\n')
+
+        response = client.post('/phylo/iqtree-infer', data={
+            'file_path': alignment_file,
+            'model': 'MFP',
+            'bootstrap': '1000',
+            'bootstrap_type': 'ufboot',
+            'alrt': 'true',
+            'alrt_replicates': '500'
+        })
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['success'] is False
+        assert 'alrt_replicates' in data['error']
+
+    def test_iqtree_infer_disables_bnni_for_standard_bootstrap(self, client, tmpdir, monkeypatch):
+        import config
+        from app.routes import phylo as phylo_routes
+
+        results_dir = str(tmpdir.mkdir('results'))
+        uploads_dir = str(tmpdir.mkdir('uploads'))
+        monkeypatch.setattr(config, 'RESULTS_DIR', results_dir)
+        monkeypatch.setattr(config, 'UPLOADS_DIR', uploads_dir)
+
+        alignment_file = os.path.join(results_dir, 'alignment.fasta')
+        with open(alignment_file, 'w') as f:
+            f.write('>seq1\nAAAA\n>seq2\nAAAT\n')
+
+        captured = {}
+
+        class DummyPopen:
+            def poll(self):
+                return None
+
+        def fake_run_iqtree(**kwargs):
+            captured.update(kwargs)
+            output_prefix = os.path.join(results_dir, 'iqtree_test')
+            return DummyPopen(), results_dir, {
+                'treefile': output_prefix + '.treefile',
+                'log': output_prefix + '.log',
+                'iqtree': output_prefix + '.iqtree'
+            }, output_prefix
+
+        monkeypatch.setattr(phylo_routes, 'run_iqtree', fake_run_iqtree)
+
+        response = client.post('/phylo/iqtree-infer', data={
+            'file_path': alignment_file,
+            'model': 'MFP',
+            'bootstrap': '200',
+            'bootstrap_type': 'boot',
+            'bnni': 'true'
+        })
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is True
+        assert captured['bnni'] is False
+        assert data['warnings']
+
+
+class TestScientificParameterNormalization:
+    """Tests for route-level normalization of scientific parameters."""
+
+    def test_modelfinder_rejects_unaligned_input(self, client, tmpdir, monkeypatch):
+        import config
+
+        results_dir = str(tmpdir.mkdir('results'))
+        uploads_dir = str(tmpdir.mkdir('uploads'))
+        monkeypatch.setattr(config, 'RESULTS_DIR', results_dir)
+        monkeypatch.setattr(config, 'UPLOADS_DIR', uploads_dir)
+
+        input_file = os.path.join(results_dir, 'unaligned.fasta')
+        with open(input_file, 'w') as f:
+            f.write('>seq1\nMKTAYIAK\n>seq2\nMKTI\n')
+
+        response = client.post('/phylo/modelfinder', data={'file_path': input_file})
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['success'] is False
+        assert 'equal-length sequences' in data['error']
+
+    def test_hmm_search_ignores_dom_evalue_when_cut_ga_enabled(self, client, tmpdir, monkeypatch):
+        import config
+        from app.routes import phylo as phylo_routes
+
+        results_dir = str(tmpdir.mkdir('results'))
+        uploads_dir = str(tmpdir.mkdir('uploads'))
+        hmm_dir = str(tmpdir.mkdir('hmms'))
+        monkeypatch.setattr(config, 'RESULTS_DIR', results_dir)
+        monkeypatch.setattr(config, 'UPLOADS_DIR', uploads_dir)
+        monkeypatch.setattr(config, 'HMM_PROFILES_DIR', hmm_dir)
+
+        input_file = os.path.join(results_dir, 'input.fasta')
+        with open(input_file, 'w') as f:
+            f.write('>seq1\nMKTAYIAKQRQISFVKSH\n>seq2\nAAAAAAAAAAAAAA\n')
+
+        hmm_name = 'test.hmm'
+        hmm_path = os.path.join(hmm_dir, hmm_name)
+        with open(hmm_path, 'w') as f:
+            f.write('HMMER3/f\n')
+
+        captured = {}
+
+        def fake_step2_hmmsearch_multiple(input_file, hmm_paths, output_dir, cut_ga, evalue, dom_evalue, threads):
+            captured.update({
+                'cut_ga': cut_ga,
+                'evalue': evalue,
+                'dom_evalue': dom_evalue,
+                'threads': threads,
+            })
+            output = os.path.join(output_dir, 'hits.fasta')
+            with open(output, 'w') as f:
+                f.write('>seq1\nMKTAYIAKQRQISFVKSH\n')
+            return True, output, 'ok', ['mock-hmmsearch']
+
+        monkeypatch.setattr(phylo_routes, 'step2_hmmsearch_multiple', fake_step2_hmmsearch_multiple)
+
+        response = client.post('/phylo/hmm-search', data={
+            'file_path': input_file,
+            'hmm_files[]': hmm_name,
+            'cut_ga': 'true',
+            'dom_evalue': '1e-3'
+        })
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is True
+        assert captured['cut_ga'] is True
+        assert captured['dom_evalue'] is None
+        assert data['warnings']
+
+    def test_clipkit_trim_ignores_gap_threshold_for_smart_gap(self, client, tmpdir, monkeypatch):
+        import config
+        from app.routes import phylo as phylo_routes
+
+        results_dir = str(tmpdir.mkdir('results'))
+        uploads_dir = str(tmpdir.mkdir('uploads'))
+        monkeypatch.setattr(config, 'RESULTS_DIR', results_dir)
+        monkeypatch.setattr(config, 'UPLOADS_DIR', uploads_dir)
+
+        input_file = os.path.join(results_dir, 'alignment.fasta')
+        with open(input_file, 'w') as f:
+            f.write('>seq1\nAAAA--AA\n>seq2\nAAAAAA--\n')
+
+        captured = {}
+
+        def fake_run_clipkit(input_file, mode='kpic-gappy', gaps=0.9):
+            captured.update({'mode': mode, 'gaps': gaps})
+            output = os.path.join(results_dir, 'trimmed.fasta')
+            log_file = output + '.log'
+            with open(output, 'w') as f:
+                f.write('>seq1\nAAAAAA\n>seq2\nAAAAAA\n')
+            with open(log_file, 'w') as f:
+                f.write('mock log')
+            return True, results_dir, output, log_file, {
+                'input_length': 8,
+                'output_length': 6,
+                'percent_kept': 75.0,
+                'input_seq_count': 2,
+                'output_seq_count': 2
+            }
+
+        monkeypatch.setattr(phylo_routes, 'run_clipkit', fake_run_clipkit)
+
+        response = client.post('/phylo/clipkit-trim', data={
+            'file_path': input_file,
+            'mode': 'smart-gap',
+            'gaps': '0.3'
+        })
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is True
+        assert captured['mode'] == 'smart-gap'
+        assert captured['gaps'] is None
+        assert data['warnings']
+
+    def test_run_step_step4_passes_gap_threshold_to_clipkit(self, client, tmpdir, monkeypatch):
+        import config
+        from app.routes import phylo as phylo_routes
+
+        results_dir = str(tmpdir.mkdir('results'))
+        uploads_dir = str(tmpdir.mkdir('uploads'))
+        monkeypatch.setattr(config, 'RESULTS_DIR', results_dir)
+        monkeypatch.setattr(config, 'UPLOADS_DIR', uploads_dir)
+
+        input_file = os.path.join(results_dir, 'alignment.fasta')
+        with open(input_file, 'w') as f:
+            f.write('>seq1\nAAAA--AA\n>seq2\nAAAAAA--\n')
+
+        captured = {}
+
+        def fake_step4_clipkit(input_file, output_dir, mode='kpic-gappy', gaps=None):
+            captured.update({'mode': mode, 'gaps': gaps})
+            output = os.path.join(output_dir, 'trimmed.fasta')
+            with open(output, 'w') as f:
+                f.write('>seq1\nAAAAAA\n>seq2\nAAAAAA\n')
+            return True, output, 'ok', 'mock-clipkit'
+
+        monkeypatch.setattr(phylo_routes, 'step4_clipkit', fake_step4_clipkit)
+
+        response = client.post('/phylo/run-step/step4', data={
+            'file_path': input_file,
+            'clipkit_mode': 'gappy',
+            'gaps': '0.7'
+        })
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is True
+        assert captured['mode'] == 'gappy'
+        assert captured['gaps'] == pytest.approx(0.7)
+
+    def test_alignment_run_rejects_single_sequence(self, client):
+        response = client.post('/alignment/run', data={
+            'sequences': '>seq1\nATGCATGC\n',
+            'tool': 'mafft'
+        })
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['success'] is False
+        assert 'At least two FASTA sequences' in data['error']
+
+    def test_alignment_run_rejects_mixed_sequence_types(self, client, monkeypatch):
+        from app.routes import alignment as alignment_routes
+
+        monkeypatch.setattr(
+            alignment_routes,
+            'check_available_tools',
+            lambda force=False: {'mafft': True, 'clustalw': True, 'muscle': True}
+        )
+
+        response = client.post('/alignment/run', data={
+            'sequences': '>dna1\nATGCATGC\n>prot1\nMKWVTFIS\n',
+            'tool': 'mafft'
+        })
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['success'] is False
+        assert 'mixture of nucleotide and protein sequences' in data['error']
+
+    def test_alignment_run_rejects_clustalw_matrix_mismatch(self, client, monkeypatch):
+        from app.routes import alignment as alignment_routes
+
+        monkeypatch.setattr(
+            alignment_routes,
+            'check_available_tools',
+            lambda force=False: {'mafft': True, 'clustalw': True, 'muscle': True}
+        )
+
+        response = client.post('/alignment/run', data={
+            'sequences': '>dna1\nATGCATGC\n>dna2\nATGCATGA\n',
+            'tool': 'clustalw',
+            'matrix': 'BLOSUM'
+        })
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['success'] is False
+        assert 'dna alignments must use dna matrices' in data['error'].lower()
+
+    def test_hmm_search_defaults_domain_evalue_to_sequence_evalue(self, client, monkeypatch, tmpdir):
+        import config
+        from app.routes import phylo as phylo_routes
+
+        uploads_dir = str(tmpdir.mkdir('uploads'))
+        results_dir = str(tmpdir.mkdir('results'))
+        hmm_dir = str(tmpdir.mkdir('hmms'))
+        monkeypatch.setattr(config, 'UPLOADS_DIR', uploads_dir)
+        monkeypatch.setattr(config, 'RESULTS_DIR', results_dir)
+        monkeypatch.setattr(config, 'HMM_PROFILES_DIR', hmm_dir)
+        monkeypatch.setattr(phylo_routes.config, 'UPLOADS_DIR', uploads_dir)
+        monkeypatch.setattr(phylo_routes.config, 'RESULTS_DIR', results_dir)
+        monkeypatch.setattr(phylo_routes.config, 'HMM_PROFILES_DIR', hmm_dir)
+        monkeypatch.setattr(phylo_routes, 'create_result_dir', lambda domain, action: results_dir)
+
+        hmm_path = os.path.join(hmm_dir, 'test_profile.hmm')
+        with open(hmm_path, 'w', encoding='utf-8') as handle:
+            handle.write('HMMER3/f [mock]\nNAME test_profile\n//\n')
+
+        captured = {}
+
+        def fake_hmmsearch(input_file, hmm_paths, output_dir, cut_ga, evalue, dom_evalue, threads):
+            captured.update({
+                'cut_ga': cut_ga,
+                'evalue': evalue,
+                'dom_evalue': dom_evalue,
+                'threads': threads,
+                'hmm_paths': hmm_paths
+            })
+            output_file = os.path.join(output_dir, 'hits.fasta')
+            with open(output_file, 'w', encoding='utf-8') as handle:
+                handle.write('>hit1\nMKWVTFIS\n')
+            return True, output_file, 'ok', ['hmmsearch mock']
+
+        monkeypatch.setattr(phylo_routes, 'step2_hmmsearch_multiple', fake_hmmsearch)
+
+        response = client.post('/phylo/hmm-search', data={
+            'file': (io.BytesIO(b'>seq1\nMKWVTFIS\n'), 'input.faa'),
+            'hmm_files[]': 'test_profile.hmm',
+            'cut_ga': 'false',
+            'evalue': '1e-6'
+        }, content_type='multipart/form-data')
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is True
+        assert captured['cut_ga'] is False
+        assert captured['evalue'] == pytest.approx(1e-6)
+        assert captured['dom_evalue'] == pytest.approx(1e-6)
+        assert data['threshold_settings']['cut_ga'] is False
+        assert data['threshold_settings']['domain_evalue'] == pytest.approx(1e-6)
+        assert data['warnings']
 
 
 class TestDownloadRoutes:
@@ -964,6 +1669,23 @@ class TestSequenceExtractionRoutes:
 class TestAlignmentVisualization:
     """Tests for alignment visualization functionality."""
 
+    def test_alignment_stats_distinguish_conserved_variable_and_gap_columns(self, tmpdir):
+        """Alignment stats should track residue conservation separately from gap burden."""
+        from app.core.alignment_wrapper import _calculate_alignment_stats
+
+        alignment_file = str(tmpdir.join("test_alignment.fasta"))
+        with open(alignment_file, 'w') as f:
+            f.write(">seq1\nA-CA\n>seq2\nA-TA\n>seq3\nA--A\n")
+
+        stats = _calculate_alignment_stats(alignment_file)
+
+        assert stats['num_sequences'] == 3
+        assert stats['alignment_length'] == 4
+        assert stats['conserved_positions'] == 2
+        assert stats['variable_positions'] == 1
+        assert stats['gap_affected_positions'] == 1
+        assert stats['gap_only_positions'] == 1
+
     def test_check_pymsaviz_available(self):
         """Test pymsaviz availability check."""
         from app.core.alignment_tools import check_pymsaviz_available
@@ -997,3 +1719,54 @@ class TestAlignmentVisualization:
         data = response.get_json()
         assert data['success'] is True
         assert 'available' in data
+
+
+class TestTreeSupportParsing:
+    """Tests for tree support parsing and summarization."""
+
+    def test_get_tree_info_detects_internal_support_labels(self, tmpdir):
+        """Tree info should detect numeric internal support labels from node names."""
+        from app.core.tree_visualizer import get_tree_info
+
+        tree_file = str(tmpdir.join("supported.tree"))
+        with open(tree_file, 'w') as f:
+            f.write("((A:1,B:1)95:1,C:1);")
+
+        info, error = get_tree_info(tree_file)
+
+        assert error is None
+        assert info is not None
+        assert info['has_support'] is True
+
+    def test_summarize_bootstrap_support_uses_trailing_value_for_composite_labels(self, tmpdir):
+        """Composite support labels like SH-aLRT/UFBoot should summarize the trailing value."""
+        from app.core.iqtree_wrapper import summarize_bootstrap_support
+
+        tree_file = str(tmpdir.join("composite_support.treefile"))
+        with open(tree_file, 'w') as f:
+            f.write("((A:1,B:1)80/95:1,(D:1,E:1)60/70:1,C:1);")
+
+        stats = summarize_bootstrap_support(tree_file)
+
+        assert stats['count'] == 2
+        assert stats['composite_support_labels'] is True
+        assert stats['support_metric_used'] == 'trailing'
+        assert stats['mean'] == pytest.approx(82.5)
+        assert stats['strong_support'] == 1
+        assert stats['moderate_support'] == 1
+        assert stats['weak_support'] == 0
+
+    def test_tree_visualizer_support_metric_can_use_leading_value(self):
+        """Tree visualizer summaries should allow explicit leading-value support selection."""
+        from ete3 import Tree
+        from app.core.tree_visualizer import _summarize_bootstrap_support
+
+        tree = Tree("((A:1,B:1)80/95:1,(D:1,E:1)60/70:1,C:1);", format=1)
+        stats = _summarize_bootstrap_support(tree, low_threshold=70, support_metric='leading')
+
+        assert stats['composite_support_labels'] is True
+        assert stats['support_metric_used'] == 'leading'
+        assert stats['support_metric_label'] == 'leading value'
+        assert stats['support_mean'] == pytest.approx(70.0)
+        assert stats['support_other_mean'] == pytest.approx(82.5)
+        assert stats['low_support_count'] == 1

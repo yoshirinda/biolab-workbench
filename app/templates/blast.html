@@ -19,6 +19,12 @@
                 </div>
                 <div class="card-body">
                     <form id="blastForm">
+                        {% if not databases %}
+                        <div class="alert alert-warning small">
+                            <div class="fw-semibold mb-1"><i class="bi bi-exclamation-triangle"></i> No BLAST database detected</div>
+                            <div>Create one in <strong>Create Database</strong> below, then rerun BLAST. You can also check <a href="{{ url_for('docs.blast_docs') }}">BLAST docs</a> for database format guidance.</div>
+                        </div>
+                        {% endif %}
                         <div class="mb-3">
                             <label class="form-label">Query Input:</label>
                             <div class="btn-group w-100 mb-2" role="group">
@@ -62,11 +68,23 @@
                         <div class="row">
                             <div class="col-6 mb-3">
                                 <label for="evalue" class="form-label">E-value:</label>
-                                <input type="text" class="form-control" id="evalue" value="1e-5">
+                                <input type="text" class="form-control" id="evalue" value="1e-5" placeholder="e.g. 1e-5 or 0.00001">
+                                <div class="form-text">Supports scientific notation, e.g. <code>1e-5</code>.</div>
                             </div>
                             <div class="col-6 mb-3">
                                 <label for="maxHits" class="form-label">Max Hits:</label>
                                 <input type="number" class="form-control" id="maxHits" value="500" min="1">
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-6 mb-3">
+                                <label for="minIdentity" class="form-label">Min Identity % (optional):</label>
+                                <input type="number" class="form-control" id="minIdentity" min="0" max="100" step="0.1" placeholder="e.g. 30">
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label for="minQcovs" class="form-label">Min Q-Covs % (optional):</label>
+                                <input type="number" class="form-control" id="minQcovs" min="0" max="100" step="0.1" placeholder="e.g. 50">
                             </div>
                         </div>
 
@@ -79,7 +97,119 @@
                             </select>
                         </div>
 
-                        <button type="submit" class="btn btn-success w-100" id="runBlastBtn">
+                        <div class="mb-3">
+                            <button class="btn btn-outline-secondary btn-sm w-100" type="button" data-bs-toggle="collapse" data-bs-target="#advancedBlastOptions" aria-expanded="false" aria-controls="advancedBlastOptions">
+                                Advanced Scientific Options (Optional)
+                            </button>
+                            <div class="collapse mt-2" id="advancedBlastOptions">
+                                <div class="card card-body bg-light">
+                                    <div class="row g-2">
+                                        <div class="col-6">
+                                            <label for="task" class="form-label small mb-1">blastn Task</label>
+                                            <select class="form-select form-select-sm" id="task">
+                                                <option value="">Auto</option>
+                                                <option value="megablast">megablast</option>
+                                                <option value="blastn">blastn</option>
+                                                <option value="dc-megablast">dc-megablast</option>
+                                                <option value="blastn-short">blastn-short</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-6">
+                                            <label for="wordSize" class="form-label small mb-1">Word Size</label>
+                                            <input type="number" class="form-control form-control-sm" id="wordSize" min="2" max="128" placeholder="Auto">
+                                            <div class="form-text" id="wordSizeHint">Program default will be used when left empty.</div>
+                                        </div>
+                                        <div class="col-6">
+                                            <label for="dust" class="form-label small mb-1">DUST (nucleotide)</label>
+                                            <select class="form-select form-select-sm" id="dust">
+                                                <option value="">Auto</option>
+                                                <option value="yes">yes</option>
+                                                <option value="no">no</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-6">
+                                            <label for="seg" class="form-label small mb-1">SEG (protein)</label>
+                                            <select class="form-select form-select-sm" id="seg">
+                                                <option value="">Auto</option>
+                                                <option value="yes">yes</option>
+                                                <option value="no">no</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-6">
+                                            <label for="softMasking" class="form-label small mb-1">Soft Masking</label>
+                                            <select class="form-select form-select-sm" id="softMasking">
+                                                <option value="">Auto</option>
+                                                <option value="true">true</option>
+                                                <option value="false">false</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-6">
+                                            <label for="compBasedStats" class="form-label small mb-1">Comp-based Stats</label>
+                                            <select class="form-select form-select-sm" id="compBasedStats">
+                                                <option value="">Auto</option>
+                                                <option value="0">0</option>
+                                                <option value="1">1</option>
+                                                <option value="2">2</option>
+                                                <option value="3">3</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-6">
+                                            <label for="maxHsps" class="form-label small mb-1">Max HSPs</label>
+                                            <input type="number" class="form-control form-control-sm" id="maxHsps" min="1" placeholder="Auto">
+                                        </div>
+                                        <div class="col-6">
+                                            <label for="cullingLimit" class="form-label small mb-1">Culling Limit</label>
+                                            <input type="number" class="form-control form-control-sm" id="cullingLimit" min="0" placeholder="Auto">
+                                        </div>
+                                        <div class="col-3">
+                                            <label for="reward" class="form-label small mb-1">Reward</label>
+                                            <input type="number" class="form-control form-control-sm" id="reward" min="1" placeholder="-">
+                                        </div>
+                                        <div class="col-3">
+                                            <label for="penalty" class="form-label small mb-1">Penalty</label>
+                                            <input type="number" class="form-control form-control-sm" id="penalty" max="-1" placeholder="-">
+                                        </div>
+                                        <div class="col-3">
+                                            <label for="gapopen" class="form-label small mb-1">Gap Open</label>
+                                            <input type="number" class="form-control form-control-sm" id="gapopen" min="0" placeholder="-">
+                                        </div>
+                                        <div class="col-3">
+                                            <label for="gapextend" class="form-label small mb-1">Gap Extend</label>
+                                            <input type="number" class="form-control form-control-sm" id="gapextend" min="0" placeholder="-">
+                                        </div>
+                                        <div class="col-12">
+                                            <div class="form-text">
+                                                <code>blastn</code> reward/penalty supports:
+                                                <code>1/-1</code>, <code>1/-2</code>, <code>1/-3</code>, <code>1/-4</code>, <code>1/-5</code>,
+                                                <code>2/-2</code>, <code>2/-3</code>, <code>2/-5</code>, <code>2/-7</code>.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="blastScientificHints" class="mb-3"></div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Quick Scientific Presets:</label>
+                            <div class="d-flex flex-wrap gap-2">
+                                <button type="button" class="btn btn-outline-secondary btn-sm blast-preset-btn" data-preset="balanced">
+                                    Balanced
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm blast-preset-btn" data-preset="strict">
+                                    High Confidence
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm blast-preset-btn" data-preset="sensitive">
+                                    Sensitive
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm blast-preset-btn" data-preset="short_query">
+                                    Short Query DNA
+                                </button>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-success w-100" id="runBlastBtn" {% if not databases %}disabled title="Create a BLAST database first"{% endif %}>
                             <i class="bi bi-play-fill"></i> Run BLAST
                         </button>
                     </form>
@@ -161,6 +291,7 @@
 
                     <!-- Command Display -->
                     <div id="commandDisplay" class="d-none"></div>
+                    <div id="runContext" class="d-none mt-2"></div>
 
                     <!-- Identity Summary -->
                     <div id="identitySummary" class="d-none mb-3">
@@ -185,30 +316,29 @@
                         </div>
                     </div>
 
+                    <div id="blastInterpretation" class="d-none mb-3"></div>
+
                     <div id="resultsTable" class="d-none">
                         <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
                             <table class="table table-sm table-hover">
-                                <thead class="table-light sticky-top">
-                                    <tr>
-                                        <th><input type="checkbox" id="selectAllHits"></th>
-                                        <th>Query</th>
-                                        <th>Subject</th>
-                                        <th>Identity</th>
-                                        <th>Length</th>
-                                        <th>E-value</th>
-                                        <th>Bit Score</th>
-                                    </tr>
-                                </thead>
+                                <thead class="table-light sticky-top" id="hitsTableHead"></thead>
                                 <tbody id="hitsTableBody">
                                 </tbody>
                             </table>
                         </div>
+                        <div id="hitsPagination" class="d-flex justify-content-between align-items-center mt-2 small text-muted"></div>
                         <div class="mt-3">
                             <button class="btn btn-outline-primary" onclick="extractSelected()">
                                 <i class="bi bi-download"></i> Extract Selected Sequences
                             </button>
                             <a id="downloadResultBtn" class="btn btn-outline-secondary d-none" download>
                                 <i class="bi bi-file-earmark-arrow-down"></i> Download Results
+                            </a>
+                            <a id="downloadSummaryBtn" class="btn btn-outline-secondary d-none" download>
+                                <i class="bi bi-card-list"></i> Download Summary
+                            </a>
+                            <a id="downloadReportBtn" class="btn btn-outline-secondary d-none" download>
+                                <i class="bi bi-file-richtext"></i> Download HTML Report
                             </a>
                         </div>
                     </div>
@@ -232,6 +362,180 @@
     let currentResultDir = null;
     let currentDatabase = null;
     let blastHits = [];
+    let selectedHitIds = new Set();
+    const blastPagination = { page: 1, pageSize: 25 };
+    const escapeHtml = (value) => String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    function buildBlastErrorHints(rawMessage) {
+        const message = String(rawMessage || '');
+        const lower = message.toLowerCase();
+        const hints = (typeof window.getActionableHints === 'function')
+            ? window.getActionableHints(message).slice(0, 4)
+            : [];
+
+        if (lower.includes('no database selected') || lower.includes('database') && lower.includes('no')) {
+            hints.push('Choose an existing BLAST database or create one in "Create Database".');
+        }
+        if (lower.includes('no query provided')) {
+            hints.push('Paste FASTA content (with >header) or upload a FASTA file before running BLAST.');
+        }
+        if (lower.includes('invalid evalue')) {
+            hints.push('Use a positive value like 1e-5, 1e-10, or 0.001.');
+        }
+        if (lower.includes('invalid output_format')) {
+            hints.push('Use TSV for filtering/extraction or Pairwise for readable alignments.');
+        }
+        if (lower.includes('timed out')) {
+            hints.push('Try stricter filters, smaller query set, or reduce Max Hits, then rerun.');
+        }
+        if (lower.includes('blastn: not found') || lower.includes('makeblastdb: not found')) {
+            hints.push('BLAST+ tools are not available in current runtime. Check conda env and PATH configuration.');
+        }
+        if (lower.includes('file not found') || lower.includes('no such file')) {
+            hints.push('Verify the input file still exists and is inside allowed upload/result directories.');
+        }
+        if (lower.includes('permission denied')) {
+            hints.push('Check write permissions for uploads/results directories.');
+        }
+        if (!hints.length) {
+            hints.push('Check query type, database type, and output format; then retry with Balanced preset.');
+        }
+        return Array.from(new Set(hints));
+    }
+
+    function renderResultsError(message, hints = []) {
+        const resultsArea = document.getElementById('resultsArea');
+        const resultsTable = document.getElementById('resultsTable');
+        const identitySummary = document.getElementById('identitySummary');
+        const interpretation = document.getElementById('blastInterpretation');
+        if (resultsTable) resultsTable.classList.add('d-none');
+        if (identitySummary) identitySummary.classList.add('d-none');
+        if (interpretation) {
+            interpretation.classList.add('d-none');
+            interpretation.innerHTML = '';
+        }
+        const hintRows = (Array.isArray(hints) ? hints : [])
+            .map((item) => `<li>${escapeHtml(item)}</li>`)
+            .join('');
+        if (resultsArea) {
+            resultsArea.classList.remove('d-none');
+            resultsArea.innerHTML = `
+                <div class="alert alert-danger mb-0">
+                    <div class="fw-semibold mb-1">${escapeHtml(message)}</div>
+                    ${hintRows ? `<div class="small mb-1">Next steps:</div><ul class="small mb-0">${hintRows}</ul>` : ''}
+                </div>
+            `;
+        }
+    }
+
+    function renderBlastInterpretation(data) {
+        const box = document.getElementById('blastInterpretation');
+        if (!box) return;
+
+        const items = [];
+        const totalHits = Number(data?.total_hits || 0);
+        const filters = data?.applied_filters || {};
+        const summary = data?.identity_summary || null;
+        const queryType = data?.query_type || 'unknown';
+        const dbType = data?.db_type || 'unknown';
+        const program = data?.program || 'unknown';
+        const queryLength = Number(data?.query_length || 0);
+        const hits = Array.isArray(data?.hits) ? data.hits : [];
+        const topHit = hits.length ? hits[0] : null;
+        const topIdentity = toFiniteNumber(topHit?.pident);
+        const topCoverage = toFiniteNumber(topHit?.qcovs);
+        const topEvalue = topHit?.evalue !== undefined ? Number(topHit.evalue) : null;
+        const topBitscore = toFiniteNumber(topHit?.bitscore);
+
+        items.push(`Program ${program} compares a ${queryType} query against a ${dbType} database. Interpret top hits in the context of sequence type and database composition.`);
+
+        if (data?.result_mode === 'raw') {
+            items.push('Pairwise output is best for inspecting local alignments and mismatch patterns. Use TSV/Detailed output when you need quantitative comparison across many hits.');
+        }
+
+        if (queryLength > 0) {
+            if (queryType === 'nucleotide' && queryLength <= 50) {
+                items.push(`This is a short nucleotide query (${queryLength} bp). For short queries, high identity and near-full query coverage matter more than hit count alone because local matches are easy to obtain.`);
+            } else if (queryType === 'protein' && queryLength <= 30) {
+                items.push(`This is a very short protein query (${queryLength} aa). Short peptide matches can look strong numerically but are especially sensitive to chance local similarity.`);
+            }
+        }
+
+        if (totalHits === 0) {
+            items.push('No hits passed the current settings. This can reflect true absence, an incompatible query/database combination, or thresholds that are too strict for remote homologs.');
+        } else if (summary) {
+            if (summary.high_pct >= 50) {
+                items.push('Most retained hits are high-identity matches. These are often close homologs or near-duplicate entries, but identity alone does not establish orthology.');
+            } else if (summary.medium_pct >= 50) {
+                items.push('Most retained hits fall in the medium-identity range. Treat these as candidate homologs that should be checked with domain architecture, coverage, and phylogeny.');
+            } else if (summary.low_pct >= 50) {
+                items.push('Most retained hits are low-identity matches. These are more consistent with remote similarity, so false positives and partial matches need extra scrutiny.');
+            }
+        }
+
+        if (topHit && topIdentity !== null) {
+            if (topCoverage !== null && topIdentity >= 95 && topCoverage >= 90) {
+                items.push(`The top retained hit is both high-identity (${topIdentity}%) and high-coverage (${topCoverage}%), which is consistent with a close or near-full-length homolog.`);
+            } else if (topCoverage !== null && topIdentity >= 90 && topCoverage < 60) {
+                items.push(`The top retained hit has high identity (${topIdentity}%) but limited query coverage (${topCoverage}%). This pattern is more consistent with a local domain match, fragment, or partial overlap than a full-length homolog.`);
+            } else if (topCoverage !== null && topCoverage >= 80 && topIdentity < 40) {
+                items.push(`The top retained hit covers most of the query (${topCoverage}%) but has modest identity (${topIdentity}%). Treat it as a remote-homology candidate that still needs domain and phylogenetic confirmation.`);
+            }
+            if (topEvalue !== null && Number.isFinite(topEvalue)) {
+                if (topEvalue > 1e-3) {
+                    items.push(`The best displayed E-value (${topHit.evalue}) is relatively weak. Interpretation should rely on multiple lines of evidence, especially if the database is large or compositionally biased.`);
+                } else if (topEvalue <= 1e-20 && topBitscore !== null) {
+                    items.push(`The best displayed hit has a very strong E-value (${topHit.evalue}) and bit score (${topBitscore}), which supports real similarity, although function and orthology still need separate evidence.`);
+                }
+            }
+        }
+
+        if (filters.min_identity !== null && filters.min_identity !== undefined && filters.min_qcovs !== null && filters.min_qcovs !== undefined) {
+            items.push(`Current interpretation should use both identity (>=${filters.min_identity}%) and query coverage (>=${filters.min_qcovs}%). Coverage helps distinguish full-length homologs from short local matches.`);
+        } else if (filters.min_identity !== null && filters.min_identity !== undefined) {
+            items.push('Identity filtering is active without a paired coverage cutoff. High identity over a short aligned region can still be biologically misleading.');
+        } else if (filters.min_qcovs !== null && filters.min_qcovs !== undefined) {
+            items.push('Coverage filtering is active without an identity cutoff. Broad coverage alone does not guarantee functional relatedness.');
+        }
+
+        if (filters.min_identity !== null && filters.min_identity !== undefined && filters.min_qcovs !== null && filters.min_qcovs !== undefined) {
+            if (Number(filters.min_identity) >= 90 && Number(filters.min_qcovs) >= 80) {
+                items.push('These filters are stringent and well suited to retrieving close homologs or near-duplicate entries, but they may remove legitimate remote family members.');
+            } else if (Number(filters.min_identity) <= 35 && Number(filters.min_qcovs) <= 50) {
+                items.push('These filters are permissive enough for exploratory remote-homology screening, so annotation drift and partial matches should be reviewed carefully.');
+            }
+        }
+
+        if (Array.isArray(data?.run_warnings) && data.run_warnings.length) {
+            items.push('Run warnings were reported. Review them before treating borderline hits as biologically meaningful.');
+        }
+
+        box.classList.remove('d-none');
+        box.innerHTML = `
+            <div class="alert alert-light border mb-0">
+                <div class="fw-semibold mb-2">Result Interpretation</div>
+                <ul class="mb-0 small">
+                    ${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    }
+
+    function triggerDownload(filePath) {
+        const href = BLAST_URLS.downloadBase + '?path=' + encodeURIComponent(filePath);
+        const link = document.createElement('a');
+        link.href = href;
+        link.style.display = 'none';
+        link.rel = 'noopener';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
 
     async function fetchJsonSafe(url, options = {}) {
         const response = await fetch(url, options);
@@ -253,33 +557,432 @@
         radio.addEventListener('change', function() {
             document.getElementById('textQueryDiv').classList.toggle('d-none', this.value !== 'text');
             document.getElementById('fileQueryDiv').classList.toggle('d-none', this.value !== 'file');
+            updateBlastScientificHints();
         });
     });
 
+    function toFiniteNumber(raw) {
+        if (raw === null || raw === undefined) return null;
+        const str = String(raw).trim();
+        if (!str) return null;
+        const n = Number(str);
+        return Number.isFinite(n) ? n : null;
+    }
+
+    const BLASTN_SCORING_PAIR_SET = new Set([
+        '1/-5', '1/-4', '1/-3', '1/-2', '1/-1',
+        '2/-7', '2/-5', '2/-3', '2/-2'
+    ]);
+    const BLAST_WORD_SIZE_LIMITS = {
+        blastp: [2, 7],
+        blastx: [2, 7],
+        tblastn: [2, 7],
+        tblastx: [2, 3]
+    };
+    const BLAST_WORD_SIZE_DEFAULTS = {
+        blastn: 11,
+        'blastn-short': 7,
+        'dc-megablast': 11,
+        megablast: 28,
+        blastp: 6,
+        blastx: 3,
+        tblastn: 3,
+        tblastx: 3
+    };
+
+    function inferSequenceTypeLikeBackend(sequence) {
+        const seq = String(sequence || '')
+            .toUpperCase()
+            .replace(/[^A-Z*]/g, '');
+        if (!seq) return null;
+        if (/[EFILPQZX*]/.test(seq)) return 'protein';
+        const nucMatches = seq.match(/[ACGTUNRYSWKMBDHV]/g) || [];
+        const nucRatio = nucMatches.length / seq.length;
+        return nucRatio >= 0.9 ? 'nucleotide' : 'protein';
+    }
+
+    function getSelectedBlastDatabaseType() {
+        const dbSelect = document.getElementById('database');
+        if (!dbSelect) return null;
+        const option = dbSelect.options[dbSelect.selectedIndex];
+        const dbType = String(option?.dataset?.type || '').trim().toLowerCase();
+        return dbType || null;
+    }
+
+    function inferBlastQueryTypeFromForm() {
+        const queryType = document.querySelector('input[name="queryType"]:checked')?.value;
+        if (queryType !== 'text') return null;
+        const text = String(document.getElementById('queryTextArea')?.value || '');
+        const sequence = text
+            .split('\n')
+            .filter((line) => {
+                const trimmed = line.trim();
+                return trimmed && !trimmed.startsWith('>');
+            })
+            .join('');
+        return inferSequenceTypeLikeBackend(sequence);
+    }
+
+    function getRecommendedBlastProgram(queryType, dbType) {
+        if (!queryType || !dbType) return null;
+        if (queryType === 'nucleotide' && dbType === 'nucleotide') return 'blastn';
+        if (queryType === 'protein' && dbType === 'protein') return 'blastp';
+        if (queryType === 'nucleotide' && dbType === 'protein') return 'blastx';
+        if (queryType === 'protein' && dbType === 'nucleotide') return 'tblastn';
+        return null;
+    }
+
+    function getBlastWordSizeLimits(program) {
+        return BLAST_WORD_SIZE_LIMITS[program] || [2, 128];
+    }
+
+    function getBlastWordSizeDefault(program, task) {
+        if (program === 'blastn') {
+            return BLAST_WORD_SIZE_DEFAULTS[task || 'blastn'] || BLAST_WORD_SIZE_DEFAULTS.blastn;
+        }
+        return BLAST_WORD_SIZE_DEFAULTS[program] || null;
+    }
+
+    function syncBlastWordSizeConstraints(program, task) {
+        const wordSizeEl = document.getElementById('wordSize');
+        const wordSizeHint = document.getElementById('wordSizeHint');
+        if (!wordSizeEl) return;
+
+        const [minWordSize, maxWordSize] = getBlastWordSizeLimits(program);
+        const defaultWordSize = getBlastWordSizeDefault(program, task);
+        wordSizeEl.min = String(minWordSize);
+        wordSizeEl.max = String(maxWordSize);
+        wordSizeEl.placeholder = defaultWordSize ? `Auto (${defaultWordSize})` : 'Auto';
+        if (wordSizeHint) {
+            const label = program || 'auto-selected program';
+            wordSizeHint.textContent = defaultWordSize
+                ? `${label}: leave empty to use default word_size ${defaultWordSize}.`
+                : `${label}: leave empty to use the program default.`;
+        }
+    }
+
+    function estimateQueryLengthFromText() {
+        const queryType = document.querySelector('input[name="queryType"]:checked')?.value;
+        if (queryType !== 'text') return null;
+        const text = String(document.getElementById('queryTextArea')?.value || '');
+        const lines = text.split('\n');
+        const seqLines = lines.filter((line) => {
+            const t = line.trim();
+            return t && !t.startsWith('>');
+        });
+        const merged = seqLines.join('').replace(/\s+/g, '');
+        return merged ? merged.length : null;
+    }
+
+    function setBlastScientificHints(items) {
+        const box = document.getElementById('blastScientificHints');
+        if (!box) return;
+        if (!items.length) {
+            box.innerHTML = '<div class="alert alert-light border py-2 px-3 mb-0 small">Scientific check: defaults are valid. Add Identity + Q-Covs together for clearer interpretation.</div>';
+            return;
+        }
+        box.innerHTML = items.map((item) => {
+            const cls = item.level === 'danger'
+                ? 'alert-danger'
+                : item.level === 'warning'
+                    ? 'alert-warning'
+                    : 'alert-info';
+            return `<div class="alert ${cls} py-2 px-3 mb-2 small">${item.text}</div>`;
+        }).join('');
+    }
+
+    function setControlEnabled(controlId, enabled, disabledTitle = '') {
+        const el = document.getElementById(controlId);
+        if (!el) return;
+        el.disabled = !enabled;
+        if (!enabled && disabledTitle) {
+            el.title = disabledTitle;
+        } else {
+            el.title = '';
+        }
+    }
+
+    function syncBlastScientificControls() {
+        const explicitProgram = String(document.getElementById('program')?.value || '').trim();
+        const task = String(document.getElementById('task')?.value || '').trim();
+        const inferredQueryType = inferBlastQueryTypeFromForm();
+        const dbType = getSelectedBlastDatabaseType();
+        const effectiveProgram = explicitProgram || getRecommendedBlastProgram(inferredQueryType, dbType) || 'blastn';
+        if (!explicitProgram && !getRecommendedBlastProgram(inferredQueryType, dbType)) {
+            setControlEnabled('task', true);
+            setControlEnabled('reward', true);
+            setControlEnabled('penalty', true);
+            setControlEnabled('dust', true);
+            setControlEnabled('seg', true);
+            setControlEnabled('compBasedStats', true);
+            setControlEnabled('gapopen', true);
+            setControlEnabled('gapextend', true);
+            syncBlastWordSizeConstraints(effectiveProgram, task);
+            return;
+        }
+        const isBlastn = effectiveProgram === 'blastn';
+        const nucleotideProgram = effectiveProgram === 'blastn' || effectiveProgram === 'tblastx';
+        const proteinProgram = effectiveProgram === 'blastp' || effectiveProgram === 'blastx' || effectiveProgram === 'tblastn';
+        setControlEnabled('task', isBlastn, 'Only blastn supports task');
+        setControlEnabled('reward', isBlastn, 'Reward applies to blastn scoring');
+        setControlEnabled('penalty', isBlastn, 'Penalty applies to blastn scoring');
+        setControlEnabled('dust', nucleotideProgram, 'DUST is nucleotide-only');
+        setControlEnabled('seg', proteinProgram, 'SEG is protein-program only');
+        setControlEnabled('compBasedStats', proteinProgram, 'Composition-based stats are protein-program only');
+        setControlEnabled('gapopen', effectiveProgram !== 'tblastx', 'tblastx is ungapped');
+        setControlEnabled('gapextend', effectiveProgram !== 'tblastx', 'tblastx is ungapped');
+        syncBlastWordSizeConstraints(effectiveProgram, task);
+    }
+
+    function updateBlastScientificHints() {
+        syncBlastScientificControls();
+        const hints = [];
+
+        const explicitProgram = String(document.getElementById('program')?.value || '').trim();
+        const task = String(document.getElementById('task')?.value || '').trim();
+        const minIdentity = toFiniteNumber(document.getElementById('minIdentity')?.value);
+        const minQcovs = toFiniteNumber(document.getElementById('minQcovs')?.value);
+        const evalueRaw = String(document.getElementById('evalue')?.value || '').trim();
+        const evalue = toFiniteNumber(evalueRaw);
+        const evaluePattern = /^(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+        const queryLen = estimateQueryLengthFromText();
+        const inferredQueryType = inferBlastQueryTypeFromForm();
+        const dbType = getSelectedBlastDatabaseType();
+        const recommendedProgram = getRecommendedBlastProgram(inferredQueryType, dbType);
+        const effectiveProgram = explicitProgram || recommendedProgram;
+        const dust = String(document.getElementById('dust')?.value || '').trim();
+        const seg = String(document.getElementById('seg')?.value || '').trim();
+        const compStats = String(document.getElementById('compBasedStats')?.value || '').trim();
+        const reward = toFiniteNumber(document.getElementById('reward')?.value);
+        const penalty = toFiniteNumber(document.getElementById('penalty')?.value);
+        const gapopen = toFiniteNumber(document.getElementById('gapopen')?.value);
+        const gapextend = toFiniteNumber(document.getElementById('gapextend')?.value);
+        const wordSize = toFiniteNumber(document.getElementById('wordSize')?.value);
+
+        if (!evaluePattern.test(evalueRaw) || evalue === null || evalue <= 0) {
+            hints.push({ level: 'danger', text: 'E-value must be a positive decimal/scientific value, e.g. 1e-5.' });
+        } else if (evalue > 1e-2) {
+            hints.push({ level: 'warning', text: 'E-value > 1e-2 is very relaxed and may include many random matches.' });
+        } else if (evalue <= 1e-10) {
+            hints.push({ level: 'info', text: 'Strict E-value (<= 1e-10): good for high-confidence annotation workflows.' });
+        }
+
+        if (minIdentity !== null && minQcovs === null) {
+            hints.push({ level: 'warning', text: 'Identity-only filtering can be misleading. Add Min Q-Covs for robust interpretation.' });
+        }
+        if (minQcovs !== null && minIdentity === null) {
+            hints.push({ level: 'info', text: 'Coverage-only filtering is permissive. Add Min Identity to tighten biological relevance.' });
+        }
+        if (minIdentity !== null && minQcovs !== null && minIdentity >= 50 && minQcovs >= 70) {
+            hints.push({ level: 'info', text: 'Current Identity + Q-Covs thresholds are aligned with high-confidence hit screening.' });
+        }
+        if (recommendedProgram && !explicitProgram) {
+            hints.push({
+                level: 'info',
+                text: `Auto-detect will likely use ${recommendedProgram} for a ${inferredQueryType} query against a ${dbType} database.`
+            });
+        }
+        if (recommendedProgram && explicitProgram && explicitProgram !== recommendedProgram) {
+            hints.push({
+                level: 'warning',
+                text: `Selected program ${explicitProgram} is not the usual match for ${inferredQueryType} query vs ${dbType} database; backend may auto-switch to ${recommendedProgram}.`
+            });
+        }
+
+        if (explicitProgram && explicitProgram !== 'blastn' && task) {
+            hints.push({ level: 'warning', text: `task=${task} applies only to blastn; backend will ignore it for ${explicitProgram}.` });
+        }
+        if ((explicitProgram === 'blastn' || !explicitProgram) && queryLen !== null && queryLen <= 50 && task !== 'blastn-short') {
+            hints.push({ level: 'info', text: 'Short nucleotide query (<=50): blastn-short is usually more sensitive for short targets.' });
+        }
+        if ((effectiveProgram === 'blastn') && task === 'blastn-short' && wordSize === null) {
+            hints.push({ level: 'info', text: 'blastn-short uses word_size 7 by default for short nucleotide queries.' });
+        }
+        if (wordSize !== null) {
+            if (!Number.isInteger(wordSize)) {
+                hints.push({ level: 'danger', text: 'Word Size must be an integer.' });
+            } else {
+                const [minWordSize, maxWordSize] = getBlastWordSizeLimits(effectiveProgram);
+                if (wordSize < minWordSize || wordSize > maxWordSize) {
+                    hints.push({
+                        level: 'danger',
+                        text: `Word Size must be between ${minWordSize} and ${maxWordSize} for ${effectiveProgram || 'the selected program'}.`
+                    });
+                }
+            }
+        }
+
+        if ((reward === null) !== (penalty === null)) {
+            hints.push({ level: 'danger', text: 'Reward and Penalty must be filled together for blastn scoring.' });
+        }
+        if ((effectiveProgram === 'blastn') && reward !== null && penalty !== null && !BLASTN_SCORING_PAIR_SET.has(`${reward}/${penalty}`)) {
+            hints.push({
+                level: 'danger',
+                text: 'Unsupported blastn reward/penalty pair. Use one of: 1/-1, 1/-2, 1/-3, 1/-4, 1/-5, 2/-2, 2/-3, 2/-5, 2/-7.'
+            });
+        }
+        if (effectiveProgram && effectiveProgram !== 'blastn' && (reward !== null || penalty !== null)) {
+            hints.push({ level: 'warning', text: 'reward/penalty tuning applies to blastn only.' });
+        }
+        if (explicitProgram && !['blastn', 'tblastx'].includes(explicitProgram) && dust) {
+            hints.push({ level: 'warning', text: 'DUST is nucleotide-program specific and will be ignored for current program.' });
+        }
+        if (explicitProgram && !['blastp', 'blastx', 'tblastn'].includes(explicitProgram) && (seg || compStats)) {
+            hints.push({ level: 'warning', text: 'SEG / composition-based stats are protein-program options only.' });
+        }
+        if (effectiveProgram === 'tblastx' && (gapopen !== null || gapextend !== null)) {
+            hints.push({ level: 'warning', text: 'tblastx is ungapped; gap open/extend values will be ignored.' });
+        }
+
+        setBlastScientificHints(hints);
+        return hints;
+    }
+
+    function applyBlastPreset(preset) {
+        const evalueEl = document.getElementById('evalue');
+        const minIdentityEl = document.getElementById('minIdentity');
+        const minQcovsEl = document.getElementById('minQcovs');
+        const taskEl = document.getElementById('task');
+        const programEl = document.getElementById('program');
+        const maxHitsEl = document.getElementById('maxHits');
+        const wordSizeEl = document.getElementById('wordSize');
+        if (!evalueEl || !minIdentityEl || !minQcovsEl || !taskEl || !programEl || !maxHitsEl || !wordSizeEl) return;
+
+        if (preset === 'strict') {
+            evalueEl.value = '1e-10';
+            minIdentityEl.value = '50';
+            minQcovsEl.value = '70';
+            if (!programEl.value) programEl.value = '';
+            taskEl.value = '';
+            wordSizeEl.value = '';
+            maxHitsEl.value = '200';
+        } else if (preset === 'sensitive') {
+            evalueEl.value = '1e-3';
+            minIdentityEl.value = '20';
+            minQcovsEl.value = '30';
+            taskEl.value = '';
+            wordSizeEl.value = '';
+            maxHitsEl.value = '1000';
+        } else if (preset === 'short_query') {
+            evalueEl.value = '1e-3';
+            minIdentityEl.value = '';
+            minQcovsEl.value = '';
+            programEl.value = 'blastn';
+            taskEl.value = 'blastn-short';
+            wordSizeEl.value = '7';
+            maxHitsEl.value = '200';
+        } else {
+            // balanced
+            evalueEl.value = '1e-5';
+            minIdentityEl.value = '30';
+            minQcovsEl.value = '50';
+            taskEl.value = '';
+            wordSizeEl.value = '';
+            maxHitsEl.value = '500';
+        }
+
+        updateBlastScientificHints();
+    }
+
+    [
+        'queryTextArea', 'database', 'program', 'task', 'evalue', 'minIdentity', 'minQcovs',
+        'wordSize', 'dust', 'seg', 'compBasedStats', 'reward', 'penalty', 'gapopen', 'gapextend'
+    ].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('input', updateBlastScientificHints);
+        el.addEventListener('change', updateBlastScientificHints);
+    });
+    document.querySelectorAll('.blast-preset-btn').forEach((btn) => {
+        btn.addEventListener('click', () => applyBlastPreset(btn.dataset.preset || 'balanced'));
+    });
+    updateBlastScientificHints();
+
     document.getElementById('blastForm').addEventListener('submit', async function(e) {
         e.preventDefault();
+
+        const selectedDatabase = document.getElementById('database').value;
+        if (!selectedDatabase) {
+            showAlert('warning', 'Please select a BLAST database first. If none exists, create one below.');
+            return;
+        }
+
+        const scientificHints = updateBlastScientificHints();
+        const blockingHint = scientificHints.find((item) => item.level === 'danger');
+        if (blockingHint) {
+            showAlert('danger', blockingHint.text);
+            return;
+        }
+
+        const evalueRaw = (document.getElementById('evalue').value || '').trim();
+        const evaluePattern = /^(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+        if (!evaluePattern.test(evalueRaw) || Number(evalueRaw) <= 0) {
+            showAlert('danger', 'Invalid E-value. Use decimal or scientific notation (e.g. 1e-5), and value must be > 0.');
+            return;
+        }
 
         const formData = new FormData();
 
         const queryType = document.querySelector('input[name="queryType"]:checked').value;
         if (queryType === 'text') {
-            formData.append('query_text', document.getElementById('queryTextArea').value);
+            const textQuery = String(document.getElementById('queryTextArea').value || '').trim();
+            const sequenceLength = textQuery
+                .split('\n')
+                .filter((line) => {
+                    const trimmed = line.trim();
+                    return trimmed && !trimmed.startsWith('>');
+                })
+                .join('')
+                .replace(/\s+/g, '')
+                .length;
+            if (!textQuery || sequenceLength === 0) {
+                showAlert('warning', 'No sequence detected. Paste FASTA text (with sequence letters) before running BLAST.');
+                return;
+            }
+            formData.append('query_text', textQuery);
         } else {
             const file = document.getElementById('queryFileInput').files[0];
-            if (file) formData.append('file', file);
+            if (!file) {
+                showAlert('warning', 'Please choose a FASTA file to upload.');
+                return;
+            }
+            formData.append('file', file);
         }
 
-        formData.append('database', document.getElementById('database').value);
+        formData.append('database', selectedDatabase);
+        const dbSelect = document.getElementById('database');
+        const selectedDb = dbSelect.options[dbSelect.selectedIndex];
+        if (selectedDb && selectedDb.dataset && selectedDb.dataset.type) {
+            formData.append('db_type_hint', selectedDb.dataset.type);
+        }
         formData.append('program', document.getElementById('program').value);
         formData.append('evalue', document.getElementById('evalue').value);
         formData.append('max_hits', document.getElementById('maxHits').value);
+        formData.append('min_identity', document.getElementById('minIdentity').value);
+        formData.append('min_qcovs', document.getElementById('minQcovs').value);
         formData.append('output_format', document.getElementById('outputFormat').value);
+        formData.append('task', document.getElementById('task').value);
+        formData.append('word_size', document.getElementById('wordSize').value);
+        formData.append('dust', document.getElementById('dust').value);
+        formData.append('seg', document.getElementById('seg').value);
+        formData.append('soft_masking', document.getElementById('softMasking').value);
+        formData.append('comp_based_stats', document.getElementById('compBasedStats').value);
+        formData.append('max_hsps', document.getElementById('maxHsps').value);
+        formData.append('culling_limit', document.getElementById('cullingLimit').value);
+        formData.append('reward', document.getElementById('reward').value);
+        formData.append('penalty', document.getElementById('penalty').value);
+        formData.append('gapopen', document.getElementById('gapopen').value);
+        formData.append('gapextend', document.getElementById('gapextend').value);
 
         currentDatabase = document.getElementById('database').value;
 
         document.getElementById('loadingSpinner').classList.remove('d-none');
         document.getElementById('resultsArea').classList.add('d-none');
         document.getElementById('resultsTable').classList.add('d-none');
+        document.getElementById('downloadResultBtn')?.classList.add('d-none');
+        document.getElementById('downloadSummaryBtn')?.classList.add('d-none');
+        document.getElementById('downloadReportBtn')?.classList.add('d-none');
+        document.getElementById('blastInterpretation')?.classList.add('d-none');
 
         try {
             const data = await fetchJsonSafe(BLAST_URLS.search, {
@@ -290,29 +993,65 @@
             document.getElementById('loadingSpinner').classList.add('d-none');
 
             // Display executed command
-            if (data.command) {
+            if (data.command && typeof displayCommand === 'function') {
                 displayCommand('commandDisplay', data.command);
             }
+            displayRunContext(data);
 
             if (data.success) {
                 currentResultDir = data.result_dir;
                 blastHits = data.hits;
-                displayHits(data.hits, data.total_hits);
+                selectedHitIds = new Set();
+                blastPagination.page = 1;
+                renderBlastInterpretation(data);
+                displayHits(data.hits, data.total_hits, data);
+                if (data.identity_summary) {
+                    displayIdentitySummary(data.identity_summary);
+                } else {
+                    document.getElementById('identitySummary').classList.add('d-none');
+                }
 
                 if (data.output_files && data.output_files.main) {
                     const btn = document.getElementById('downloadResultBtn');
                     btn.href = BLAST_URLS.downloadBase + '?path=' + encodeURIComponent(data.output_files.main);
                     btn.classList.remove('d-none');
                 }
+                const summaryBtn = document.getElementById('downloadSummaryBtn');
+                if (summaryBtn) {
+                    if (data.output_files && data.output_files.summary) {
+                        summaryBtn.href = BLAST_URLS.downloadBase + '?path=' + encodeURIComponent(data.output_files.summary);
+                        summaryBtn.classList.remove('d-none');
+                    } else {
+                        summaryBtn.classList.add('d-none');
+                    }
+                }
+                const reportBtn = document.getElementById('downloadReportBtn');
+                if (reportBtn) {
+                    if (data.output_files && data.output_files.report_html) {
+                        reportBtn.href = BLAST_URLS.downloadBase + '?path=' + encodeURIComponent(data.output_files.report_html);
+                        reportBtn.classList.remove('d-none');
+                    } else {
+                        reportBtn.classList.add('d-none');
+                    }
+                }
 
-                showAlert('success', `BLAST completed. ${data.total_hits} hits found.`);
+                if (data.result_mode === 'raw') {
+                    showAlert('success', 'BLAST completed. Non-tabular output generated; use "Download Results" for full alignment text.');
+                } else {
+                    showAlert('success', `BLAST completed. ${data.total_hits} hits found.`);
+                }
             } else {
-                document.getElementById('resultsArea').classList.remove('d-none');
-                document.getElementById('resultsArea').innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                const friendlyMessage = data.error || 'BLAST failed';
+                const friendlyHints = buildBlastErrorHints(friendlyMessage);
+                renderResultsError(friendlyMessage, friendlyHints);
+                showAlert('danger', friendlyMessage);
             }
         } catch (error) {
             document.getElementById('loadingSpinner').classList.add('d-none');
-            showAlert('danger', 'BLAST search failed: ' + error.message);
+            const message = 'BLAST search failed: ' + error.message;
+            const hints = buildBlastErrorHints(error.message);
+            renderResultsError(message, hints);
+            showAlert('danger', message);
         }
     });
 
@@ -321,6 +1060,47 @@
         document.getElementById('highIdBadge').textContent = `${summary.high} (${summary.high_pct}%)`;
         document.getElementById('mediumIdBadge').textContent = `${summary.medium} (${summary.medium_pct}%)`;
         document.getElementById('lowIdBadge').textContent = `${summary.low} (${summary.low_pct}%)`;
+    }
+
+    function displayRunContext(data) {
+        const box = document.getElementById('runContext');
+        if (!data || !data.success) {
+            box.classList.add('d-none');
+            box.innerHTML = '';
+            return;
+        }
+
+        const filters = [];
+        if (data.applied_filters?.min_identity !== null && data.applied_filters?.min_identity !== undefined) {
+            filters.push(`Identity >= ${data.applied_filters.min_identity}%`);
+        }
+        if (data.applied_filters?.min_qcovs !== null && data.applied_filters?.min_qcovs !== undefined) {
+            filters.push(`Q-Covs >= ${data.applied_filters.min_qcovs}%`);
+        }
+        const filterText = filters.length ? filters.join(' | ') : 'No post-filter';
+        const options = [];
+        const opts = data.applied_options || {};
+        if (opts.task) options.push(`task=${opts.task}`);
+        if (opts.word_size !== null && opts.word_size !== undefined) options.push(`word_size=${opts.word_size}`);
+        if (opts.dust) options.push(`dust=${opts.dust}`);
+        if (opts.seg) options.push(`seg=${opts.seg}`);
+        if (opts.soft_masking !== null && opts.soft_masking !== undefined) options.push(`soft_masking=${opts.soft_masking}`);
+        if (opts.max_hsps !== null && opts.max_hsps !== undefined) options.push(`max_hsps=${opts.max_hsps}`);
+        if (opts.culling_limit !== null && opts.culling_limit !== undefined) options.push(`culling_limit=${opts.culling_limit}`);
+        const optionText = options.length ? options.join(' | ') : 'Default scoring/masking';
+        const warnings = Array.isArray(data.run_warnings) ? data.run_warnings : [];
+        const warningText = warnings.length ? warnings.map(w => `<div class="text-warning"><strong>Warning:</strong> ${w}</div>`).join('') : '';
+        const queryLenText = (data.query_length && Number(data.query_length) > 0) ? ` (${data.query_length} bp/aa)` : '';
+
+        box.classList.remove('d-none');
+        box.innerHTML = `
+          <div class="alert alert-secondary py-2 px-3 mb-2">
+            <div><strong>Run Context:</strong> Query=${data.query_type || 'n/a'}${queryLenText} | DB=${data.db_type || 'n/a'} | Program=${data.program || 'n/a'}</div>
+            <div><strong>Filters:</strong> ${filterText}</div>
+            <div><strong>Advanced:</strong> ${optionText}</div>
+            ${warningText}
+          </div>
+        `;
     }
 
     function getIdentityBadgeClass(identityClass) {
@@ -332,36 +1112,220 @@
         return classes[identityClass] || 'bg-secondary';
     }
 
-    function displayHits(hits, total) {
-        const tbody = document.getElementById('hitsTableBody');
+    function normalizeHitId(rawId) {
+        const value = String(rawId == null ? '' : rawId).trim();
+        return value || '';
+    }
 
-        if (hits.length === 0) {
+    function displayHits(hits, total, data = {}) {
+        const outputFormat = data.output_format || 'tsv';
+        const isDetailed = outputFormat === 'detailed';
+        const thead = document.getElementById('hitsTableHead');
+        const tbody = document.getElementById('hitsTableBody');
+        const pager = document.getElementById('hitsPagination');
+        const safeHits = Array.isArray(hits) ? hits : [];
+        if (!Array.isArray(hits)) {
+            console.warn('BLAST response contains non-array hits payload:', hits);
+        }
+
+        if (safeHits.length === 0) {
             document.getElementById('resultsArea').classList.remove('d-none');
-            document.getElementById('resultsArea').innerHTML = '<p class="text-muted">No hits found</p>';
+            document.getElementById('resultsTable').classList.add('d-none');
+            if (pager) pager.innerHTML = '';
+            if (data.result_mode === 'raw') {
+                const rawPreview = data.raw_preview ? String(data.raw_preview) : '';
+                const numberedPreview = rawPreview
+                    .split('\n')
+                    .slice(0, 500)
+                    .map((line, idx) => `${String(idx + 1).padStart(4, ' ')} ${line}`)
+                    .join('\n');
+                const preview = escapeHtml(numberedPreview);
+                const previewBlock = preview
+                    ? `<pre class="small border rounded p-2 mt-2" style="max-height: 520px; overflow: auto; white-space: pre; line-height: 1.35; background: #f8fafc; color: #0f172a;">${preview}</pre>`
+                    : '<p class="text-muted">Use "Download Results" to inspect full alignments.</p>';
+                document.getElementById('resultsArea').innerHTML =
+                    '<p class="text-muted mb-1">BLAST completed. Pairwise preview (line-numbered):</p>' + previewBlock;
+            } else {
+                document.getElementById('resultsArea').innerHTML = '<p class="text-muted">No hits found</p>';
+            }
             return;
         }
 
-        document.getElementById('resultsTable').classList.remove('d-none');
+        if (thead) {
+            if (isDetailed) {
+                thead.innerHTML = `
+                <tr>
+                    <th><input type="checkbox" id="selectAllHits"></th>
+                    <th>Query</th>
+                    <th>Subject</th>
+                    <th>Identity</th>
+                    <th>Q-Covs</th>
+                    <th>Length</th>
+                    <th>Mismatch</th>
+                    <th>Gap Open</th>
+                    <th>Q-Range</th>
+                    <th>S-Range</th>
+                    <th>Q-Len</th>
+                    <th>S-Len</th>
+                    <th>E-value</th>
+                    <th>Bit Score</th>
+                    <th>Subject Title</th>
+                </tr>`;
+            } else {
+                thead.innerHTML = `
+                <tr>
+                    <th><input type="checkbox" id="selectAllHits"></th>
+                    <th>Query</th>
+                    <th>Subject</th>
+                    <th>Identity</th>
+                    <th>Length</th>
+                    <th>E-value</th>
+                    <th>Bit Score</th>
+                </tr>`;
+            }
+        }
 
-        tbody.innerHTML = hits.map((hit, idx) => {
+        document.getElementById('resultsArea').classList.add('d-none');
+        document.getElementById('resultsTable').classList.remove('d-none');
+        const totalPages = Math.max(1, Math.ceil(safeHits.length / blastPagination.pageSize));
+        if (blastPagination.page > totalPages) blastPagination.page = totalPages;
+        if (blastPagination.page < 1) blastPagination.page = 1;
+        const start = (blastPagination.page - 1) * blastPagination.pageSize;
+        const end = Math.min(start + blastPagination.pageSize, safeHits.length);
+        const pageHits = safeHits.slice(start, end);
+
+        tbody.innerHTML = pageHits.map((hit, idx) => {
+            const globalIdx = start + idx;
             const badgeClass = getIdentityBadgeClass(hit.identity_class);
-            const pident = parseFloat(hit.pident).toFixed(1);
+            const pidentVal = Number.parseFloat(hit.pident);
+            const bitscoreVal = Number.parseFloat(hit.bitscore);
+            const qcovsVal = Number.parseFloat(hit.qcovs);
+            const pident = Number.isFinite(pidentVal) ? pidentVal.toFixed(1) : '-';
+            const pidentDisplay = pident === '-' ? '-' : `${pident}%`;
+            const bitscore = Number.isFinite(bitscoreVal) ? bitscoreVal.toFixed(1) : '-';
+            const qcovs = Number.isFinite(qcovsVal) ? `${qcovsVal.toFixed(1)}%` : '-';
+            const rawSubject = normalizeHitId(hit.sseqid);
+            const subject = rawSubject || '-';
+            const subjectShort = subject.length > 30 ? `${subject.substring(0, 30)}...` : subject;
+            const query = hit.qseqid || '-';
+            const evalue = hit.evalue || '-';
+            const stitle = hit.stitle || '-';
+            const stitleShort = stitle.length > 60 ? `${stitle.substring(0, 60)}...` : stitle;
+            const qRange = (hit.qstart && hit.qend) ? `${hit.qstart}-${hit.qend}` : '-';
+            const sRange = (hit.sstart && hit.send) ? `${hit.sstart}-${hit.send}` : '-';
+            const mismatch = hit.mismatch ?? '-';
+            const gapopen = hit.gapopen ?? '-';
+            const qlen = hit.qlen ?? '-';
+            const slen = hit.slen ?? '-';
+            const checked = rawSubject && selectedHitIds.has(rawSubject) ? 'checked' : '';
+            const disabled = rawSubject ? '' : 'disabled title="Missing subject ID"';
             
+            if (isDetailed) {
+                return `
+                <tr>
+                    <td><input type="checkbox" class="hit-checkbox" data-index="${globalIdx}" data-id="${escapeHtml(rawSubject)}" ${checked} ${disabled}></td>
+                    <td>${escapeHtml(query)}</td>
+                    <td title="${escapeHtml(subject)}">${escapeHtml(subjectShort)}</td>
+                    <td><span class="badge ${badgeClass}">${pidentDisplay}</span></td>
+                    <td>${qcovs}</td>
+                    <td>${hit.length || '-'}</td>
+                    <td>${escapeHtml(String(mismatch))}</td>
+                    <td>${escapeHtml(String(gapopen))}</td>
+                    <td>${escapeHtml(qRange)}</td>
+                    <td>${escapeHtml(sRange)}</td>
+                    <td>${escapeHtml(String(qlen))}</td>
+                    <td>${escapeHtml(String(slen))}</td>
+                    <td>${evalue}</td>
+                    <td>${bitscore}</td>
+                    <td title="${escapeHtml(stitle)}">${escapeHtml(stitleShort)}</td>
+                </tr>
+                `;
+            }
+
             return `
-            <tr>
-                <td><input type="checkbox" class="hit-checkbox" data-index="${idx}" data-id="${hit.sseqid}"></td>
-                <td>${hit.qseqid}</td>
-                <td title="${hit.sseqid}">${hit.sseqid.substring(0, 30)}...</td>
-                <td><span class="badge ${badgeClass}">${pident}%</span></td>
-                <td>${hit.length || '-'}</td>
-                <td>${hit.evalue}</td>
-                <td>${parseFloat(hit.bitscore).toFixed(1)}</td>
-            </tr>
+                <tr>
+                    <td><input type="checkbox" class="hit-checkbox" data-index="${globalIdx}" data-id="${escapeHtml(rawSubject)}" ${checked} ${disabled}></td>
+                    <td>${escapeHtml(query)}</td>
+                    <td title="${escapeHtml(subject)}">${escapeHtml(subjectShort)}</td>
+                    <td><span class="badge ${badgeClass}">${pidentDisplay}</span></td>
+                    <td>${hit.length || '-'}</td>
+                    <td>${evalue}</td>
+                    <td>${bitscore}</td>
+                </tr>
             `;
         }).join('');
 
-        if (total > hits.length) {
-            tbody.innerHTML += `<tr><td colspan="7" class="text-center text-muted">Showing ${hits.length} of ${total} hits</td></tr>`;
+        const selectAllBox = document.getElementById('selectAllHits');
+        const pageSelectableIds = pageHits
+            .map((h) => normalizeHitId(h.sseqid))
+            .filter(Boolean);
+        if (selectAllBox) {
+            const pageChecked = pageSelectableIds.length > 0 && pageSelectableIds.every((id) => selectedHitIds.has(id));
+            selectAllBox.checked = pageChecked;
+            selectAllBox.disabled = pageSelectableIds.length === 0;
+            selectAllBox.addEventListener('change', function() {
+                const checked = this.checked;
+                document.querySelectorAll('.hit-checkbox').forEach(cb => {
+                    if (cb.disabled) return;
+                    cb.checked = checked;
+                    const id = cb.dataset.id;
+                    if (!id) return;
+                    if (checked) selectedHitIds.add(id);
+                    else selectedHitIds.delete(id);
+                });
+                const countEl = document.getElementById('selectedHitsCount');
+                if (countEl) countEl.textContent = String(selectedHitIds.size);
+            });
+        }
+        document.querySelectorAll('.hit-checkbox').forEach((cb) => {
+            cb.addEventListener('change', function() {
+                const id = this.dataset.id;
+                if (!id) return;
+                if (this.checked) selectedHitIds.add(id);
+                else selectedHitIds.delete(id);
+                const selectAll = document.getElementById('selectAllHits');
+                if (selectAll) {
+                    const allChecked = pageSelectableIds.length > 0 && pageSelectableIds.every((sid) => selectedHitIds.has(sid));
+                    selectAll.checked = allChecked;
+                }
+                const countEl = document.getElementById('selectedHitsCount');
+                if (countEl) countEl.textContent = String(selectedHitIds.size);
+            });
+        });
+
+        if (pager) {
+            const pageInfo = `Rows ${start + 1}-${end} of ${safeHits.length}` + (total > safeHits.length ? ` (BLAST total ${total})` : '');
+            pager.innerHTML = `
+                <div>${pageInfo} | Selected <span id="selectedHitsCount">${selectedHitIds.size}</span></div>
+                <div class="d-flex align-items-center gap-2">
+                    <label class="mb-0">Page size</label>
+                    <select id="hitsPageSize" class="form-select form-select-sm" style="width:auto;">
+                        <option value="10" ${blastPagination.pageSize === 10 ? 'selected' : ''}>10</option>
+                        <option value="25" ${blastPagination.pageSize === 25 ? 'selected' : ''}>25</option>
+                        <option value="50" ${blastPagination.pageSize === 50 ? 'selected' : ''}>50</option>
+                        <option value="100" ${blastPagination.pageSize === 100 ? 'selected' : ''}>100</option>
+                    </select>
+                    <button class="btn btn-sm btn-outline-secondary" id="hitsPrevBtn" ${blastPagination.page <= 1 ? 'disabled' : ''}>Prev</button>
+                    <span>Page ${blastPagination.page}/${totalPages}</span>
+                    <button class="btn btn-sm btn-outline-secondary" id="hitsNextBtn" ${blastPagination.page >= totalPages ? 'disabled' : ''}>Next</button>
+                </div>
+            `;
+            document.getElementById('hitsPrevBtn')?.addEventListener('click', () => {
+                blastPagination.page = Math.max(1, blastPagination.page - 1);
+                displayHits(blastHits, total, data);
+            });
+            document.getElementById('hitsNextBtn')?.addEventListener('click', () => {
+                blastPagination.page = Math.min(totalPages, blastPagination.page + 1);
+                displayHits(blastHits, total, data);
+            });
+            document.getElementById('hitsPageSize')?.addEventListener('change', (evt) => {
+                const val = Number.parseInt(evt.target.value, 10);
+                if (Number.isFinite(val) && val > 0) {
+                    blastPagination.pageSize = val;
+                    blastPagination.page = 1;
+                    displayHits(blastHits, total, data);
+                }
+            });
         }
     }
 
@@ -391,11 +1355,14 @@
     });
 
     async function extractSelected() {
-        const checkboxes = document.querySelectorAll('.hit-checkbox:checked');
-        const hitIds = Array.from(checkboxes).map(cb => cb.dataset.id);
+        const hitIds = Array.from(selectedHitIds).filter(Boolean);
 
         if (hitIds.length === 0) {
             showAlert('warning', 'Please select at least one hit');
+            return;
+        }
+        if (!currentDatabase || !currentResultDir) {
+            showAlert('warning', 'Please run BLAST first before extracting selected hits.');
             return;
         }
 
@@ -412,7 +1379,7 @@
 
             if (data.success) {
                 showAlert('success', data.message);
-                window.open(BLAST_URLS.downloadBase + '?path=' + encodeURIComponent(data.output_file), '_blank');
+                triggerDownload(data.output_file);
             } else {
                 showAlert('danger', data.error);
             }
@@ -420,10 +1387,6 @@
             showAlert('danger', 'Extraction failed: ' + error.message);
         }
     }
-
-    document.getElementById('selectAllHits').addEventListener('change', function() {
-        document.querySelectorAll('.hit-checkbox').forEach(cb => cb.checked = this.checked);
-    });
 
     async function deleteDatabase(dbPath, dbName) {
         if (!confirm(`确定要删除数据库 "${dbName}" 吗？此操作不可撤销。`)) {

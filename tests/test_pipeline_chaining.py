@@ -187,18 +187,37 @@ class TestPipelineChaining:
             assert 'result_dir' in data
     
     def test_phylo_step1_with_file_path(self, client, dummy_fasta_in_results):
-        """Test running step1 (clean FASTA) with file_path parameter."""
+        """Test running the legacy step1 alias against the canonical clean-header step."""
         response = client.post('/phylo/run-step/step1', data={
             'file_path': dummy_fasta_in_results
         })
-        
+
         assert response.status_code == 200
         data = response.get_json()
-        
-        # Step1 should work without external dependencies
-        if data.get('success'):
-            assert 'output' in data
-            assert 'result_dir' in data
+
+        # Legacy step1 should still resolve to the working clean-header step.
+        assert data['success'] is True
+        assert 'output' in data
+        assert 'result_dir' in data
+        assert os.path.exists(data['output'])
+
+    def test_phylo_step4_5_with_uploaded_log(self, client, tmp_path, dummy_fasta_in_results):
+        """Test the ClipKIT check alias with an uploaded log file."""
+        log_path = tmp_path / 'clipkit.log'
+        log_path.write_text('10 columns kept\n5 columns trimmed\n', encoding='utf-8')
+
+        with open(log_path, 'rb') as handle:
+            response = client.post('/phylo/run-step/step4_5', data={
+                'file_path': dummy_fasta_in_results,
+                'clipkit_log': (handle, 'clipkit.log')
+            }, content_type='multipart/form-data')
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is True
+        assert data['output'].endswith('clipkit.log')
+        assert data['stats']['sites_kept'] is not None
+        assert data['stats']['sites_trimmed'] is not None
     
     def test_pipeline_clean_headers_with_file_path(self, client, dummy_fasta_in_results):
         """Test pipeline clean-headers endpoint with file_path parameter."""

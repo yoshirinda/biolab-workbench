@@ -6,13 +6,17 @@ import os
 import subprocess
 import shlex
 import re
+import shutil
 from datetime import datetime
 from typing import Tuple, Optional, Dict, Any
 import config
 from app.utils.logger import get_tools_logger
 from app.utils.file_utils import create_result_dir, save_params
 
+IQTREE_BIN = shutil.which('iqtree') or shutil.which('iqtree2') or 'iqtree'
+
 logger = get_tools_logger()
+SUPPORT_LABEL_RE = re.compile(r'^\s*\d*\.?\d+(?:\s*/\s*\d*\.?\d+)*\s*$')
 
 
 def run_conda_command(command: str, timeout: int = 7200) -> Tuple[bool, str, str]:
@@ -145,7 +149,7 @@ def run_iqtree(alignment_file: str, output_prefix: Optional[str] = None, model: 
         output_prefix = os.path.join(result_dir, basename)
     
     # Build command
-    command = f'iqtree -s {shlex.quote(alignment_file)}'
+    command = f'{shlex.quote(IQTREE_BIN)} -s {shlex.quote(alignment_file)}'
     command += f' -pre {shlex.quote(output_prefix)}'
     
     # Model selection
@@ -250,7 +254,7 @@ def run_iqtree_modelfinder(alignment_file, output_prefix=None,
         output_prefix = os.path.join(result_dir, f'{basename}_models')
     
     # Build command - ModelFinder only
-    command = f'iqtree -s {shlex.quote(alignment_file)}'
+    command = f'{shlex.quote(IQTREE_BIN)} -s {shlex.quote(alignment_file)}'
     command += f' -pre {shlex.quote(output_prefix)}'
     command += ' -m MF'  # ModelFinder only, no tree inference
     
@@ -314,25 +318,56 @@ def run_iqtree_constrained(alignment_file, constraint_tree, output_prefix=None,
     return success, result_dir, output_files, output_prefix
 
 
+def _normalize_support_value(raw_value):
+    if raw_value in (None, ''):
+        return None
+    try:
+        value = float(raw_value)
+    except (TypeError, ValueError):
+        return None
+    if 0 <= value <= 1:
+        value *= 100.0
+    if value < 0:
+        return None
+    return float(value)
+
+
+def _parse_support_label(raw_label):
+    if raw_label in (None, ''):
+        return []
+    text = str(raw_label).strip()
+    if not text or not SUPPORT_LABEL_RE.fullmatch(text):
+        return []
+
+    values = []
+    for token in text.split('/'):
+        parsed = _normalize_support_value(token.strip())
+        if parsed is None:
+            return []
+        values.append(parsed)
+    return values
+
+
 def extract_bootstrap_support(treefile):
     """
-    Extract bootstrap support values from tree file.
+    Extract branch support labels from a tree file.
     
     Returns:
-        List of support values
+        List of support-value lists. Composite labels like ``80/95`` are
+        returned as ``[80.0, 95.0]``.
     """
     support_values = []
     
     try:
         with open(treefile, 'r') as f:
             tree_string = f.read().strip()
-            
-            # Find all numbers that appear before colons or parentheses
-            # These are typically bootstrap/support values
-            pattern = r'\)(\d+(?:\.\d+)?)[:\),]'
-            matches = re.findall(pattern, tree_string)
-            
-            support_values = [float(m) for m in matches]
+
+            # Internal-node labels appear between ")" and the next ":", "," or ")".
+            pattern = r'\)([^():,;]+)[:\),]'
+            for raw_label in re.findall(pattern, tree_string):
+                parsed = _parse_support_label(raw_label)
+                if parsed:
+                    support_values.append(parsed)
     
     except Exception as e:
         logger.error(f"Failed to extract bootstrap values: {e}")
@@ -347,9 +382,9 @@ def summarize_bootstrap_support(treefile):
     Returns:
         Dict with support statistics
     """
-    values = extract_bootstrap_support(treefile)
+    label_values = extract_bootstrap_support(treefile)
     
-    if not values:
+    if not label_values:
         return {
             'count': 0,
             'mean': 0,
@@ -358,11 +393,21 @@ def summarize_bootstrap_support(treefile):
             'max': 0,
             'strong_support': 0,  # >=95
             'moderate_support': 0,  # 70-94
-            'weak_support': 0  # <70
+            'weak_support': 0,  # <70
+            'support_label_mode': 'single',
+            'composite_support_labels': False,
+            'composite_label_count': 0,
+            'support_metric_used': 'single',
+            'secondary_mean': None,
+            'secondary_min': None,
+            'secondary_max': None
         }
-    
+
+    values = [parts[-1] if len(parts) > 1 else parts[0] for parts in label_values]
+    secondary_values = [parts[0] for parts in label_values if len(parts) > 1]
     sorted_values = sorted(values)
     n = len(values)
+    composite_label_count = len(secondary_values)
     
     return {
         'count': n,
@@ -372,5 +417,12 @@ def summarize_bootstrap_support(treefile):
         'max': max(values),
         'strong_support': sum(1 for v in values if v >= 95),
         'moderate_support': sum(1 for v in values if 70 <= v < 95),
-        'weak_support': sum(1 for v in values if v < 70)
+        'weak_support': sum(1 for v in values if v < 70),
+        'support_label_mode': 'composite' if composite_label_count else 'single',
+        'composite_support_labels': composite_label_count > 0,
+        'composite_label_count': composite_label_count,
+        'support_metric_used': 'trailing' if composite_label_count else 'single',
+        'secondary_mean': (sum(secondary_values) / len(secondary_values)) if secondary_values else None,
+        'secondary_min': min(secondary_values) if secondary_values else None,
+        'secondary_max': max(secondary_values) if secondary_values else None
     }

@@ -3,6 +3,8 @@ Handles sequence organization into projects/folders.
 """
 import os
 import json
+import copy
+import time
 from datetime import datetime
 import config
 from app.utils.logger import get_app_logger
@@ -13,6 +15,18 @@ logger = get_app_logger()
 
 # Project data file name
 PROJECT_FILE = 'project.json'
+PROJECT_TREE_CACHE_TTL_SECONDS = float(os.environ.get('BIOLAB_PROJECT_TREE_CACHE_TTL', '2.0'))
+
+_PROJECT_TREE_CACHE = {
+    'expires_at': 0.0,
+    'value': None
+}
+
+
+def _invalidate_project_tree_cache():
+    """Invalidate in-memory project tree cache after any filesystem write."""
+    _PROJECT_TREE_CACHE['expires_at'] = 0.0
+    _PROJECT_TREE_CACHE['value'] = None
 
 
 def _posix_path(path: str) -> str:
@@ -77,7 +91,16 @@ def _scan_directory_recursive(path, base_path):
                 try:
                     with open(project_file, 'r', encoding='utf-8') as f:
                         project_data = json.load(f)
-                        node.update(project_data)
+                        sequences = project_data.get('sequences', []) if isinstance(project_data, dict) else []
+                        node.update({
+                            'id': project_data.get('id', node['id']),
+                            'name': project_data.get('name', node['name']),
+                            'path': relative_path,
+                            'description': project_data.get('description', ''),
+                            'created': project_data.get('created'),
+                            'modified': project_data.get('modified'),
+                            'sequence_count': len(sequences),
+                        })
                         node['is_project'] = True
                 except Exception as e:
                     logger.warning(f"Could not read project {name}: {e}")
@@ -99,7 +122,15 @@ def list_projects():
     """
     projects_dir = get_projects_dir()
     ensure_dir(projects_dir)
-    return _scan_directory_recursive(projects_dir, projects_dir)
+    now = time.monotonic()
+    cached_value = _PROJECT_TREE_CACHE.get('value')
+    if cached_value is not None and now < _PROJECT_TREE_CACHE.get('expires_at', 0.0):
+        return copy.deepcopy(cached_value)
+
+    tree = _scan_directory_recursive(projects_dir, projects_dir)
+    _PROJECT_TREE_CACHE['value'] = tree
+    _PROJECT_TREE_CACHE['expires_at'] = now + max(PROJECT_TREE_CACHE_TTL_SECONDS, 0.0)
+    return copy.deepcopy(tree)
 
 def create_project(path=None, description='', parent_path=None, name=None):
     """
@@ -132,6 +163,7 @@ def create_project(path=None, description='', parent_path=None, name=None):
         project_file = os.path.join(project_path, PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
             json.dump(project_data, f, indent=2, ensure_ascii=False)
+        _invalidate_project_tree_cache()
         logger.info(f"Created project: {relative_path}")
         return True, project_data, "Project created successfully"
     except Exception as e:
@@ -151,6 +183,7 @@ def create_folder(path=None, parent_path=None, name=None):
 
     try:
         ensure_dir(folder_path)
+        _invalidate_project_tree_cache()
         logger.info(f"Created folder: {relative_path}")
         return True, "Folder created successfully"
     except Exception as e:
@@ -207,6 +240,7 @@ def update_project(path, name=None, description=None):
         project_file = os.path.join(project_path, PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
             json.dump(project_data, f, indent=2, ensure_ascii=False)
+        _invalidate_project_tree_cache()
         return True, project_data, "Project updated successfully"
     except Exception as e:
         logger.error(f"Failed to update project {path}: {e}")
@@ -227,6 +261,7 @@ def delete_project(path):
     try:
         import shutil
         shutil.rmtree(project_path)
+        _invalidate_project_tree_cache()
         logger.info(f"Deleted project/folder: {normalized}")
         return True, "Project deleted successfully"
     except Exception as e:
@@ -256,6 +291,18 @@ def add_sequences_to_project(path, sequences):
                     'features': seq.get('features', []),
                     'added': datetime.now().isoformat()
                 }
+                if seq.get('source_sequence_id'):
+                    seq_entry['source_sequence_id'] = seq.get('source_sequence_id')
+                if seq.get('source_project'):
+                    seq_entry['source_project'] = seq.get('source_project')
+                if isinstance(seq.get('derivation'), dict):
+                    seq_entry['derivation'] = seq.get('derivation')
+                if isinstance(seq.get('metadata'), dict):
+                    seq_entry['metadata'] = seq.get('metadata')
+                if isinstance(seq.get('provenance'), list):
+                    seq_entry['provenance'] = seq.get('provenance')
+                elif isinstance(seq.get('provenance'), dict):
+                    seq_entry['provenance'] = [seq.get('provenance')]
                 project_data.setdefault('sequences', []).append(seq_entry)
                 added += 1
         project_data['modified'] = datetime.now().isoformat()
@@ -267,6 +314,7 @@ def add_sequences_to_project(path, sequences):
         project_file = os.path.join(project_path, PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
             json.dump(project_data, f, indent=2, ensure_ascii=False)
+        _invalidate_project_tree_cache()
         return True, project_data, f"Added {added} sequences"
     except Exception as e:
         logger.error(f"Failed to add sequences to project {path}: {e}")
@@ -295,6 +343,7 @@ def remove_sequence_from_project(path, sequence_id):
         project_file = os.path.join(project_path, PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
             json.dump(project_data, f, indent=2, ensure_ascii=False)
+        _invalidate_project_tree_cache()
         return True, project_data, "Sequence removed"
     except Exception as e:
         logger.error(f"Failed to remove sequence from project {path}: {e}")
@@ -333,6 +382,7 @@ def update_sequence_in_project(path, sequence_id, updates):
         project_file = os.path.join(project_path, PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
             json.dump(project_data, f, indent=2, ensure_ascii=False)
+        _invalidate_project_tree_cache()
         return True, project_data, "Sequence updated"
     except Exception as e:
         logger.error(f"Failed to update sequence: {e}")
@@ -365,6 +415,7 @@ def update_sequence_annotation(path, sequence_id, annotation):
         project_file = os.path.join(project_path, PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
             json.dump(project_data, f, indent=2, ensure_ascii=False)
+        _invalidate_project_tree_cache()
         return True, project_data, "Annotation updated"
     except Exception as e:
         logger.error(f"Failed to update annotation: {e}")
@@ -478,6 +529,7 @@ def add_sequence_feature(path, sequence_id, feature):
         project_file = os.path.join(project_path, PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
             json.dump(project_data, f, indent=2, ensure_ascii=False)
+        _invalidate_project_tree_cache()
         return True, project_data, "Feature added"
     except Exception as e:
         logger.error(f"Failed to add feature: {e}")
@@ -518,6 +570,7 @@ def update_sequence_feature(path, sequence_id, feature_id, feature_updates):
         project_file = os.path.join(project_path, PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
             json.dump(project_data, f, indent=2, ensure_ascii=False)
+        _invalidate_project_tree_cache()
         return True, project_data, "Feature updated"
     except Exception as e:
         logger.error(f"Failed to update feature: {e}")
@@ -552,6 +605,7 @@ def delete_sequence_feature(path, sequence_id, feature_id):
         project_file = os.path.join(project_path, PROJECT_FILE)
         with open(project_file, 'w', encoding='utf-8') as f:
             json.dump(project_data, f, indent=2, ensure_ascii=False)
+        _invalidate_project_tree_cache()
         return True, project_data, "Feature deleted"
     except Exception as e:
         logger.error(f"Failed to delete feature: {e}")
@@ -605,6 +659,7 @@ def move_folder(source_path, dest_parent_path):
         
     try:
         shutil.move(full_source, full_dest)
+        _invalidate_project_tree_cache()
         return True, "Folder moved successfully"
     except Exception as e:
         logger.error(f"Failed to move folder: {e}")
@@ -652,4 +707,3 @@ def move_sequence(source_project_path, sequence_id, dest_project_path):
             return False, f"Copied but failed to delete from source: {del_msg}"
             
     return True, "Sequence moved successfully"
-

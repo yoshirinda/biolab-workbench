@@ -175,9 +175,25 @@ def run_clustalw(input_file, output_file, options=None):
     except ValueError as e:
         return False, str(e), None
 
+    options = options or {}
     matrix = options.get('matrix')
-    matrix_opt = f" -MATRIX={shlex.quote(matrix)}" if matrix else ''
-    command = f'clustalw -INFILE={shlex.quote(input_file)} -OUTFILE={shlex.quote(output_file)} -OUTPUT=FASTA{matrix_opt}'
+    sequence_type = str(options.get('sequence_type') or '').strip().lower()
+    if sequence_type == 'nucleotide':
+        type_opt = ' -TYPE=DNA'
+        matrix_opt = f" -DNAMATRIX={shlex.quote(matrix)}" if matrix else ''
+    elif sequence_type == 'protein':
+        type_opt = ' -TYPE=PROTEIN'
+        matrix_opt = f" -MATRIX={shlex.quote(matrix)}" if matrix else ''
+    elif matrix and str(matrix).upper() in {'IUB', 'CLUSTALW'}:
+        type_opt = ' -TYPE=DNA'
+        matrix_opt = f" -DNAMATRIX={shlex.quote(matrix)}"
+    else:
+        type_opt = ''
+        matrix_opt = f" -MATRIX={shlex.quote(matrix)}" if matrix else ''
+    command = (
+        f'clustalw -INFILE={shlex.quote(input_file)} -OUTFILE={shlex.quote(output_file)} '
+        f'-OUTPUT=FASTA{type_opt}{matrix_opt}'
+    )
 
     # Full command for display
     full_command = f"conda run -n {config.CONDA_ENV} -- {command}"
@@ -232,7 +248,10 @@ def run_alignment(input_file, tool='mafft', options=None):
         extra_params['algorithm'] = options.get('algorithm', 'auto')
         extra_params['maxiterate'] = options.get('maxiterate', 1000)
     elif tool == 'clustalw':
-        extra_params['matrix'] = options.get('matrix', 'BLOSUM')
+        sequence_type = options.get('sequence_type')
+        default_matrix = 'IUB' if str(sequence_type or '').lower() == 'nucleotide' else 'BLOSUM'
+        extra_params['matrix'] = options.get('matrix', default_matrix)
+        extra_params['sequence_type'] = sequence_type
     
     from app.core.alignment_wrapper import run_alignment as run_multi_tool_alignment
     

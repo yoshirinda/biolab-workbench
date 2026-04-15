@@ -11,7 +11,7 @@ import config
 from app.utils.logger import get_tools_logger
 from app.utils.file_utils import create_result_dir, save_params, read_fasta_file, write_fasta_file
 from app.utils.path_utils import windows_to_wsl
-from app.core.sequence_utils import clean_fasta_headers
+from app.core.sequence_utils import clean_fasta_headers, detect_sequence_type, normalize_gene_id
 
 logger = get_tools_logger()
 
@@ -269,7 +269,8 @@ def extract_sequences_by_ids(input_file, ids, output_file):
 def step2_5_blast_filter(input_file, gold_list_file, output_dir,
                          pident_threshold=30, qcovs_threshold=50,
                          blast_db_path=None, evalue=1e-5, max_target_seqs=5,
-                         threads=None, progress_callback=None):
+                         threads=None, progress_callback=None,
+                         program=None, strict_gold_match=True):
     """
     Step 2.5: Filter sequences using BLAST against a gold standard database.
     Runs blastp, writes raw TSV output and a verbose filter log, and returns stats.
@@ -362,8 +363,24 @@ def step2_5_blast_filter(input_file, gold_list_file, output_dir,
         progress_callback(msg, 'info')
 
     outfmt = shlex.quote('6 qseqid sseqid pident qcovs')
+    # Select a scientifically compatible BLAST program unless explicitly provided.
+    from app.core.blast_wrapper import get_db_type, select_blast_program, is_program_compatible
+
+    sequences = read_fasta_file(input_file)
+    sample_seq = sequences[0][1] if sequences else ''
+    query_type = detect_sequence_type(sample_seq)
+    db_type = get_db_type(resolved_db_path)
+    selected_program = (program or '').strip() or select_blast_program(query_type, db_type)
+
+    if not is_program_compatible(selected_program, query_type, db_type):
+        suggested = select_blast_program(query_type, db_type)
+        return False, None, (
+            f"Incompatible BLAST program '{selected_program}' for query={query_type} vs db={db_type}. "
+            f"Suggested: {suggested}"
+        ), None, None
+
     blast_command = (
-        f"blastp -query {shlex.quote(input_file)} "
+        f"{selected_program} -query {shlex.quote(input_file)} "
         f"-db {shlex.quote(resolved_db_path)} "
         + (f"-evalue {evalue} " if evalue is not None else "")
         + f"-max_target_seqs {max_target_seqs} "
@@ -390,6 +407,18 @@ def step2_5_blast_filter(input_file, gold_list_file, output_dir,
     failure_reasons = {}
     hit_seen = Counter()
     # 只用 max_target_seqs 控制 BLAST top hits
+    normalized_gold_ids = {normalize_gene_id(gid)[0] for gid in gold_ids if gid}
+
+    def _subject_candidates(subject_id):
+        tokens = []
+        for token in re.split(r'[\s|;]+', subject_id):
+            token = token.strip()
+            if not token:
+                continue
+            tokens.append(token)
+            tokens.append(token.split('.')[0])
+        return [normalize_gene_id(tok)[0] for tok in tokens if tok]
+
     for line in stdout.splitlines():
         line = line.strip()
         if not line or line.startswith('#'):
@@ -409,14 +438,15 @@ def step2_5_blast_filter(input_file, gold_list_file, output_dir,
         hit_seen[qseqid] += 1
         # BLAST 已用 max_target_seqs 控制 top hits
 
-        match_ok = False
-        if sseqid_clean in gold_ids:
-            match_ok = True
-        else:
-            for gid in gold_ids:
-                if gid in sseqid_clean or sseqid_clean in gid:
-                    match_ok = True
-                    break
+        subj_norm = normalize_gene_id(sseqid_clean)[0]
+        subject_norm_tokens = _subject_candidates(parts[1].strip())
+        match_ok = subj_norm in normalized_gold_ids or any(tok in normalized_gold_ids for tok in subject_norm_tokens)
+        if not match_ok and not strict_gold_match:
+            match_ok = any(
+                (tok and gid and (tok in gid or gid in tok))
+                for tok in subject_norm_tokens
+                for gid in normalized_gold_ids
+            )
 
         # record parsed query
         parsed_queries.add(qseqid)
@@ -470,6 +500,7 @@ def step2_5_blast_filter(input_file, gold_list_file, output_dir,
     log_lines = [
         "--- BLAST Filter Summary ---",
         f"Database: {resolved_db_path}",
+        f"BLAST program: {selected_program} (query={query_type}, db={db_type})",
         f"Gold list entries: {len(gold_ids)}",
            ("Filters: {0}Min P-Ident >= {1}% | Min Q-Covs >= {2}% | Max target seqs: {3}").format(
                (f"E-value <= {evalue} | " if evalue is not None else ""),
@@ -518,6 +549,10 @@ def step2_5_blast_filter(input_file, gold_list_file, output_dir,
         'log_file': log_file,
         'raw_output_file': raw_output_file,
         'database': resolved_db_path,
+        'program': selected_program,
+        'query_type': query_type,
+        'db_type': db_type,
+        'strict_gold_match': strict_gold_match,
         'pident_threshold': pident_threshold,
         'qcovs_threshold': qcovs_threshold,
         'evalue': evalue,
@@ -557,9 +592,9 @@ def step2_7_length_stats(input_file, output_dir):
     logger.info(f"Step 2.7: Calculated stats for {len(lengths)} sequences")
     return True, stats_file, stats
 
-def step2_8_length_filter(input_file, output_dir, min_length=50):
+def step2_8_length_filter(input_file, output_dir, min_length=50, max_length=None):
     """
-    Step 2.8: Filter out sequences shorter than min_length.
+    Step 2.8: Filter out sequences outside [min_length, max_length].
     Returns detailed statistics like original script (lines 416-438).
     """
     output_file = os.path.join(output_dir, 'step2_8_length_filtered.fasta')
@@ -571,19 +606,29 @@ def step2_8_length_filter(input_file, output_dir, min_length=50):
     filtered = []
     deleted_ids = []
     
+    max_length = None if max_length in (None, '', 0) else int(max_length)
+
     for header, seq in sequences:
         seq_id = header.split()[0]
-        if len(seq) >= min_length:
+        length = len(seq)
+        keep = length >= min_length
+        if max_length is not None:
+            keep = keep and (length <= max_length)
+
+        if keep:
             filtered.append((header, seq))
         else:
-            deleted_ids.append((seq_id, len(seq)))
+            deleted_ids.append((seq_id, length))
 
     write_fasta_file(output_file, filtered)
 
     # Generate detailed log like original script (lines 414-438)
     log_lines = []
     log_lines.append(f"--- Length Filter Summary ---")
-    log_lines.append(f"Threshold: Remove sequences < {min_length} aa")
+    threshold_desc = f"{min_length} <= length"
+    if max_length is not None:
+        threshold_desc += f" <= {max_length}"
+    log_lines.append(f"Threshold: keep sequences where {threshold_desc}")
     log_lines.append(f"Total sequences in: {len(sequences)}")
     log_lines.append(f"Sequences Kept: {len(filtered)}")
     log_lines.append(f"Sequences Deleted: {len(deleted_ids)}")
@@ -606,11 +651,19 @@ def step2_8_length_filter(input_file, output_dir, min_length=50):
         'kept': len(filtered),
         'deleted': len(deleted_ids),
         'threshold': min_length,
+        'max_length': max_length,
         'deleted_with_lengths': deleted_ids,
         'log_file': log_file
     }
-    
-    return True, output_file, f"Kept {len(filtered)} sequences (removed {len(deleted_ids)} shorter than {min_length})", stats
+
+    if max_length is None:
+        message = f"Kept {len(filtered)} sequences (removed {len(deleted_ids)} shorter than {min_length})"
+    else:
+        message = (
+            f"Kept {len(filtered)} sequences "
+            f"(removed {len(deleted_ids)} outside {min_length}-{max_length})"
+        )
+    return True, output_file, message, stats
 
 def step3_mafft(input_file, output_dir, maxiterate=1000):
     """
@@ -651,10 +704,11 @@ def step3_mafft(input_file, output_dir, maxiterate=1000):
     else:
         return False, None, "MAFFT alignment failed", display_command
 
-def step4_clipkit(input_file, output_dir, mode='kpic-gappy'):
+def step4_clipkit(input_file, output_dir, mode='kpic-gappy', gaps=None):
     """
     Step 4: Trim alignment with ClipKIT.
     mode: kpic-gappy, gappy, kpic
+    gaps: Optional gap threshold for gappy / kpic-gappy modes
     Returns (success, output, message, command).
     """
     try:
@@ -664,14 +718,17 @@ def step4_clipkit(input_file, output_dir, mode='kpic-gappy'):
         return False, None, str(e), None
 
     # Validate mode
-    valid_modes = ['kpic-gappy', 'gappy', 'kpic']
+    valid_modes = ['kpic-gappy', 'gappy', 'kpic', 'kpi', 'smart-gap']
     if mode not in valid_modes:
         return False, None, f"Invalid mode: {mode}", None
 
     output_file = os.path.join(output_dir, 'step4_trimmed.fasta')
     log_file = os.path.join(output_dir, 'step4_clipkit.log')
 
-    command = f'clipkit {shlex.quote(input_file)} -o {shlex.quote(output_file)} -m {mode} -l'
+    command = f'clipkit {shlex.quote(input_file)} -o {shlex.quote(output_file)} -m {mode}'
+    if gaps is not None:
+        command += f' -g {gaps}'
+    command += ' -l'
 
     # Full command for display and execution
     if config.USE_CONDA:
@@ -805,7 +862,22 @@ def run_full_pipeline(input_file, hmm_files=None, gold_list_file=None, options=N
         if not blast_db_path:
             results['steps']['step2_5'] = {'success': False,'output': None,'message': 'BLAST database path is required for step 2.5','stats': None,'command': None,'raw_output': None,'log_file': None}
             return False, results
-        success, output, message, stats, command = step2_5_blast_filter(current_file,gold_list_file,result_dir,pident_threshold=options.get('pident', 30),qcovs_threshold=options.get('qcovs', 50),blast_db_path=blast_db_path,evalue=options.get('blast_evalue', 1e-5),max_target_seqs=options.get('blast_max_target_seqs', 5),threads=options.get('blast_threads', config.DEFAULT_THREADS))
+        strict_gold_match_opt = options.get('strict_gold_match', True)
+        if isinstance(strict_gold_match_opt, str):
+            strict_gold_match_opt = strict_gold_match_opt.strip().lower() in {'1', 'true', 'yes', 'on'}
+        success, output, message, stats, command = step2_5_blast_filter(
+            current_file,
+            gold_list_file,
+            result_dir,
+            pident_threshold=options.get('pident', 30),
+            qcovs_threshold=options.get('qcovs', 50),
+            blast_db_path=blast_db_path,
+            evalue=options.get('blast_evalue', 1e-5),
+            max_target_seqs=options.get('blast_max_target_seqs', 5),
+            threads=options.get('blast_threads', config.DEFAULT_THREADS),
+            program=options.get('blast_program'),
+            strict_gold_match=strict_gold_match_opt
+        )
         results['steps']['step2_5'] = {'success': success,'output': output,'message': message,'stats': stats,'command': command,'raw_output': stats.get('raw_output_file') if stats else None,'log_file': stats.get('log_file') if stats else None}
         if command:
             results['commands'].append({'step': 'step2_5', 'name': 'BLAST Filter', 'command': command})
@@ -817,8 +889,9 @@ def run_full_pipeline(input_file, hmm_files=None, gold_list_file=None, options=N
     success, output, message = step2_7_length_stats(current_file, result_dir)
     results['steps']['step2_7'] = {'success': success, 'output': output, 'message': message}
     min_length = options.get('min_length', 50)
-    success, output, message = step2_8_length_filter(current_file, result_dir, min_length)
-    results['steps']['step2_8'] = {'success': success, 'output': output, 'message': message}
+    max_length = options.get('max_length')
+    success, output, message, stats = step2_8_length_filter(current_file, result_dir, min_length, max_length=max_length)
+    results['steps']['step2_8'] = {'success': success, 'output': output, 'message': message, 'stats': stats}
     if success:
         current_file = output
 

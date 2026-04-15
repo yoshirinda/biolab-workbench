@@ -25,28 +25,28 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('main.index') }}"><i class="bi bi-house"></i> Home</a>
+                        <a class="nav-link {% if request.blueprint == 'main' %}active fw-semibold{% endif %}" href="{{ url_for('main.index') }}"><i class="bi bi-house"></i> Home</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('sequence.sequence_v3_page') }}"><i class="bi bi-file-earmark-text"></i> Sequence</a>
+                        <a class="nav-link {% if request.blueprint == 'sequence' %}active fw-semibold{% endif %}" href="{{ url_for('sequence.sequence_page') }}"><i class="bi bi-file-earmark-text"></i> Sequence</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('blast.blast_page') }}"><i class="bi bi-search"></i> BLAST</a>
+                        <a class="nav-link {% if request.blueprint == 'blast' %}active fw-semibold{% endif %}" href="{{ url_for('blast.blast_page') }}"><i class="bi bi-search"></i> BLAST</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('phylo.phylo_page') }}"><i class="bi bi-diagram-3"></i> Phylo</a>
+                        <a class="nav-link {% if request.blueprint == 'phylo' or request.blueprint == 'pipeline' %}active fw-semibold{% endif %}" href="{{ url_for('phylo.phylo_page') }}"><i class="bi bi-diagram-3"></i> Phylo</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('alignment.alignment_page') }}"><i class="bi bi-text-left"></i> Alignment</a>
+                        <a class="nav-link {% if request.blueprint == 'alignment' %}active fw-semibold{% endif %}" href="{{ url_for('alignment.alignment_page') }}"><i class="bi bi-text-left"></i> Alignment</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('uniprot.uniprot_page') }}"><i class="bi bi-cloud-download"></i> UniProt</a>
+                        <a class="nav-link {% if request.blueprint == 'uniprot' %}active fw-semibold{% endif %}" href="{{ url_for('uniprot.uniprot_page') }}"><i class="bi bi-cloud-download"></i> UniProt</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('tree.tree_page') }}"><i class="bi bi-tree"></i> Tree</a>
+                        <a class="nav-link {% if request.blueprint == 'tree' %}active fw-semibold{% endif %}" href="{{ url_for('tree.tree_page') }}"><i class="bi bi-tree"></i> Tree</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('docs.docs_index') }}"><i class="bi bi-book"></i> Docs</a>
+                        <a class="nav-link {% if request.blueprint == 'docs' %}active fw-semibold{% endif %}" href="{{ url_for('docs.docs_index') }}"><i class="bi bi-book"></i> Docs</a>
                     </li>
                 </ul>
             </div>
@@ -80,6 +80,151 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Custom JS -->
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+    (function() {
+        function escapeHtml(value) {
+            const text = String(value == null ? '' : value);
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+        window.escapeHtml = escapeHtml;
+
+        function getActionableHints(message) {
+            const text = String(message == null ? '' : message);
+            const lower = text.toLowerCase();
+            const hints = [];
+
+            if (lower.includes('no database selected')) {
+                hints.push('Select a database first, or create one in the database management panel.');
+            }
+            if (lower.includes('no query provided') || lower.includes('no sequences provided')) {
+                hints.push('Provide sequence content (paste FASTA) or upload a sequence file before running.');
+            }
+            if (lower.includes('invalid evalue')) {
+                hints.push('Use a positive E-value, for example 1e-5 or 0.001.');
+            }
+            if (lower.includes('no such file') || lower.includes('file not found')) {
+                hints.push('Verify the file path exists and is inside the allowed uploads/results directories.');
+            }
+            if (lower.includes('invalid file path') || lower.includes('access denied')) {
+                hints.push('Use files under the project upload/result folders; external paths may be blocked for safety.');
+            }
+            if (lower.includes('permission denied')) {
+                hints.push('Check read/write permissions for uploads, results, and database directories.');
+            }
+            if (lower.includes('timed out') || lower.includes('timeout')) {
+                hints.push('Reduce input size or tighten filters, then retry with fewer targets.');
+            }
+            if (lower.includes('blastn: not found') || lower.includes('makeblastdb: not found')) {
+                hints.push('Install BLAST+ in the active conda environment and verify PATH includes it.');
+            }
+            if (lower.includes('hmmsearch') && lower.includes('not found')) {
+                hints.push('Install HMMER in the active conda environment and re-run.');
+            }
+            if (lower.includes('mafft') && lower.includes('not available')) {
+                hints.push('Install MAFFT or switch to another available alignment tool.');
+            }
+            if (lower.includes('iqtree') && lower.includes('not found')) {
+                hints.push('Install IQ-TREE (or iqtree2) in the active conda environment.');
+            }
+
+            if (!hints.length && (lower.includes('failed') || lower.includes('error'))) {
+                hints.push('Check input format, parameter ranges, and runtime tool availability, then retry.');
+            }
+            return Array.from(new Set(hints));
+        }
+
+        window.getActionableHints = getActionableHints;
+
+        if (typeof window.copyCommandFromElement !== 'function') {
+            window.copyCommandFromElement = async function(buttonEl) {
+                if (!buttonEl) return;
+                const command = String(buttonEl.dataset.command || '').trim();
+                if (!command) return;
+                try {
+                    await navigator.clipboard.writeText(command);
+                    const oldHtml = buttonEl.innerHTML;
+                    buttonEl.innerHTML = '<i class="bi bi-check2"></i> Copied';
+                    buttonEl.classList.add('copied');
+                    setTimeout(() => {
+                        buttonEl.innerHTML = oldHtml;
+                        buttonEl.classList.remove('copied');
+                    }, 1200);
+                } catch (err) {
+                    const area = document.createElement('textarea');
+                    area.value = command;
+                    area.style.position = 'fixed';
+                    area.style.opacity = '0';
+                    document.body.appendChild(area);
+                    area.focus();
+                    area.select();
+                    try {
+                        document.execCommand('copy');
+                        showAlert('success', 'Command copied to clipboard');
+                    } catch {
+                        showAlert('warning', 'Copy failed. Please copy manually.');
+                    } finally {
+                        document.body.removeChild(area);
+                    }
+                }
+            };
+        }
+
+        if (typeof window.showAlert !== 'function') {
+            window.showAlert = function(type, message, duration = 5000) {
+                const container = document.querySelector('main .container') || document.querySelector('.container') || document.body;
+                const alertType = type || 'info';
+                const alertDiv = document.createElement('div');
+                const hints = (alertType === 'danger' || alertType === 'warning')
+                    ? getActionableHints(message).slice(0, 2)
+                    : [];
+                const hintHtml = hints.length
+                    ? `<div class="small mt-1"><strong>Next:</strong><ul class="mb-0 mt-1">${hints.map((hint) => `<li>${escapeHtml(hint)}</li>`).join('')}</ul></div>`
+                    : '';
+                alertDiv.className = `alert alert-${alertType} alert-dismissible fade show mt-2`;
+                alertDiv.setAttribute('role', 'alert');
+                alertDiv.innerHTML = `
+                    ${escapeHtml(message)}
+                    ${hintHtml}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                `;
+                container.appendChild(alertDiv);
+
+                if (duration > 0) {
+                    setTimeout(() => {
+                        if (!alertDiv.parentNode) return;
+                        alertDiv.classList.remove('show');
+                        setTimeout(() => alertDiv.remove(), 150);
+                    }, duration);
+                }
+            };
+        }
+
+        if (typeof window.displayCommand !== 'function') {
+            window.displayCommand = function(targetId, commandText) {
+                const container = document.getElementById(targetId);
+                if (!container) return;
+                const text = String(commandText == null ? '' : commandText).trim();
+                if (!text) {
+                    container.classList.add('d-none');
+                    container.innerHTML = '';
+                    return;
+                }
+                container.classList.remove('d-none');
+                container.innerHTML = `
+                    <div class="alert alert-dark py-2 px-3 mb-2">
+                        <div class="small text-uppercase text-muted mb-1">Executed Command</div>
+                        <pre class="mb-0 small" style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(text)}</pre>
+                    </div>
+                `;
+            };
+        }
+    })();
+    </script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

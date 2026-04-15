@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+
+{% block title %}Arabidopsis Genome BLAST - BioLab Workbench{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>
+            <i class="bi bi-flower1 text-success"></i>
+            Arabidopsis Genome BLAST
+        </h2>
+        <a href="{{ url_for('blast.blast_page') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left"></i> All Databases
+        </a>
+    </div>
+
+    <div class="row">
+        <!-- Search Form -->
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow-sm border-success">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-search"></i> BLAST Search</h5>
+                </div>
+                <div class="card-body">
+                    <form id="araBlastForm">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">1. Input Sequences (.fa)</label>
+                            <input type="file" class="form-control" id="queryFile" accept=".fasta,.fa" required>
+                            <div class="form-text">
+                                <a href="{{ url_for('ara_blast.download_sample') }}" class="text-decoration-none small">
+                                    <i class="bi bi-download"></i> Download sample file
+                                </a>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">2. Program</label>
+                            <select class="form-select" id="program">
+                                <option value="auto">Auto-detect (Recommended)</option>
+                                <option value="blastp">blastp (Protein vs Protein)</option>
+                                <option value="blastn">blastn (DNA vs DNA)</option>
+                                <option value="blastx">blastx (DNA query vs Protein DB)</option>
+                                <option value="tblastn">tblastn (Protein query vs DNA DB)</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">3. Target Database</label>
+                            <select class="form-select" id="database">
+                                {% for db in ara_dbs %}
+                                <option value="{{ db.path }}">{{ db.name }} ({{ db.type }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <hr>
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">Filters & Thresholds:</label>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="small text-muted">E-value</label>
+                                    <input type="text" class="form-control form-control-sm" id="evalue" value="1e-5">
+                                </div>
+                                <div class="col-6">
+                                    <label class="small text-muted">Max Hits</label>
+                                    <input type="number" class="form-control form-control-sm" id="maxHits" value="500">
+                                </div>
+                                <div class="col-6">
+                                    <label class="small text-muted">Min Identity %</label>
+                                    <input type="number" class="form-control form-control-sm" id="minIdentity" value="0">
+                                </div>
+                                <div class="col-6">
+                                    <label class="small text-muted">Min Coverage %</label>
+                                    <input type="number" class="form-control form-control-sm" id="minCoverage" value="0">
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-success w-100 py-2" id="runBtn">
+                            <i class="bi bi-lightning-fill"></i> Run BLAST Search
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Area -->
+        <div class="col-lg-8 mb-4">
+            <div id="loadingSpinner" class="text-center d-none py-5">
+                <div class="spinner-grow text-success" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <h4 class="mt-3">Analyzing sequences...</h4>
+                <p class="text-muted">Comparing your data against the Arabidopsis genome.</p>
+            </div>
+
+            <div id="resultsPlaceholder">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body text-center py-5">
+                        <i class="bi bi-file-earmark-medical display-1 text-light"></i>
+                        <p class="mt-3 text-muted">Upload a FASTA file and start the search.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="resultsContainer" class="d-none">
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-table text-success"></i> 
+                            Results: <span id="totalHitsCount">0</span> hits in <span id="queryCount">0</span> queries
+                        </h5>
+                        <div id="programBadge" class="badge bg-primary"></div>
+                    </div>
+                    <div class="card-body">
+                        <div id="resultsAccordion" class="accordion">
+                            <!-- Grouped results will be injected here -->
+                        </div>
+                    </div>
+                    <div class="card-footer bg-white text-end">
+                        <button class="btn btn-sm btn-outline-primary" id="exportBtn">
+                            <i class="bi bi-download"></i> Export Matched Sequences
+                        </button>
+                        <a id="downloadTsv" class="btn btn-sm btn-outline-secondary" download>
+                            <i class="bi bi-file-earmark-spreadsheet"></i> Download TSV
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const ARA_URLS = {
+        search: "{{ url_for('ara_blast.search') }}",
+        download: "{{ url_for('blast.download') }}",
+        extract: "{{ url_for('blast.extract') }}"
+    };
+
+    let lastResults = null;
+
+    document.getElementById('araBlastForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const fileInput = document.getElementById('queryFile');
+        if (!fileInput.files[0]) return;
+
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        formData.append('database', document.getElementById('database').value);
+        formData.append('program', document.getElementById('program').value);
+        formData.append('evalue', document.getElementById('evalue').value);
+        formData.append('max_hits', document.getElementById('maxHits').value);
+        formData.append('min_identity', document.getElementById('minIdentity').value);
+        formData.append('min_qcovs', document.getElementById('minCoverage').value);
+
+        // UI Feedback
+        document.getElementById('loadingSpinner').classList.remove('d-none');
+        document.getElementById('resultsPlaceholder').classList.add('d-none');
+        document.getElementById('resultsContainer').classList.add('d-none');
+
+        try {
+            const response = await fetch(ARA_URLS.search, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+            
+            document.getElementById('loadingSpinner').classList.add('d-none');
+            
+            if (data.success) {
+                lastResults = data;
+                renderGroupedResults(data);
+            } else {
+                showAlert('danger', 'BLAST Error: ' + data.error);
+                document.getElementById('resultsPlaceholder').classList.remove('d-none');
+            }
+        } catch (error) {
+            document.getElementById('loadingSpinner').classList.add('d-none');
+            showAlert('danger', 'System error: ' + error.message);
+        }
+    });
+
+    function renderGroupedResults(data) {
+        const container = document.getElementById('resultsContainer');
+        const accordion = document.getElementById('resultsAccordion');
+        
+        container.classList.remove('d-none');
+        accordion.innerHTML = '';
+        
+        document.getElementById('totalHitsCount').textContent = data.total_hits;
+        document.getElementById('queryCount').textContent = data.query_count;
+        document.getElementById('programBadge').textContent = data.program.toUpperCase();
+
+        const groups = data.grouped_hits;
+        let index = 0;
+
+        for (const [qid, hits] of Object.entries(groups)) {
+            const itemId = `queryItem${index++}`;
+            const section = document.createElement('div');
+            section.className = 'accordion-item';
+            
+            section.innerHTML = `
+                <h2 class="accordion-header">
+                    <button class="accordion-button ${index > 1 ? 'collapsed' : ''}" type="button" data-bs-toggle="collapse" data-bs-target="#${itemId}">
+                        <span class="fw-bold text-truncate" style="max-width: 70%;">Query: ${qid}</span>
+                        <span class="badge bg-light text-dark ms-auto me-2">${hits.length} hits</span>
+                    </button>
+                </h2>
+                <div id="${itemId}" class="accordion-collapse collapse ${index === 1 ? 'show' : ''}" data-bs-parent="#resultsAccordion">
+                    <div class="accordion-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0 small">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Subject</th>
+                                        <th>Identity</th>
+                                        <th>Coverage</th>
+                                        <th>E-value</th>
+                                        <th>BitScore</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${hits.map(hit => `
+                                        <tr>
+                                            <td><code>${hit.sseqid}</code></td>
+                                            <td>
+                                                <div class="progress" style="height: 12px; width: 60px;">
+                                                    <div class="progress-bar ${hit.pident > 70 ? 'bg-success' : 'bg-warning'}" 
+                                                         style="width: ${hit.pident}%"></div>
+                                                </div>
+                                                ${hit.pident}%
+                                            </td>
+                                            <td>${hit.qcovs}%</td>
+                                            <td>${hit.evalue}</td>
+                                            <td>${hit.bitscore}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+            accordion.appendChild(section);
+        }
+        
+        if (data.output_files?.main) {
+            document.getElementById('downloadTsv').href = ARA_URLS.download + '?path=' + encodeURIComponent(data.output_files.main);
+        }
+
+        document.getElementById('exportBtn').onclick = exportAllMatches;
+    }
+
+    async function exportAllMatches() {
+        if (!lastResults) return;
+        
+        // Collect all subject IDs from all groups
+        const allHits = [];
+        Object.values(lastResults.grouped_hits).forEach(group => {
+            group.forEach(hit => allHits.push(hit.sseqid));
+        });
+        
+        if (allHits.length === 0) return;
+
+        try {
+            const response = await fetch(ARA_URLS.extract, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    database: lastResults.output_files.db_path || document.getElementById('database').value,
+                    hit_ids: [...new Set(allHits)], // unique IDs
+                    result_dir: lastResults.result_dir
+                })
+            });
+            const data = await response.json();
+            if (data.success) {
+                window.location.href = ARA_URLS.download + '?path=' + encodeURIComponent(data.output_file);
+            } else {
+                showAlert('danger', 'Export failed: ' + data.error);
+            }
+        } catch (error) {
+            showAlert('danger', 'Export error: ' + error.message);
+        }
+    }
+</script>
+{% endblock %}

@@ -115,6 +115,72 @@
             <li>所有结果都会给出独立下载链接; 如浏览器阻止, 复制链接在新标签打开。</li>
         </ul>
     </div>
+
+    <div class="alert alert-light border">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+                <i class="bi bi-save2"></i>
+                <strong>Parameter Snapshot:</strong> 导出/导入当前页面参数，便于复现和协作。
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="snapshotExportBtn">
+                    <i class="bi bi-download"></i> Export JSON
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="snapshotImportBtn">
+                    <i class="bi bi-upload"></i> Import JSON
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="snapshotSaveDraftBtn">
+                    <i class="bi bi-bookmark-plus"></i> Save Draft
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="snapshotLoadDraftBtn">
+                    <i class="bi bi-bookmark-check"></i> Load Draft
+                </button>
+            </div>
+        </div>
+        <input type="file" id="snapshotImportInput" accept=".json,application/json" style="display:none;">
+        <div id="snapshotStatus" class="small text-muted mt-2"></div>
+    </div>
+
+    <div class="modal fade" id="snapshotDiffModal" tabindex="-1" aria-labelledby="snapshotDiffModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="snapshotDiffModalLabel">Apply Snapshot Changes</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted mb-2" id="snapshotDiffSummary"></p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped align-middle">
+                            <thead>
+                                <tr>
+                                    <th style="width: 30%;">Field</th>
+                                    <th style="width: 35%;">Current</th>
+                                    <th style="width: 35%;">Incoming</th>
+                                </tr>
+                            </thead>
+                            <tbody id="snapshotDiffRows"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" id="snapshotDiffCancelBtn" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="snapshotDiffApplyBtn">Apply Snapshot</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="pipelineNoticePanel" class="alert alert-light border d-none">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+            <div class="small">
+                <div class="fw-semibold mb-1" id="pipelineNoticeTitle">Pipeline Notice</div>
+                <div id="pipelineNoticeMessage" class="mb-1"></div>
+                <ul id="pipelineNoticeHints" class="mb-0"></ul>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="dismissPipelineNotice()">Dismiss</button>
+        </div>
+    </div>
     
     <!-- Pipeline Steps -->
     <div class="row">
@@ -143,6 +209,7 @@
                 <div class="step-result" id="result0">
                     <h6>清理结果:</h6>
                     <div id="cleanResults"></div>
+                    <div id="cleanInterpretation" class="mt-3"></div>
                     <button class="btn btn-success btn-sm mt-2" onclick="nextStep(1)">
                         <i class="bi bi-arrow-right"></i> 继续 HMM 搜索
                     </button>
@@ -185,7 +252,7 @@
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label class="form-label">E-value阈值:</label>
-                                <input type="number" class="form-control" id="hmmEvalue" value="0.00001" step="0.000001">
+                                <input type="text" class="form-control" id="hmmEvalue" value="1e-5" placeholder="例如 1e-5">
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -195,12 +262,23 @@
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Domain E-value (可选):</label>
-                                <input type="number" class="form-control" id="hmmDomEvalue" placeholder="默认同 E-value">
+                                <input type="text" class="form-control" id="hmmDomEvalue" placeholder="例如 1e-5；留空则与 E-value 相同">
+                                <div class="form-text" id="hmmDomEvalueHint">Only used when custom HMMER E-value thresholding is enabled. Blank means use the same threshold as sequence E-value in this app.</div>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">线程数 (默认自动):</label>
                                 <input type="number" class="form-control" id="hmmThreads" min="1" placeholder="自动">
                             </div>
+                        </div>
+                    </div>
+
+                    <div id="hmmScientificHint" class="mb-2"></div>
+                    <div class="mb-3">
+                        <label class="form-label">HMM Presets:</label>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="button" class="btn btn-outline-secondary btn-sm hmm-preset-btn" data-preset="ga">GA Threshold</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm hmm-preset-btn" data-preset="strict">Strict</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm hmm-preset-btn" data-preset="sensitive">Sensitive</button>
                         </div>
                     </div>
                     
@@ -212,6 +290,7 @@
                 <div class="step-result" id="result1">
                     <h6>HMM搜索结果:</h6>
                     <div id="hmmResults"></div>
+                    <div id="hmmInterpretation" class="mt-3"></div>
                     <button class="btn btn-success btn-sm mt-2" onclick="nextStep(2)">
                         <i class="bi bi-arrow-right"></i> 继续 BLAST
                     </button>
@@ -235,13 +314,13 @@
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">BLAST数据库:</label>
-                        <select class="form-select" id="blastDbSelect" required>
-                            <option value="">选择数据库...</option>
-                            {% for db in blast_databases %}
-                            <option value="{{ db.path }}">{{ db.name }} ({{ db.type }})</option>
-                            {% endfor %}
-                        </select>
+                            <label class="form-label">BLAST数据库:</label>
+                            <select class="form-select" id="blastDbSelect" required>
+                                <option value="">选择数据库...</option>
+                                {% for db in blast_databases %}
+                            <option value="{{ db.path }}" data-type="{{ db.type }}">{{ db.name }} ({{ db.type }})</option>
+                                {% endfor %}
+                            </select>
                     </div>
                     <div class="row mb-3">
                         <div class="col-md-6">
@@ -256,8 +335,37 @@
                     
                     <div class="row">
                         <div class="col-md-4">
+                            <label class="form-label">Min Identity %:</label>
+                            <input type="number" class="form-control" id="blastPident" value="30" min="0" max="100" step="0.1">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Min Query Coverage %:</label>
+                            <input type="number" class="form-control" id="blastQcovs" value="50" min="0" max="100" step="0.1">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">BLAST Program:</label>
+                            <select class="form-select" id="blastProgram">
+                                <option value="">Auto detect</option>
+                                <option value="blastn">blastn</option>
+                                <option value="blastp">blastp</option>
+                                <option value="blastx">blastx</option>
+                                <option value="tblastn">tblastn</option>
+                                <option value="tblastx">tblastx</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-check mt-3">
+                        <input class="form-check-input" type="checkbox" id="strictGoldMatch" checked>
+                        <label class="form-check-label" for="strictGoldMatch">
+                            Gold ID strict match (recommended, reduces false positives)
+                        </label>
+                    </div>
+
+                    <div class="row mt-2">
+                        <div class="col-md-4">
                             <label class="form-label">E-value (留空关闭):</label>
-                            <input type="number" class="form-control" id="blastEvalue" value="1e-5" step="0.0001" placeholder="留空则不加 -evalue">
+                            <input type="text" class="form-control" id="blastEvalue" value="1e-5" placeholder="留空则不加 -evalue，如 1e-5">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Max Target Seqs:</label>
@@ -269,6 +377,16 @@
                         </div>
                     </div>
 
+                    <div id="blastScientificHint" class="mb-2 mt-2"></div>
+                    <div class="mb-3">
+                        <label class="form-label">BLAST Filter Presets:</label>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="button" class="btn btn-outline-secondary btn-sm phylo-blast-preset-btn" data-preset="balanced">Balanced</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm phylo-blast-preset-btn" data-preset="strict">High Confidence</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm phylo-blast-preset-btn" data-preset="sensitive">Sensitive</button>
+                        </div>
+                    </div>
+
                     <button type="submit" class="btn btn-primary mt-3">
                         <i class="bi bi-search"></i> 运行 BLAST
                     </button>
@@ -277,6 +395,7 @@
                 <div class="step-result" id="result2">
                     <h6>BLAST过滤结果:</h6>
                     <div id="blastResults"></div>
+                    <div id="pipelineBlastInterpretation" class="mt-3"></div>
                     <button class="btn btn-success btn-sm mt-2" onclick="nextStep(3)">
                         <i class="bi bi-arrow-right"></i> 继续长度过滤
                     </button>
@@ -321,6 +440,7 @@
                 <div class="step-result" id="result3">
                     <h6>过滤结果:</h6>
                     <div id="filterResults"></div>
+                    <div id="lengthFilterInterpretation" class="mt-3"></div>
                     <button class="btn btn-success btn-sm mt-2" onclick="nextStep(4)">
                         <i class="bi bi-arrow-right"></i> Continue to Multiple Sequence Alignment
                     </button>
@@ -374,6 +494,7 @@
                 <div class="step-result" id="result4">
                     <h6>Alignment Results:</h6>
                     <div id="alignResults"></div>
+                    <div id="pipelineAlignmentInterpretation" class="mt-3"></div>
                     <button class="btn btn-success btn-sm mt-2" onclick="nextStep(5)">
                         <i class="bi bi-arrow-right"></i> 继续 ClipKIT
                     </button>
@@ -397,9 +518,9 @@
                             <select class="form-select" id="clipkitMode">
                                 <option value="kpic-gappy">kpic-gappy (推荐)</option>
                                 <option value="kpic">kpic</option>
-                                <option value="kpi-gappy">kpi-gappy</option>
                                 <option value="kpi">kpi</option>
                                 <option value="gappy">gappy</option>
+                                <option value="smart-gap">smart-gap</option>
                             </select>
                         </div>
                         <div class="col-md-6">
@@ -411,6 +532,7 @@
                         <label class="form-label">Input Alignment Path (optional):</label>
                         <input type="text" class="form-control" id="clipkitInputPath" placeholder="Use previous alignment result by default">
                     </div>
+                    <div id="clipkitScientificHint" class="mb-2"></div>
                     
                     <button type="button" class="btn btn-secondary mt-3" onclick="suggestClipKitMode()">
                         <i class="bi bi-lightbulb"></i> Auto Suggest Mode
@@ -423,6 +545,7 @@
                 <div class="step-result" id="result5">
                                         <h6>ClipKIT结果:</h6>
                                         <div id="clipkitResults"></div>
+                                        <div id="clipkitInterpretation" class="mt-3"></div>
                                         <button class="btn btn-info btn-sm mt-2" data-bs-toggle="modal" data-bs-target="#clipkitCheckModal">
                                                 <i class="bi bi-search"></i> Check Trimmed Sites
                                         </button>
@@ -482,7 +605,22 @@
                             <select class="form-select" id="iqtreeBootstrapType">
                                 <option value="ufboot">UFBoot (快速)</option>
                                 <option value="boot">Standard Bootstrap</option>
+                                <option value="both">Both</option>
                             </select>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Threads:</label>
+                            <input type="text" class="form-control" id="iqtreeThreads" value="AUTO" placeholder="AUTO or number">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">SH-aLRT Replicates:</label>
+                            <input type="number" class="form-control" id="iqtreeAlrtReps" value="1000" min="100">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Random Seed (optional):</label>
+                            <input type="number" class="form-control" id="iqtreeSeed" min="1" placeholder="e.g. 42">
                         </div>
                     </div>
                     <div class="mb-3 mt-3">
@@ -504,6 +642,16 @@
                             </div>
                         </div>
                     </div>
+
+                    <div id="iqtreeScientificHint" class="mb-2 mt-2"></div>
+                    <div class="mb-3">
+                        <label class="form-label">IQ-TREE Presets:</label>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="button" class="btn btn-outline-secondary btn-sm iqtree-preset-btn" data-preset="preview">Preview Fast</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm iqtree-preset-btn" data-preset="publication">Publication</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm iqtree-preset-btn" data-preset="robust">Robust</button>
+                        </div>
+                    </div>
                     
                     <button type="button" class="btn btn-secondary mt-3" onclick="runModelFinder()">
                         <i class="bi bi-cpu"></i> 运行 ModelFinder
@@ -516,6 +664,7 @@
                 <div class="step-result" id="result6">
                     <h6>IQ-TREE结果:</h6>
                     <div id="iqtreeResults"></div>
+                    <div id="iqtreeInterpretation" class="mt-3"></div>
                     <button class="btn btn-success btn-sm mt-2" onclick="nextStep(7)">
                         <i class="bi bi-arrow-right"></i> 树可视化
                     </button>
@@ -551,7 +700,16 @@
         tree: null
     };
 
-    function nextStep(stepNum) {
+    function nextStep(stepNum, previousResult = null) {
+        // Validation: Ensure previous step produced a valid output if result is provided
+        if (previousResult) {
+            const hasOutput = previousResult.output_file || previousResult.alignment_path || previousResult.tree_path || previousResult.trimmed_path;
+            if (!hasOutput && !previousResult.success) {
+                showAlert('danger', `Step ${stepNum} cannot proceed: previous step failed or returned no data.`);
+                return;
+            }
+        }
+
         const currentStep = document.querySelector('.pipeline-step.active');
         if (currentStep) {
             currentStep.classList.remove('active');
@@ -616,8 +774,49 @@
     function renderCommand(cmd) {
         if (!cmd) return '';
         return `<div class="alert alert-secondary mt-2" style="white-space:pre-wrap; word-break:break-all;">
-            <strong>运行命令:</strong><br><code>${cmd}</code>
+            <strong>运行命令:</strong><br><code>${escapeHtml(cmd)}</code>
         </div>`;
+    }
+
+    function dismissPipelineNotice() {
+        const panel = document.getElementById('pipelineNoticePanel');
+        if (!panel) return;
+        panel.classList.add('d-none');
+    }
+
+    function notifyPipeline(type, message, options = {}) {
+        const alertType = type || 'info';
+        const text = String(message ?? '');
+        const duration = Number.isFinite(options.duration) ? options.duration : 5000;
+        const persist = options.persist !== false;
+
+        if (typeof showAlert === 'function') {
+            showAlert(alertType, text, duration);
+        }
+
+        if (!persist) return;
+        const panel = document.getElementById('pipelineNoticePanel');
+        const titleEl = document.getElementById('pipelineNoticeTitle');
+        const msgEl = document.getElementById('pipelineNoticeMessage');
+        const hintsEl = document.getElementById('pipelineNoticeHints');
+        if (!panel || !titleEl || !msgEl || !hintsEl) return;
+
+        panel.classList.remove('d-none', 'alert-light', 'alert-info', 'alert-warning', 'alert-danger', 'alert-success');
+        const cls = alertType === 'danger'
+            ? 'alert-danger'
+            : alertType === 'warning'
+                ? 'alert-warning'
+                : alertType === 'success'
+                    ? 'alert-success'
+                    : 'alert-info';
+        panel.classList.add(cls);
+        titleEl.textContent = `Pipeline ${alertType === 'danger' ? 'Error' : alertType === 'warning' ? 'Warning' : 'Notice'}`;
+        msgEl.textContent = text;
+
+        const hints = (typeof window.getActionableHints === 'function')
+            ? window.getActionableHints(text).slice(0, 3)
+            : [];
+        hintsEl.innerHTML = hints.map((hint) => `<li>${escapeHtml(hint)}</li>`).join('');
     }
 
     function val(id) {
@@ -625,13 +824,1098 @@
         return el ? el.value : '';
     }
 
+    function toFiniteNumber(raw) {
+        if (raw === null || raw === undefined) return null;
+        const str = String(raw).trim();
+        if (!str) return null;
+        const n = Number(str);
+        return Number.isFinite(n) ? n : null;
+    }
+
+    function renderScientificHints(targetId, items) {
+        const box = document.getElementById(targetId);
+        if (!box) return;
+        if (!items.length) {
+            box.innerHTML = '<div class="alert alert-light border py-2 px-3 mb-0 small">Scientific check: parameters are within recommended ranges.</div>';
+            return;
+        }
+        box.innerHTML = items.map((item) => {
+            const cls = item.level === 'danger'
+                ? 'alert-danger'
+                : item.level === 'warning'
+                    ? 'alert-warning'
+                    : 'alert-info';
+            return `<div class="alert ${cls} py-2 px-3 mb-2 small">${item.text}</div>`;
+        }).join('');
+    }
+
+    function setInterpretation(targetId, items, title = 'Result Interpretation') {
+        const box = document.getElementById(targetId);
+        if (!box) return;
+        if (!Array.isArray(items) || !items.length) {
+            box.innerHTML = '';
+            return;
+        }
+        box.innerHTML = `
+            <div class="alert alert-light border mb-0">
+                <div class="fw-semibold mb-2">${escapeHtml(title)}</div>
+                <ul class="mb-0 small">
+                    ${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    }
+
+    function buildAlignmentInterpretationItems(stats) {
+        const items = [];
+        const numSequences = Number(stats?.num_sequences || 0);
+        const alignmentLength = Number(stats?.alignment_length || 0);
+        const conserved = Number(stats?.conserved_positions || 0);
+        const variable = Number(stats?.variable_positions || 0);
+        const gapAffected = Number(stats?.gap_affected_positions || 0);
+        const gapOnly = Number(stats?.gap_only_positions || 0);
+        const meanGap = Number(stats?.mean_gap_percentage || 0);
+
+        if (numSequences > 0) {
+            items.push(`Alignment contains ${numSequences} sequences across ${alignmentLength} columns.`);
+        }
+        if (numSequences > 0 && numSequences < 5) {
+            items.push('Taxon sampling is small, so downstream phylogeny will be sensitive to each sequence that is included.');
+        }
+        if (alignmentLength > 0 && conserved / alignmentLength >= 0.7) {
+            items.push('A large fully conserved, gap-free core is present, which is generally favorable for family-level comparison.');
+        } else if (alignmentLength > 0 && variable / alignmentLength >= 0.4) {
+            items.push('Residue-variable columns are common. That can add phylogenetic signal, but trimming and inspection are important.');
+        }
+        if (alignmentLength > 0 && gapAffected / alignmentLength >= 0.3) {
+            items.push('Gap-bearing columns are common, which points to indels, partial sequences, or difficult-to-align regions.');
+        }
+        if (meanGap >= 20) {
+            items.push('Gap burden is high, which usually indicates partial sequences, indels, or difficult-to-align regions.');
+        }
+        if (gapOnly > 0) {
+            items.push('Gap-only columns are present and are good candidates for trimming before tree inference.');
+        }
+        if (variable === 0 && alignmentLength > 0) {
+            items.push('No variable columns were detected, so the alignment is unlikely to contain much phylogenetic resolution.');
+        }
+        return items;
+    }
+
+    function buildHmmInterpretationItems(hitCount, thresholdSettings, warningCount = 0, profileCount = 1) {
+        const items = [];
+        if (thresholdSettings?.cut_ga) {
+            items.push('Hits were screened with HMMER profile gathering thresholds, which is usually the most defensible starting point for curated domain models.');
+        } else {
+            const seqEval = thresholdSettings?.sequence_evalue;
+            const domEval = thresholdSettings?.domain_evalue;
+            items.push(`Hits were screened with custom HMMER reporting thresholds (sequence E-value <= ${seqEval}, domain E-value <= ${domEval}).`);
+            if (seqEval !== null && seqEval !== undefined) {
+                if (Number(seqEval) <= 1e-10) {
+                    items.push('This is a strict HMM screening setup. Missed remote homologs can reflect threshold conservatism rather than true biological absence.');
+                } else if (Number(seqEval) >= 1e-3) {
+                    items.push('This is a relatively permissive HMM screening setup. Review borderline hits carefully before treating them as family members.');
+                }
+            }
+            if (seqEval !== null && seqEval !== undefined && domEval !== null && domEval !== undefined && Number(domEval) !== Number(seqEval)) {
+                if (Number(domEval) > Number(seqEval)) {
+                    items.push('Domain reporting is looser than sequence reporting here, so individual domain calls may look broader than the overall sequence-level filter.');
+                } else {
+                    items.push('Domain reporting is stricter than sequence reporting here, so some accepted sequences may still show fewer reported domains.');
+                }
+            }
+        }
+        if (hitCount > 0) {
+            items.push(`Detected ${hitCount} HMM-positive sequences. These are candidate domain-containing proteins, not yet orthology calls.`);
+            items.push('Use the next BLAST and phylogeny steps to decide whether these candidates match the biological family of interest.');
+            if (profileCount > 1) {
+                items.push(`This run combined ${profileCount} HMM profiles, so the retained set may merge related but distinct domain architectures before BLAST/tree curation.`);
+            }
+            if (hitCount >= 200) {
+                items.push('This is a large candidate set. Run BLAST and length-based cleanup before alignment; direct tree building from the raw HMM hit pool is likely to be noisy.');
+            } else if (hitCount <= 10) {
+                items.push('This is a small candidate set. Alignment and tree building remain possible, but topological interpretation will be sensitive to each individual sequence.');
+            }
+        } else {
+            items.push('No HMM-positive sequences were retained. That can reflect genuine absence, thresholds that are too strict, or a profile that is not appropriate for the current protein family.');
+            if (thresholdSettings?.cut_ga) {
+                items.push('Because --cut_ga was used, a next troubleshooting step is to try a curated custom E-value search or an alternate profile before concluding the family is absent.');
+            }
+        }
+        if (warningCount > 0) {
+            items.push('This run also emitted threshold-related warnings. Review them before treating marginal hits as biologically meaningful.');
+        }
+        return items;
+    }
+
+    function buildBlastFilterInterpretationItems(stats, pident, qcovs, strictGold) {
+        const items = [];
+        const totalIn = Number(stats?.total_in || 0);
+        const kept = Number(stats?.kept || 0);
+        if (totalIn > 0) {
+            const keptPct = Math.round((kept / totalIn) * 1000) / 10;
+            items.push(`${kept} of ${totalIn} sequences passed BLAST filtering (${keptPct}%).`);
+        }
+        items.push(`Interpret retained sequences using both identity (${pident}%) and query coverage (${qcovs}%). Short high-identity matches can still be misleading if coverage is weak.`);
+        if (strictGold) {
+            items.push('Strict gold matching is enabled, so retained hits are biased toward exact gold-list identifiers and lower false-positive risk.');
+        } else {
+            items.push('Strict gold matching is disabled, so retained hits should be reviewed more carefully for naming and annotation drift.');
+        }
+        if (totalIn > 0 && kept === 0) {
+            items.push('Zero retained hits can mean genuine absence, overly strict thresholds, or a gold list that does not match current identifier conventions.');
+        }
+        return items;
+    }
+
+    function buildLengthFilterInterpretationItems(result, stats) {
+        const items = [];
+        const kept = Number(result?.kept || 0);
+        const removed = Number(result?.removed || 0);
+        const total = kept + removed;
+        if (total > 0) {
+            const removedPct = Math.round((removed / total) * 1000) / 10;
+            items.push(`${removed} of ${total} sequences were removed by length filtering (${removedPct}%).`);
+        }
+        items.push('Length filtering helps remove obvious fragments and fusions, but true family members can still be biologically shorter or longer than the majority.');
+        if (total > 0 && removed / total >= 0.5) {
+            items.push('More than half of sequences were removed. Re-check whether the chosen length window matches the expected biology of this family.');
+        }
+        return items;
+    }
+
+    function buildClipkitInterpretationItems(stats, mode) {
+        const items = [];
+        const kept = Number(stats?.kept_sites || 0);
+        const total = Number(stats?.total_sites || 0);
+        const keptPct = Number(stats?.percentage_kept || 0);
+        if (total > 0) {
+            items.push(`ClipKIT kept ${kept} of ${total} columns (${keptPct.toFixed ? keptPct.toFixed(1) : keptPct}%).`);
+        }
+        if (keptPct < 30) {
+            items.push('This is an aggressive trim. It may improve noise reduction, but can also remove useful phylogenetic signal if the family is naturally diverse.');
+        } else if (keptPct > 80) {
+            items.push('Only light trimming was applied. Inspect whether gap-rich or ambiguous regions remain before tree inference.');
+        } else {
+            items.push('The amount of trimming is moderate, which is often a reasonable balance between signal retention and noise removal.');
+        }
+        items.push(`Mode ${mode} controls what evidence ClipKIT keeps. Interpret the trimmed alignment in the context of that trimming philosophy, not just the percent retained.`);
+        return items;
+    }
+
+    function formatIqtreeSequenceType(rawType) {
+        const sequenceType = String(rawType || '').trim().toLowerCase();
+        if (sequenceType === 'protein') return 'protein';
+        if (sequenceType === 'nucleotide') return 'nucleotide';
+        return sequenceType || 'unknown';
+    }
+
+    function buildIqtreeInterpretationItems(supportStats, bootstrapType, inputStats = null, modelContext = null, analysisInfo = null) {
+        const items = [];
+        const sequenceType = formatIqtreeSequenceType(inputStats?.sequence_type);
+        const sequenceCount = Number(inputStats?.sequence_count || 0);
+        const alignmentLength = Number(inputStats?.alignment_length || 0);
+        const effectiveModel = String(analysisInfo?.model || modelContext?.requested_model || '').trim();
+
+        if (sequenceCount > 0 && alignmentLength > 0) {
+            items.push(`Tree inference used a ${sequenceType} alignment with ${sequenceCount} sequences across ${alignmentLength} sites.`);
+        } else if (sequenceType === 'protein' || sequenceType === 'nucleotide') {
+            items.push(`Tree inference used a ${sequenceType} alignment. Confirm that downstream interpretation matches this molecule type.`);
+        }
+
+        if (modelContext?.selection_mode === 'auto') {
+            if (analysisInfo?.model) {
+                items.push(`IQ-TREE automatic model selection resolved to ${analysisInfo.model}. Report the resolved best-fit model in methods instead of only listing ${modelContext.requested_model}.`);
+            } else if (modelContext?.requested_model) {
+                items.push(`IQ-TREE automatic model selection was requested with ${modelContext.requested_model}. Review the final log for the resolved best-fit model before publication.`);
+            }
+        } else if (effectiveModel) {
+            items.push(`Tree inference used the manual substitution model ${effectiveModel}. Manual models should only be reused when they are molecule-compatible and biologically justified for this alignment.`);
+        }
+
+        if (modelContext?.model_class === 'codon') {
+            items.push('Codon-model inference assumes an in-frame codon alignment. If gaps or trimming disrupted codon boundaries, branch lengths and support can become misleading.');
+        }
+
+        if (!supportStats || !supportStats.count) {
+            items.push('No branch-support values were summarized. Treat the topology as exploratory until support statistics are available.');
+            return items;
+        }
+
+        const runLabel = bootstrapType === 'ufboot'
+            ? 'UFBoot'
+            : bootstrapType === 'boot'
+                ? 'standard bootstrap'
+                : 'paired-support';
+        items.push(`${supportStats.count} internal branches had support values summarized from the ${runLabel} run.`);
+
+        if (supportStats.composite_support_labels) {
+            items.push('Composite branch-support labels were detected. Summary uses the trailing value in each label so paired support metrics are not collapsed into the first number.');
+            if (supportStats.secondary_mean !== null && supportStats.secondary_mean !== undefined) {
+                items.push(`Leading support values averaged ${Number(supportStats.secondary_mean).toFixed(1)}, while trailing support values averaged ${Number(supportStats.mean).toFixed(1)}.`);
+            }
+            items.push('For IQ-TREE paired SH-aLRT/UFBoot labels, the documentation recommends SH-aLRT >=80 together with UFBoot >=95 as a stronger support criterion.');
+        } else if (bootstrapType === 'ufboot' || bootstrapType === 'both') {
+            items.push('IQ-TREE documentation recommends treating UFBoot values >=95 as strong support.');
+        }
+
+        if (bootstrapType === 'ufboot' || bootstrapType === 'both') {
+            if (supportStats.mean >= 95) {
+                items.push('Average trailing support is in the strong UFBoot range, so major splits are relatively stable under the current model and alignment.');
+            } else if (supportStats.mean >= 70) {
+                items.push('Average trailing support is moderate. Some deeper groupings may hold, but branch-wise inspection is still important.');
+            } else {
+                items.push('Average trailing support is low. Topological conclusions should be treated as tentative.');
+            }
+            if (Number(supportStats.strong_support || 0) > 0) {
+                items.push(`${supportStats.strong_support} branches are at or above 95 support, which is the IQ-TREE strong-support reference for UFBoot.`);
+            }
+        } else {
+            if (supportStats.mean >= 90) {
+                items.push('Average support is high, so major internal splits are relatively stable under the current model and alignment.');
+            } else if (supportStats.mean >= 70) {
+                items.push('Average support is moderate. Deep groupings may be usable, but weak branches should not be overinterpreted.');
+            } else {
+                items.push('Average support is low. Topological conclusions should be treated as tentative.');
+            }
+        }
+        if (supportStats.weak_support > 0) {
+            items.push(`${supportStats.weak_support} branches fall below 70 support, which usually marks unstable or poorly resolved relationships.`);
+        }
+        return items;
+    }
+
+    function validatePositiveScientificNumber(raw, label, allowEmpty = false) {
+        const str = String(raw ?? '').trim();
+        if (!str) {
+            return allowEmpty ? { ok: true, value: null } : { ok: false, error: `${label} 不能为空` };
+        }
+        const pattern = /^(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+        if (!pattern.test(str)) {
+            return { ok: false, error: `${label} 必须是正数（支持科学计数法，如 1e-5）` };
+        }
+        const value = Number(str);
+        if (!Number.isFinite(value) || value <= 0) {
+            return { ok: false, error: `${label} 必须大于 0` };
+        }
+        return { ok: true, value };
+    }
+
+    function validatePositiveInteger(raw, label, allowEmpty = false) {
+        const str = String(raw ?? '').trim();
+        if (!str) {
+            return allowEmpty ? { ok: true, value: null } : { ok: false, error: `${label} 不能为空` };
+        }
+        const num = Number(str);
+        if (!Number.isFinite(num) || num < 1 || !Number.isInteger(num)) {
+            return { ok: false, error: `${label} 必须是正整数` };
+        }
+        return { ok: true, value: num };
+    }
+
+    const SNAPSHOT_STORAGE_KEY = 'biolab.pipeline.snapshot.v1';
+    const SNAPSHOT_SCHEMA = 'biolab.pipeline.snapshot';
+    const PIPELINE_SNAPSHOT_FIELDS = [
+        'cleanPath',
+        'hmmExistingPath', 'hmmUseCutGa', 'hmmEvalue', 'hmmDomEvalue', 'hmmThreads', 'hmmProfiles',
+        'goldListSelect', 'blastDbSelect', 'blastQueryPath', 'blastPident', 'blastQcovs', 'blastProgram',
+        'strictGoldMatch', 'blastEvalue', 'blastMaxTargets', 'blastThreads',
+        'minLength', 'maxLength', 'filterInputPath',
+        'alignTool', 'mafftAlgorithm', 'maxiterate', 'alignInputPath',
+        'clipkitMode', 'clipkitGaps', 'clipkitInputPath',
+        'iqtreeModel', 'iqtreeBootstrap', 'iqtreeBootstrapType', 'iqtreeThreads',
+        'iqtreeAlrtReps', 'iqtreeSeed', 'iqtreeInputPath', 'iqtreeAlrt', 'iqtreeBnni'
+    ];
+    const SNAPSHOT_FIELD_LABELS = {
+        cleanPath: 'Step0 Input Path',
+        hmmExistingPath: 'HMM Input Path',
+        hmmUseCutGa: 'HMM Use --cut_ga',
+        hmmEvalue: 'HMM E-value',
+        hmmDomEvalue: 'HMM Domain E-value',
+        hmmThreads: 'HMM Threads',
+        hmmProfiles: 'HMM Profiles',
+        goldListSelect: 'Gold List',
+        blastDbSelect: 'BLAST Database',
+        blastQueryPath: 'BLAST Query Path',
+        blastPident: 'BLAST Min Identity',
+        blastQcovs: 'BLAST Min Q-Covs',
+        blastProgram: 'BLAST Program',
+        strictGoldMatch: 'Strict Gold Match',
+        blastEvalue: 'BLAST E-value',
+        blastMaxTargets: 'BLAST Max Targets',
+        blastThreads: 'BLAST Threads',
+        minLength: 'Length Filter Min',
+        maxLength: 'Length Filter Max',
+        filterInputPath: 'Length Filter Input',
+        alignTool: 'Alignment Tool',
+        mafftAlgorithm: 'MAFFT Algorithm',
+        maxiterate: 'MAFFT Maxiterate',
+        alignInputPath: 'Alignment Input Path',
+        clipkitMode: 'ClipKIT Mode',
+        clipkitGaps: 'ClipKIT Gaps',
+        clipkitInputPath: 'ClipKIT Input Path',
+        iqtreeModel: 'IQ-TREE Model',
+        iqtreeBootstrap: 'IQ-TREE Bootstrap',
+        iqtreeBootstrapType: 'IQ-TREE Bootstrap Type',
+        iqtreeThreads: 'IQ-TREE Threads',
+        iqtreeAlrtReps: 'IQ-TREE SH-aLRT Reps',
+        iqtreeSeed: 'IQ-TREE Seed',
+        iqtreeInputPath: 'IQ-TREE Input Path',
+        iqtreeAlrt: 'IQ-TREE SH-aLRT Enabled',
+        iqtreeBnni: 'IQ-TREE BNNI'
+    };
+
+    function updateSnapshotStatus(message, level = 'info') {
+        const el = document.getElementById('snapshotStatus');
+        if (!el) return;
+        const color = level === 'error' ? '#b42318' : level === 'success' ? '#027a48' : '#475467';
+        el.style.color = color;
+        el.textContent = message;
+    }
+
+    function getElementSnapshotValue(el) {
+        if (!el) return null;
+        if (el.type === 'checkbox') return !!el.checked;
+        if (el.tagName === 'SELECT' && el.multiple) {
+            return Array.from(el.selectedOptions).map((opt) => opt.value);
+        }
+        return el.value;
+    }
+
+    function setElementSnapshotValue(el, value) {
+        if (!el) return;
+        if (el.type === 'checkbox') {
+            el.checked = !!value;
+            return;
+        }
+        if (el.tagName === 'SELECT' && el.multiple) {
+            const selected = new Set(Array.isArray(value) ? value.map((v) => String(v)) : []);
+            Array.from(el.options).forEach((opt) => {
+                opt.selected = selected.has(opt.value);
+            });
+            return;
+        }
+        if (value === null || value === undefined) {
+            el.value = '';
+            return;
+        }
+        el.value = String(value);
+    }
+
+    function capturePipelineSnapshot() {
+        const values = {};
+        PIPELINE_SNAPSHOT_FIELDS.forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) values[id] = getElementSnapshotValue(el);
+        });
+        return {
+            schema: SNAPSHOT_SCHEMA,
+            version: 1,
+            saved_at: new Date().toISOString(),
+            values
+        };
+    }
+
+    function normalizeSnapshotValue(value) {
+        if (Array.isArray(value)) {
+            return value.map((item) => String(item)).sort();
+        }
+        if (value === null || value === undefined) return '';
+        if (typeof value === 'boolean') return value;
+        return String(value);
+    }
+
+    function snapshotValueToText(value) {
+        if (Array.isArray(value)) {
+            return value.length ? value.join(', ') : '(empty)';
+        }
+        if (value === '' || value === null || value === undefined) return '(empty)';
+        if (typeof value === 'boolean') return value ? 'true' : 'false';
+        const text = String(value);
+        if (text.length > 90) return `${text.slice(0, 90)}...`;
+        return text;
+    }
+
+    function escapeHtml(raw) {
+        return String(raw ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function computeSnapshotDiff(snapshot) {
+        const current = capturePipelineSnapshot().values || {};
+        const incoming = snapshot?.values || {};
+        const fieldSet = new Set([
+            ...Object.keys(current),
+            ...Object.keys(incoming)
+        ]);
+        const diff = [];
+        fieldSet.forEach((field) => {
+            const fromVal = normalizeSnapshotValue(current[field]);
+            const toVal = normalizeSnapshotValue(incoming[field]);
+            if (JSON.stringify(fromVal) !== JSON.stringify(toVal)) {
+                diff.push({
+                    field,
+                    label: SNAPSHOT_FIELD_LABELS[field] || field,
+                    from: current[field],
+                    to: incoming[field]
+                });
+            }
+        });
+        return diff.sort((a, b) => a.label.localeCompare(b.label));
+    }
+
+    function validateSnapshotStructure(snapshot) {
+        if (!snapshot || typeof snapshot !== 'object') {
+            throw new Error('快照内容为空或格式无效');
+        }
+        if (snapshot.schema && snapshot.schema !== SNAPSHOT_SCHEMA) {
+            throw new Error(`不支持的快照 schema: ${snapshot.schema}`);
+        }
+        if (!snapshot.values || typeof snapshot.values !== 'object') {
+            throw new Error('快照缺少 values 字段');
+        }
+    }
+
+    function applyPipelineSnapshot(snapshot) {
+        const values = snapshot?.values;
+        if (!values || typeof values !== 'object') {
+            throw new Error('快照缺少 values 字段');
+        }
+        Object.entries(values).forEach(([id, value]) => {
+            const el = document.getElementById(id);
+            if (el) setElementSnapshotValue(el, value);
+        });
+        if (typeof syncHmmEvalueState === 'function') {
+            syncHmmEvalueState();
+        }
+        if (typeof syncIqtreeSupportControls === 'function') {
+            syncIqtreeSupportControls();
+        }
+        if (typeof syncClipkitGapControls === 'function') {
+            syncClipkitGapControls();
+        }
+        updateHmmScientificHint();
+        updateBlastScientificHint();
+        updateClipkitScientificHint();
+        updateIqtreeScientificHint();
+    }
+
+    async function showSnapshotDiffModal(diff, sourceLabel) {
+        const summary = `${sourceLabel}: ${diff.length} 项参数将被更新。`;
+        const previewRows = diff.slice(0, 80);
+        const overflow = diff.length > previewRows.length ? diff.length - previewRows.length : 0;
+
+        const modalEl = document.getElementById('snapshotDiffModal');
+        const summaryEl = document.getElementById('snapshotDiffSummary');
+        const rowsEl = document.getElementById('snapshotDiffRows');
+        const applyBtn = document.getElementById('snapshotDiffApplyBtn');
+        const cancelBtn = document.getElementById('snapshotDiffCancelBtn');
+
+        if (!modalEl || !summaryEl || !rowsEl || !applyBtn || !cancelBtn || typeof bootstrap === 'undefined') {
+            return window.confirm(`${summary}\n是否应用？`);
+        }
+
+        summaryEl.textContent = overflow > 0 ? `${summary}（仅展示前 ${previewRows.length} 项）` : summary;
+        rowsEl.innerHTML = previewRows.map((item) => `
+            <tr>
+                <td><code>${escapeHtml(item.label)}</code></td>
+                <td class="text-muted">${escapeHtml(snapshotValueToText(item.from))}</td>
+                <td>${escapeHtml(snapshotValueToText(item.to))}</td>
+            </tr>
+        `).join('');
+        if (overflow > 0) {
+            rowsEl.innerHTML += `
+                <tr>
+                    <td colspan="3" class="text-muted">
+                        ... 还有 ${overflow} 项未展示
+                    </td>
+                </tr>
+            `;
+        }
+
+        return new Promise((resolve) => {
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            let settled = false;
+            const finish = (result) => {
+                if (settled) return;
+                settled = true;
+                resolve(result);
+            };
+            applyBtn.onclick = () => {
+                finish(true);
+                modal.hide();
+            };
+            cancelBtn.onclick = () => {
+                finish(false);
+                modal.hide();
+            };
+            modalEl.addEventListener('hidden.bs.modal', () => finish(false), { once: true });
+            modal.show();
+        });
+    }
+
+    async function confirmAndApplyPipelineSnapshot(snapshot, sourceLabel) {
+        validateSnapshotStructure(snapshot);
+        const diff = computeSnapshotDiff(snapshot);
+        if (!diff.length) {
+            updateSnapshotStatus(`${sourceLabel}: 当前参数与快照一致，无需更新。`, 'info');
+            return false;
+        }
+        const approved = await showSnapshotDiffModal(diff, sourceLabel);
+        if (!approved) {
+            updateSnapshotStatus(`${sourceLabel}: 已取消应用。`, 'info');
+            return false;
+        }
+        applyPipelineSnapshot(snapshot);
+        updateSnapshotStatus(`${sourceLabel}: 已应用 ${diff.length} 项参数更新。`, 'success');
+        return true;
+    }
+
+    function downloadPipelineSnapshot() {
+        const snapshot = capturePipelineSnapshot();
+        const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+        a.href = url;
+        a.download = `phylo_pipeline_snapshot_${ts}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        updateSnapshotStatus('参数快照已导出。', 'success');
+    }
+
+    async function importPipelineSnapshotFromFile(file) {
+        const text = await file.text();
+        let parsed = null;
+        try {
+            parsed = JSON.parse(text);
+        } catch {
+            throw new Error('JSON 解析失败');
+        }
+        await confirmAndApplyPipelineSnapshot(parsed, `导入快照 ${file.name}`);
+    }
+
+    function savePipelineSnapshotDraft() {
+        const snapshot = capturePipelineSnapshot();
+        localStorage.setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshot));
+        updateSnapshotStatus('参数草稿已保存到浏览器。', 'success');
+    }
+
+    async function loadPipelineSnapshotDraft() {
+        const raw = localStorage.getItem(SNAPSHOT_STORAGE_KEY);
+        if (!raw) {
+            updateSnapshotStatus('未找到本地草稿。', 'error');
+            return false;
+        }
+        let parsed = null;
+        try {
+            parsed = JSON.parse(raw);
+        } catch {
+            updateSnapshotStatus('本地草稿已损坏，无法解析。', 'error');
+            return false;
+        }
+        return confirmAndApplyPipelineSnapshot(parsed, '本地草稿');
+    }
+
+    function bindSnapshotControls() {
+        const exportBtn = document.getElementById('snapshotExportBtn');
+        const importBtn = document.getElementById('snapshotImportBtn');
+        const importInput = document.getElementById('snapshotImportInput');
+        const saveDraftBtn = document.getElementById('snapshotSaveDraftBtn');
+        const loadDraftBtn = document.getElementById('snapshotLoadDraftBtn');
+
+        exportBtn?.addEventListener('click', downloadPipelineSnapshot);
+        importBtn?.addEventListener('click', () => importInput?.click());
+        importInput?.addEventListener('change', async (e) => {
+            const file = e.target?.files?.[0];
+            if (!file) return;
+            try {
+                await importPipelineSnapshotFromFile(file);
+            } catch (err) {
+                updateSnapshotStatus(`导入失败: ${err.message || err}`, 'error');
+            } finally {
+                importInput.value = '';
+            }
+        });
+        saveDraftBtn?.addEventListener('click', savePipelineSnapshotDraft);
+        loadDraftBtn?.addEventListener('click', async () => {
+            try {
+                await loadPipelineSnapshotDraft();
+            } catch (err) {
+                updateSnapshotStatus(`加载草稿失败: ${err.message || err}`, 'error');
+            }
+        });
+    }
+
+    function applyHmmPreset(preset) {
+        const cutGa = document.getElementById('hmmUseCutGa');
+        const evalue = document.getElementById('hmmEvalue');
+        const domEvalue = document.getElementById('hmmDomEvalue');
+        if (!cutGa || !evalue || !domEvalue) return;
+
+        if (preset === 'strict') {
+            cutGa.checked = false;
+            evalue.value = '1e-10';
+            domEvalue.value = '';
+        } else if (preset === 'sensitive') {
+            cutGa.checked = false;
+            evalue.value = '1e-3';
+            domEvalue.value = '';
+        } else {
+            // ga
+            cutGa.checked = true;
+            evalue.value = '1e-5';
+            domEvalue.value = '';
+        }
+        syncHmmEvalueState();
+        updateHmmScientificHint();
+    }
+
+    function getPipelineBlastDbType() {
+        const dbSelect = document.getElementById('blastDbSelect');
+        if (!dbSelect) return null;
+        const option = dbSelect.options[dbSelect.selectedIndex];
+        const dbType = String(option?.dataset?.type || '').trim().toLowerCase();
+        return dbType || null;
+    }
+
+    function getPipelineRecommendedBlastProgram() {
+        const dbType = getPipelineBlastDbType();
+        if (!dbType) return null;
+        // Step 2 query comes from HMM search hits, which are protein sequences.
+        return dbType === 'nucleotide' ? 'tblastn' : dbType === 'protein' ? 'blastp' : null;
+    }
+
+    function syncIqtreeSupportControls() {
+        const alrtEnabled = document.getElementById('iqtreeAlrt')?.checked;
+        const alrtReps = document.getElementById('iqtreeAlrtReps');
+        const bootstrapValue = toFiniteNumber(val('iqtreeBootstrap'));
+        const bootstrapType = String(val('iqtreeBootstrapType') || 'ufboot').trim();
+        const bnni = document.getElementById('iqtreeBnni');
+
+        if (alrtReps) {
+            alrtReps.disabled = !alrtEnabled;
+            if (!alrtEnabled) {
+                alrtReps.title = 'Enable SH-aLRT to set replicate count';
+            } else {
+                alrtReps.title = '';
+            }
+        }
+
+        const bnniAllowed = (bootstrapValue || 0) > 0 && ['ufboot', 'both'].includes(bootstrapType);
+        if (bnni) {
+            bnni.disabled = !bnniAllowed;
+            if (!bnniAllowed) {
+                bnni.checked = false;
+                bnni.title = 'BNNI applies only when ultrafast bootstrap is enabled';
+            } else {
+                bnni.title = '';
+            }
+        }
+    }
+
+    function syncClipkitGapControls() {
+        const mode = String(val('clipkitMode') || 'kpic-gappy').trim();
+        const gapsEl = document.getElementById('clipkitGaps');
+        if (!gapsEl) return;
+        const gapsRelevant = ['gappy', 'kpic-gappy'].includes(mode);
+        gapsEl.disabled = !gapsRelevant;
+        if (!gapsRelevant) {
+            gapsEl.title = 'Gap threshold is ignored for this ClipKIT mode';
+        } else {
+            gapsEl.title = '';
+        }
+    }
+
+    function applyPhyloBlastPreset(preset) {
+        const pident = document.getElementById('blastPident');
+        const qcovs = document.getElementById('blastQcovs');
+        const evalue = document.getElementById('blastEvalue');
+        const maxTargets = document.getElementById('blastMaxTargets');
+        const strictGold = document.getElementById('strictGoldMatch');
+        if (!pident || !qcovs || !evalue || !maxTargets || !strictGold) return;
+
+        if (preset === 'strict') {
+            pident.value = '50';
+            qcovs.value = '70';
+            evalue.value = '1e-10';
+            maxTargets.value = '20';
+            strictGold.checked = true;
+        } else if (preset === 'sensitive') {
+            pident.value = '20';
+            qcovs.value = '30';
+            evalue.value = '1e-3';
+            maxTargets.value = '200';
+            strictGold.checked = false;
+        } else {
+            // balanced
+            pident.value = '30';
+            qcovs.value = '50';
+            evalue.value = '1e-5';
+            maxTargets.value = '5';
+            strictGold.checked = true;
+        }
+        updateBlastScientificHint();
+    }
+
+    function applyIqtreePreset(preset) {
+        const bootstrap = document.getElementById('iqtreeBootstrap');
+        const bootstrapType = document.getElementById('iqtreeBootstrapType');
+        const alrt = document.getElementById('iqtreeAlrt');
+        const alrtReps = document.getElementById('iqtreeAlrtReps');
+        const bnni = document.getElementById('iqtreeBnni');
+        const threads = document.getElementById('iqtreeThreads');
+        if (!bootstrap || !bootstrapType || !alrt || !alrtReps || !bnni || !threads) return;
+
+        if (preset === 'preview') {
+            bootstrap.value = '200';
+            bootstrapType.value = 'boot';
+            alrt.checked = false;
+            alrtReps.value = '1000';
+            bnni.checked = false;
+            threads.value = 'AUTO';
+        } else if (preset === 'robust') {
+            bootstrap.value = '2000';
+            bootstrapType.value = 'both';
+            alrt.checked = true;
+            alrtReps.value = '1000';
+            bnni.checked = true;
+            threads.value = 'AUTO';
+        } else {
+            // publication
+            bootstrap.value = '1000';
+            bootstrapType.value = 'ufboot';
+            alrt.checked = true;
+            alrtReps.value = '1000';
+            bnni.checked = true;
+            threads.value = 'AUTO';
+        }
+        updateIqtreeScientificHint();
+    }
+
+    function validateClipkitFormBeforeSubmit() {
+        const mode = String(val('clipkitMode') || 'kpic-gappy').trim();
+        if (!['kpic', 'kpic-gappy', 'kpi', 'gappy', 'smart-gap'].includes(mode)) {
+            return { ok: false, error: 'ClipKIT 模式无效。' };
+        }
+        if (!['kpic', 'kpi', 'smart-gap'].includes(mode) && val('clipkitGaps')) {
+            const gapsVal = toFiniteNumber(val('clipkitGaps'));
+            if (gapsVal === null || gapsVal < 0 || gapsVal > 1) {
+                return { ok: false, error: 'Gap 阈值必须在 0-1 之间。' };
+            }
+        }
+        return { ok: true };
+    }
+
+    function updateHmmScientificHint() {
+        const hints = [];
+        const useCutGa = document.getElementById('hmmUseCutGa')?.checked;
+        const evalueRaw = val('hmmEvalue');
+        const domEvalRaw = val('hmmDomEvalue');
+        const threads = toFiniteNumber(val('hmmThreads'));
+        const hmmCount = Array.from(document.getElementById('hmmProfiles')?.selectedOptions || []).length;
+
+        if (!hmmCount) {
+            hints.push({ level: 'warning', text: '请至少选择一个 HMM profile。' });
+        }
+        if (useCutGa) {
+            hints.push({ level: 'info', text: '已启用 --cut_ga：优先使用 profile 内建阈值，通常更稳健。' });
+            if (domEvalRaw) {
+                hints.push({ level: 'warning', text: '启用 --cut_ga 时，Domain E-value 将被忽略，因为 HMMER 会用 profile cutoff 接管全部阈值。' });
+            }
+        } else {
+            const evalCheck = validatePositiveScientificNumber(evalueRaw, 'HMM E-value');
+            if (!evalCheck.ok) {
+                hints.push({ level: 'danger', text: evalCheck.error });
+            } else if (evalCheck.value <= 1e-10) {
+                hints.push({ level: 'info', text: '当前 sequence E-value 很严格，更适合高特异性筛选，但可能漏掉远缘同源。' });
+            } else if (evalCheck.value > 1e-3) {
+                hints.push({ level: 'warning', text: 'HMM E-value > 1e-3 偏宽松，可能引入更多假阳性。' });
+            }
+        }
+        if (domEvalRaw) {
+            const domCheck = validatePositiveScientificNumber(domEvalRaw, 'Domain E-value', true);
+            if (!domCheck.ok) {
+                hints.push({ level: 'danger', text: domCheck.error });
+            } else {
+                const evalCheck = validatePositiveScientificNumber(evalueRaw, 'HMM E-value');
+                if (evalCheck.ok && domCheck.value > evalCheck.value) {
+                    hints.push({ level: 'warning', text: 'Domain E-value 比 sequence E-value 更宽松，domain-level 输出会更容易保留边缘命中。' });
+                } else if (evalCheck.ok && domCheck.value < evalCheck.value) {
+                    hints.push({ level: 'info', text: 'Domain E-value 比 sequence E-value 更严格，部分序列命中可能只保留较少结构域。' });
+                }
+            }
+        } else if (!useCutGa) {
+            hints.push({ level: 'info', text: '未填写 Domain E-value：本应用会自动使用与 sequence E-value 相同的阈值，保持自定义筛选语义一致。' });
+        }
+        if (hmmCount > 1) {
+            hints.push({ level: 'info', text: '同时使用多个 HMM profile 时，结果更像候选家族并集；后续仍需结合 BLAST 和系统树来拆分旁系同源。' });
+        }
+        if (threads !== null && threads > 128) {
+            hints.push({ level: 'warning', text: '线程数很高，可能导致系统抢占和不稳定。' });
+        }
+        renderScientificHints('hmmScientificHint', hints);
+        return hints;
+    }
+
+    function updateClipkitScientificHint() {
+        syncClipkitGapControls();
+        const hints = [];
+        const mode = String(val('clipkitMode') || 'kpic-gappy').trim();
+        const gaps = toFiniteNumber(val('clipkitGaps'));
+
+        if (!['kpic', 'kpic-gappy', 'kpi', 'gappy', 'smart-gap'].includes(mode)) {
+            hints.push({ level: 'danger', text: 'ClipKIT mode 无效。' });
+        }
+        if (gaps !== null && (gaps < 0 || gaps > 1)) {
+            hints.push({ level: 'danger', text: 'Gap 阈值必须在 0-1 之间。' });
+        }
+        if (['kpic', 'kpi', 'smart-gap'].includes(mode)) {
+            hints.push({ level: 'info', text: `当前模式 ${mode} 不使用手动 gap threshold；ClipKIT 会忽略该参数。` });
+        } else if (gaps !== null) {
+            if (gaps < 0.5) {
+                hints.push({ level: 'warning', text: 'Gap 阈值 < 0.5 会非常激进，可能移除大量列。' });
+            } else if (gaps > 0.95) {
+                hints.push({ level: 'info', text: 'Gap 阈值 > 0.95 很宽松，更适合只去掉极端缺口列。' });
+            }
+        }
+
+        renderScientificHints('clipkitScientificHint', hints);
+        return hints;
+    }
+
+    function updateBlastScientificHint() {
+        const hints = [];
+        const pident = toFiniteNumber(val('blastPident'));
+        const qcovs = toFiniteNumber(val('blastQcovs'));
+        const evalueRaw = val('blastEvalue');
+        const blastProgram = String(val('blastProgram') || '').trim();
+        const dbType = getPipelineBlastDbType();
+        const recommendedProgram = getPipelineRecommendedBlastProgram();
+        const strictGold = document.getElementById('strictGoldMatch')?.checked;
+        const maxTargets = toFiniteNumber(val('blastMaxTargets'));
+
+        if (pident === null || pident < 0 || pident > 100) {
+            hints.push({ level: 'danger', text: 'Min Identity 必须在 0-100 之间。' });
+        }
+        if (qcovs === null || qcovs < 0 || qcovs > 100) {
+            hints.push({ level: 'danger', text: 'Min Query Coverage 必须在 0-100 之间。' });
+        }
+        if (pident !== null && qcovs !== null) {
+            if (pident < 20 || qcovs < 20) {
+                hints.push({ level: 'warning', text: '当前过滤阈值非常宽松，建议结合更高 identity/qcovs 约束。' });
+            } else if (pident >= 30 && qcovs >= 50) {
+                hints.push({ level: 'info', text: 'Identity + Q-Covs 组合处于常见筛选区间。' });
+            }
+        }
+        if (evalueRaw) {
+            const evalCheck = validatePositiveScientificNumber(evalueRaw, 'BLAST E-value', true);
+            if (!evalCheck.ok) {
+                hints.push({ level: 'danger', text: evalCheck.error });
+            } else if (evalCheck.value > 1e-2) {
+                hints.push({ level: 'warning', text: 'BLAST E-value > 1e-2 偏宽松，建议仅用于探索性召回。' });
+            }
+        }
+        if (!strictGold) {
+            hints.push({ level: 'warning', text: '已关闭 strict gold match，假阳性风险会明显上升。' });
+        }
+        if (recommendedProgram && !blastProgram) {
+            hints.push({ level: 'info', text: `当前 Step2 查询来自 HMM 蛋白命中，Auto-detect 将优先使用 ${recommendedProgram} 对 ${dbType} 数据库进行搜索。` });
+        }
+        if (recommendedProgram && blastProgram && blastProgram !== recommendedProgram) {
+            hints.push({ level: 'danger', text: `当前数据库类型为 ${dbType}，HMM 输出为蛋白序列，推荐程序是 ${recommendedProgram}；${blastProgram} 与当前场景不匹配。` });
+        }
+        if (maxTargets !== null && maxTargets > 100 && (pident ?? 0) < 30 && (qcovs ?? 0) < 50) {
+            hints.push({ level: 'warning', text: '低 identity/qcovs 且 max target 很高时，会显著放大误召回和后续人工筛选成本。' });
+        }
+        renderScientificHints('blastScientificHint', hints);
+        return hints;
+    }
+
+    function updateIqtreeScientificHint() {
+        syncIqtreeSupportControls();
+        const hints = [];
+        const bootstrap = toFiniteNumber(val('iqtreeBootstrap'));
+        const bootstrapType = String(val('iqtreeBootstrapType') || 'ufboot').trim();
+        const alrtEnabled = document.getElementById('iqtreeAlrt')?.checked;
+        const alrtReps = toFiniteNumber(val('iqtreeAlrtReps'));
+        const bnni = document.getElementById('iqtreeBnni')?.checked;
+        const model = String(val('iqtreeModel') || '').trim();
+        const threads = String(val('iqtreeThreads') || '').trim().toUpperCase();
+
+        if (!model) {
+            hints.push({ level: 'danger', text: 'IQ-TREE 模型不能为空（推荐 MFP 自动选择）。' });
+        }
+        if (bootstrap === null || bootstrap < 0) {
+            hints.push({ level: 'danger', text: 'Bootstrap 必须是非负整数。' });
+        } else if (!Number.isInteger(bootstrap)) {
+            hints.push({ level: 'danger', text: 'Bootstrap 必须是整数。' });
+        } else if (bootstrapType !== 'boot' && bootstrap > 0 && bootstrap < 1000) {
+            hints.push({ level: 'danger', text: 'UFBoot 至少应使用 1000 次重复；若只做快速预览，可切换到 Standard Bootstrap。' });
+        } else if (bootstrapType === 'boot' && bootstrap > 0 && bootstrap < 100) {
+            hints.push({ level: 'warning', text: 'Standard bootstrap < 100 仅适合快速预览，不建议用于稳定结论。' });
+        } else if (bootstrap >= 100 && bootstrap < 1000) {
+            hints.push({ level: 'info', text: 'Bootstrap 100-999 可用于探索，发表级结果通常建议 >= 1000。' });
+        }
+
+        if (['ufboot', 'both'].includes(bootstrapType) && bnni === false && (bootstrap || 0) > 0) {
+            hints.push({ level: 'warning', text: 'UFBoot 且关闭 -bnni 可能增加支持值偏差，通常建议保持 -bnni 开启。' });
+        } else if (bootstrapType === 'boot' && (bootstrap || 0) > 0) {
+            hints.push({ level: 'info', text: 'Standard bootstrap 不使用 -bnni；若希望使用 -bnni，请选择 UFBoot 或 Both。' });
+        }
+
+        if (alrtEnabled) {
+            if (alrtReps === null || !Number.isInteger(alrtReps)) {
+                hints.push({ level: 'danger', text: '启用 SH-aLRT 时重复数必须是整数。' });
+            } else if (alrtReps < 1000) {
+                hints.push({ level: 'danger', text: 'SH-aLRT 至少应使用 1000 次重复。' });
+            }
+        } else if ((bootstrap || 0) >= 1000) {
+            hints.push({ level: 'info', text: '可考虑联合 SH-aLRT + bootstrap 进行更稳健的支持度解释。' });
+        }
+
+        if (threads && threads !== 'AUTO') {
+            const threadsNum = toFiniteNumber(threads);
+            if (threadsNum === null || threadsNum < 1) {
+                hints.push({ level: 'danger', text: 'Threads 请输入 AUTO 或正整数。' });
+            } else if (threadsNum > 128) {
+                hints.push({ level: 'warning', text: 'Threads 设置过高，可能导致资源竞争。' });
+            }
+        }
+
+        renderScientificHints('iqtreeScientificHint', hints);
+        return hints;
+    }
+
+    function validateHmmFormBeforeSubmit() {
+        const hmmCount = Array.from(document.getElementById('hmmProfiles')?.selectedOptions || []).length;
+        if (!hmmCount) return { ok: false, error: '请至少选择一个 HMM profile。' };
+
+        const useCutGa = document.getElementById('hmmUseCutGa')?.checked;
+        if (!useCutGa) {
+            const evalCheck = validatePositiveScientificNumber(val('hmmEvalue'), 'HMM E-value');
+            if (!evalCheck.ok) return evalCheck;
+        }
+        if (val('hmmDomEvalue')) {
+            const domCheck = validatePositiveScientificNumber(val('hmmDomEvalue'), 'Domain E-value', true);
+            if (!domCheck.ok) return domCheck;
+        }
+        if (val('hmmThreads')) {
+            const threadCheck = validatePositiveInteger(val('hmmThreads'), 'HMM 线程数', true);
+            if (!threadCheck.ok) return threadCheck;
+        }
+        return { ok: true };
+    }
+
+    function validateBlastFormBeforeSubmit() {
+        const pident = toFiniteNumber(val('blastPident'));
+        const qcovs = toFiniteNumber(val('blastQcovs'));
+        const dbType = getPipelineBlastDbType();
+        const blastProgram = String(val('blastProgram') || '').trim();
+        const recommendedProgram = getPipelineRecommendedBlastProgram();
+        if (pident === null || pident < 0 || pident > 100) {
+            return { ok: false, error: 'Min Identity 必须在 0-100 之间。' };
+        }
+        if (qcovs === null || qcovs < 0 || qcovs > 100) {
+            return { ok: false, error: 'Min Query Coverage 必须在 0-100 之间。' };
+        }
+        if (val('blastEvalue')) {
+            const evalCheck = validatePositiveScientificNumber(val('blastEvalue'), 'BLAST E-value', true);
+            if (!evalCheck.ok) return evalCheck;
+        }
+        const maxTargetCheck = validatePositiveInteger(val('blastMaxTargets'), 'Max Target Seqs');
+        if (!maxTargetCheck.ok) return maxTargetCheck;
+        const threadsCheck = validatePositiveInteger(val('blastThreads'), 'BLAST 线程数');
+        if (!threadsCheck.ok) return threadsCheck;
+        if (recommendedProgram && blastProgram && blastProgram !== recommendedProgram) {
+            return { ok: false, error: `当前数据库类型为 ${dbType}，Step2 查询为蛋白序列，应使用 ${recommendedProgram}。` };
+        }
+        return { ok: true };
+    }
+
+    function validateIqtreeFormBeforeSubmit() {
+        const model = String(val('iqtreeModel') || '').trim();
+        const bootstrap = toFiniteNumber(val('iqtreeBootstrap'));
+        const bootstrapType = String(val('iqtreeBootstrapType') || 'ufboot').trim();
+        const threadsRaw = String(val('iqtreeThreads') || '').trim();
+        if (!model) return { ok: false, error: 'Substitution Model 不能为空。' };
+        if (bootstrap === null || bootstrap < 0 || !Number.isInteger(bootstrap)) return { ok: false, error: 'Bootstrap 必须是非负整数。' };
+        if (bootstrap > 0 && bootstrapType !== 'boot' && bootstrap < 1000) {
+            return { ok: false, error: 'UFBoot 至少需要 1000 次重复；快速预览请改用 Standard Bootstrap。' };
+        }
+        if (threadsRaw && threadsRaw.toUpperCase() !== 'AUTO') {
+            const t = toFiniteNumber(threadsRaw);
+            if (t === null || t < 1 || !Number.isInteger(t)) return { ok: false, error: 'Threads 必须是 AUTO 或正整数。' };
+        }
+        if (document.getElementById('iqtreeAlrt')?.checked) {
+            const a = toFiniteNumber(val('iqtreeAlrtReps'));
+            if (a === null || a < 1000 || !Number.isInteger(a)) return { ok: false, error: '启用 SH-aLRT 时重复数必须是整数且 >= 1000。' };
+        }
+        return { ok: true };
+    }
+
+    [
+        'hmmUseCutGa', 'hmmEvalue', 'hmmDomEvalue', 'hmmThreads', 'hmmProfiles',
+        'blastPident', 'blastQcovs', 'blastEvalue', 'blastProgram', 'blastDbSelect', 'blastMaxTargets', 'strictGoldMatch',
+        'clipkitMode', 'clipkitGaps',
+        'iqtreeModel', 'iqtreeBootstrap', 'iqtreeBootstrapType', 'iqtreeAlrt', 'iqtreeAlrtReps', 'iqtreeBnni', 'iqtreeThreads'
+    ].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('input', () => {
+            updateHmmScientificHint();
+            updateBlastScientificHint();
+            updateClipkitScientificHint();
+            updateIqtreeScientificHint();
+        });
+        el.addEventListener('change', () => {
+            updateHmmScientificHint();
+            updateBlastScientificHint();
+            updateClipkitScientificHint();
+            updateIqtreeScientificHint();
+        });
+    });
+    document.querySelectorAll('.hmm-preset-btn').forEach((btn) => {
+        btn.addEventListener('click', () => applyHmmPreset(btn.dataset.preset || 'ga'));
+    });
+    document.querySelectorAll('.phylo-blast-preset-btn').forEach((btn) => {
+        btn.addEventListener('click', () => applyPhyloBlastPreset(btn.dataset.preset || 'balanced'));
+    });
+    document.querySelectorAll('.iqtree-preset-btn').forEach((btn) => {
+        btn.addEventListener('click', () => applyIqtreePreset(btn.dataset.preset || 'publication'));
+    });
+    bindSnapshotControls();
+    const savedDraftRaw = localStorage.getItem(SNAPSHOT_STORAGE_KEY);
+    if (savedDraftRaw) {
+        try {
+            const savedDraft = JSON.parse(savedDraftRaw);
+            const ts = savedDraft?.saved_at ? new Date(savedDraft.saved_at).toLocaleString() : 'unknown';
+            updateSnapshotStatus(`检测到本地草稿（${ts}）。可点击 "Load Draft" 加载。`);
+        } catch {
+            updateSnapshotStatus('检测到本地草稿但格式异常，建议重新保存。', 'error');
+        }
+    } else {
+        updateSnapshotStatus('暂无本地草稿。可用 Save Draft 保存当前参数。');
+    }
+    updateHmmScientificHint();
+    updateBlastScientificHint();
+    updateClipkitScientificHint();
+    updateIqtreeScientificHint();
+
     // Step 0: Clean headers
     document.getElementById('cleanForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const btn = document.querySelector('#cleanForm button[type="submit"]');
+        setInterpretation('cleanInterpretation', []);
         const fd = getInputForStep('cleanFile', 'cleanPath');
         if (!fd) {
-            alert('请上传 FASTA 或提供路径');
+            notifyPipeline('warning', '请上传 FASTA 或提供路径');
             return;
         }
         try {
@@ -648,12 +1932,24 @@
                     <p class="text-success"><i class="bi bi-check-circle"></i> 清理完成, 共 ${result.count} 条序列</p>
                     <a class="btn btn-sm btn-outline-primary" href="${downloadLink(result.output_file)}">下载清理后的 FASTA</a>
                 `;
+                setInterpretation('cleanInterpretation', [
+                    `Header cleaning produced ${result.count} sequence records with safer IDs for downstream CLI tools and tree labels.`,
+                    'This step changes identifiers, not biological content. Use it to reduce parsing failures and label-matching issues in later steps.'
+                ]);
                 document.getElementById('result0').classList.add('show');
+                // Scroll to result
+                document.getElementById('result0').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                // Auto-advance button now passes the result for validation
+                const nextBtn = document.querySelector('#result0 button.btn-success');
+                if (nextBtn) {
+                    nextBtn.onclick = () => nextStep(1, result);
+                }
             } else {
-                alert('清理失败: ' + result.error);
+                notifyPipeline('danger', 'Step 0 (Header Clean) failed: ' + result.error);
             }
         } catch (err) {
-            alert('错误: ' + err.message);
+            notifyPipeline('danger', 'Step 0 (Header Clean) error: ' + err.message);
         } finally {
             setButtonBusy(btn, false);
         }
@@ -662,9 +1958,20 @@
     // Toggle HMM e-value input when using cut_ga
     const hmmCutGaChk = document.getElementById('hmmUseCutGa');
     const hmmEvalueInput = document.getElementById('hmmEvalue');
+    const hmmDomEvalueInput = document.getElementById('hmmDomEvalue');
+    const hmmDomEvalueHint = document.getElementById('hmmDomEvalueHint');
     function syncHmmEvalueState() {
         if (!hmmCutGaChk || !hmmEvalueInput) return;
-        hmmEvalueInput.disabled = hmmCutGaChk.checked;
+        const useCutGa = hmmCutGaChk.checked;
+        hmmEvalueInput.disabled = useCutGa;
+        if (hmmDomEvalueInput) {
+            hmmDomEvalueInput.disabled = useCutGa;
+        }
+        if (hmmDomEvalueHint) {
+            hmmDomEvalueHint.textContent = useCutGa
+                ? 'Disabled because --cut_ga sets all HMMER thresholding.'
+                : 'Only used when custom HMMER E-value thresholding is enabled. Blank means use the same threshold as sequence E-value in this app.';
+        }
     }
     if (hmmCutGaChk) {
         hmmCutGaChk.addEventListener('change', syncHmmEvalueState);
@@ -675,13 +1982,19 @@
     document.getElementById('hmmForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const btn = document.querySelector('#hmmForm button[type="submit"]');
+        setInterpretation('hmmInterpretation', []);
+        const hmmValidation = validateHmmFormBeforeSubmit();
+        if (!hmmValidation.ok) {
+            notifyPipeline('warning', hmmValidation.error || 'HMM 参数无效');
+            return;
+        }
         let fd = getInputForStep('hmmSeqFile', 'hmmExistingPath', pipelineData.cleaned);
         if (!fd && pipelineData.cleaned) {
             fd = new FormData();
             fd.append('file_path', pipelineData.cleaned);
         }
         if (!fd) {
-            alert('请上传序列或填写路径');
+            notifyPipeline('warning', '请上传序列或填写路径');
             return;
         }
         const profiles = Array.from(document.getElementById('hmmProfiles').selectedOptions)
@@ -694,7 +2007,7 @@
         }
         const domEval = document.getElementById('hmmDomEvalue').value;
         const hmmThreads = document.getElementById('hmmThreads').value;
-        if (domEval) fd.append('dom_evalue', domEval);
+        if (domEval && !useCutGa) fd.append('dom_evalue', domEval);
         if (hmmThreads) fd.append('threads', hmmThreads);
 
         try {
@@ -702,23 +2015,50 @@
             const res = await fetch('/phylo/hmm-search', { method: 'POST', body: fd });
             const result = await parseJsonResponse(res);
             if (result.success) {
+                if (Array.isArray(result.warnings) && result.warnings.length) {
+                    notifyPipeline('warning', result.warnings.join(' '), { duration: 7000 });
+                }
                 const outputFiles = result.output_files || {};
                 pipelineData.hmmOutput = outputFiles.hits || outputFiles.hits_fasta || outputFiles.fasta || outputFiles.main || null;
                 const blastPathInput = document.getElementById('blastQueryPath');
                 if (blastPathInput && pipelineData.hmmOutput) {
                     blastPathInput.value = pipelineData.hmmOutput;
                 }
+                const thresholdSettings = result.threshold_settings || {
+                    cut_ga: useCutGa,
+                    sequence_evalue: useCutGa ? null : document.getElementById('hmmEvalue').value,
+                    domain_evalue: useCutGa ? null : (document.getElementById('hmmDomEvalue').value || document.getElementById('hmmEvalue').value)
+                };
+                const thresholdSummary = thresholdSettings.cut_ga
+                    ? 'Thresholds: profile-specific --cut_ga'
+                    : `Thresholds: sequence E <= ${thresholdSettings.sequence_evalue}; domain E <= ${thresholdSettings.domain_evalue}`;
                 document.getElementById('hmmResults').innerHTML = `
                     <p class="text-success"><i class="bi bi-check-circle"></i> 找到 ${result.hit_count} 条匹配</p>
+                    <p class="small text-muted mb-2">${thresholdSummary}${result.profile_count ? ` | profiles: ${result.profile_count}` : ''}</p>
                     ${pipelineData.hmmOutput ? `<a class="btn btn-sm btn-outline-primary" href="${downloadLink(pipelineData.hmmOutput)}">下载匹配序列</a>` : ''}
                     ${renderCommand(result.command || (result.commands ? result.commands[0] : ''))}
                 `;
+                setInterpretation(
+                    'hmmInterpretation',
+                    buildHmmInterpretationItems(
+                        result.hit_count,
+                        thresholdSettings,
+                        Array.isArray(result.warnings) ? result.warnings.length : 0,
+                        Number(result.profile_count || profiles.length || 1)
+                    )
+                );
                 document.getElementById('result1').classList.add('show');
+                document.getElementById('result1').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                const nextBtn = document.querySelector('#result1 button.btn-success');
+                if (nextBtn) {
+                    nextBtn.onclick = () => nextStep(2, result);
+                }
             } else {
-                alert('HMM 搜索失败: ' + (result.error || result.message));
+                notifyPipeline('danger', 'Step 1 (HMM Search) failed: ' + (result.error || result.message));
             }
         } catch (err) {
-            alert('错误: ' + err.message);
+            notifyPipeline('danger', 'Step 1 (HMM Search) error: ' + err.message);
         } finally {
             setButtonBusy(btn, false);
         }
@@ -728,25 +2068,31 @@
     document.getElementById('blastForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const btn = document.querySelector('#blastForm button[type="submit"]');
+        setInterpretation('pipelineBlastInterpretation', []);
+        const blastValidation = validateBlastFormBeforeSubmit();
+        if (!blastValidation.ok) {
+            notifyPipeline('warning', blastValidation.error || 'BLAST 参数无效');
+            return;
+        }
         let fd = getInputForStep('blastQueryFile', 'blastQueryPath', pipelineData.hmmOutput);
         if (!fd && pipelineData.hmmOutput) {
             fd = new FormData();
             fd.append('file_path', pipelineData.hmmOutput);
         }
         if (!fd) {
-            alert('请提供查询序列文件或路径');
+            notifyPipeline('warning', '请提供查询序列文件或路径');
             return;
         }
 
         // 使用 Gold List + BLAST 过滤一步完成（原逻辑）
         const goldList = val('goldListSelect');
         if (!goldList) {
-            alert('请选择 Gold Standard List');
+            notifyPipeline('warning', '请选择 Gold Standard List');
             return;
         }
         const dbPath = val('blastDbSelect');
         if (!dbPath) {
-            alert('请选择 BLAST 数据库');
+            notifyPipeline('warning', '请选择 BLAST 数据库');
             return;
         }
 
@@ -757,6 +2103,8 @@
         fd.append('blast_evalue', val('blastEvalue'));
         fd.append('blast_max_target_seqs', val('blastMaxTargets'));
         fd.append('blast_threads', val('blastThreads'));
+        fd.append('blast_program', val('blastProgram'));
+        fd.append('strict_gold_match', document.getElementById('strictGoldMatch').checked ? 'true' : 'false');
 
         try {
             setButtonBusy(btn, true, 'BLAST 运行中...');
@@ -784,12 +2132,27 @@
                     ${stats.log_file ? `<a class="btn btn-sm btn-outline-secondary ms-2" href="${downloadLink(stats.log_file)}">下载过滤日志</a>` : ''}
                     ${renderCommand(result.command)}
                 `;
+                setInterpretation(
+                    'pipelineBlastInterpretation',
+                    buildBlastFilterInterpretationItems(
+                        stats,
+                        val('blastPident'),
+                        val('blastQcovs'),
+                        document.getElementById('strictGoldMatch')?.checked
+                    )
+                );
                 document.getElementById('result2').classList.add('show');
+                document.getElementById('result2').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                const nextBtn = document.querySelector('#result2 button.btn-success');
+                if (nextBtn) {
+                    nextBtn.onclick = () => nextStep(3, result);
+                }
             } else {
-                alert('BLAST 过滤失败: ' + result.error);
+                notifyPipeline('danger', 'Step 2 (BLAST Filter) failed: ' + result.error);
             }
         } catch (err) {
-            alert('错误: ' + err.message);
+            notifyPipeline('danger', 'Step 2 (BLAST Filter) error: ' + err.message);
         } finally {
             setButtonBusy(btn, false);
         }
@@ -800,7 +2163,7 @@
         const btn = document.getElementById('lengthStatsBtn');
         const fd = getInputForStep('filterFile', 'filterInputPath', pipelineData.blastFiltered || pipelineData.blastOutput);
         if (!fd) {
-            alert('请提供 FASTA 路径或先运行 BLAST');
+            notifyPipeline('warning', '请提供 FASTA 路径或先运行 BLAST');
             return;
         }
         try {
@@ -817,10 +2180,10 @@
                         序列数: ${s.count ?? 'N/A'} | 最小: ${s.min ?? 'N/A'} | 最大: ${s.max ?? 'N/A'} | 平均: ${meanVal} | 中位数: ${medVal} | 标准差: ${sdVal}
                     </div>`;
             } else {
-                alert('长度统计失败: ' + (result.error || result.message));
+                notifyPipeline('danger', '长度统计失败: ' + (result.error || result.message));
             }
         } catch (err) {
-            alert('错误: ' + err.message);
+            notifyPipeline('danger', '错误: ' + err.message);
         } finally {
             setButtonBusy(btn, false);
         }
@@ -828,10 +2191,11 @@
 
     document.getElementById('filterForm').addEventListener('submit', async (e) => {
         e.preventDefault();
+        setInterpretation('lengthFilterInterpretation', []);
         // Use BLAST filter output if available, otherwise fall back to BLAST output
         const fd = getInputForStep('filterFile', 'filterInputPath', pipelineData.blastFiltered || pipelineData.blastOutput);
         if (!fd) {
-            alert('请提供 FASTA 路径或先运行 BLAST');
+            notifyPipeline('warning', '请提供 FASTA 路径或先运行 BLAST');
             return;
         }
         fd.append('min_length', document.getElementById('minLength').value);
@@ -855,7 +2219,7 @@
                     <p class="text-success"><i class="bi bi-check-circle"></i> 长度过滤完成</p>
                     <div class="alert alert-info mt-2">
                         <strong>--- Length Filter Summary ---</strong><br>
-                        阈值: 移除序列 < ${stats.threshold} aa<br>
+                        阈值: ${stats.max_length ? `保留 ${stats.threshold}-${stats.max_length} aa` : `移除序列 < ${stats.threshold} aa`}<br>
                         输入总数: ${stats.total_in || result.kept + result.removed}<br>
                         保留序列: <span class="text-success">${result.kept}</span><br>
                         删除序列: <span class="text-danger">${result.removed}</span>
@@ -881,12 +2245,19 @@
                 `;
                 
                 document.getElementById('filterResults').innerHTML = statsHtml;
+                setInterpretation('lengthFilterInterpretation', buildLengthFilterInterpretationItems(result, stats));
                 document.getElementById('result3').classList.add('show');
+                document.getElementById('result3').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                const nextBtn = document.querySelector('#result3 button.btn-success');
+                if (nextBtn) {
+                    nextBtn.onclick = () => nextStep(4, result);
+                }
             } else {
-                alert('过滤失败: ' + result.error);
+                notifyPipeline('danger', 'Step 3 (Length Filter) failed: ' + result.error);
             }
         } catch (err) {
-            alert('错误: ' + err.message);
+            notifyPipeline('danger', 'Step 3 (Length Filter) error: ' + err.message);
         } finally {
             const btn = document.querySelector('#filterForm button[type="submit"]');
             setButtonBusy(btn, false);
@@ -897,9 +2268,10 @@
     document.getElementById('alignForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const btn = document.querySelector('#alignForm button[type="submit"]');
+        setInterpretation('pipelineAlignmentInterpretation', []);
         const fd = getInputForStep('alignFileInput', 'alignInputPath', pipelineData.filteredSeqs);
         if (!fd) {
-            alert('请提供输入 FASTA');
+            notifyPipeline('warning', '请提供输入 FASTA');
             return;
         }
         fd.append('tool', document.getElementById('alignTool').value);
@@ -912,6 +2284,9 @@
             const res = await fetch('/alignment/align-multi', { method: 'POST', body: fd });
             const result = await parseJsonResponse(res);
             if (result.success) {
+                if (Array.isArray(result.warnings) && result.warnings.length) {
+                    notifyPipeline('warning', result.warnings.join(' '), { duration: 7000 });
+                }
                 pipelineData.alignment = result.output_file;
                 const clipkitInput = document.getElementById('clipkitInputPath');
                 const iqtreeInput = document.getElementById('iqtreeInputPath');
@@ -923,12 +2298,19 @@
                     <a class="btn btn-sm btn-outline-primary" href="${downloadLink(result.output_file)}">Download Alignment</a>
                     ${renderCommand(result.command)}
                 `;
+                setInterpretation('pipelineAlignmentInterpretation', buildAlignmentInterpretationItems(result.stats || {}));
                 document.getElementById('result4').classList.add('show');
+                document.getElementById('result4').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                const nextBtn = document.querySelector('#result4 button.btn-success');
+                if (nextBtn) {
+                    nextBtn.onclick = () => nextStep(5, result);
+                }
             } else {
-                alert('Alignment failed: ' + (result.error || 'Unknown error'));
+                notifyPipeline('danger', 'Step 4 (Alignment) failed: ' + (result.error || 'Unknown error'));
             }
         } catch (err) {
-            alert('错误: ' + err.message);
+            notifyPipeline('danger', 'Step 4 (Alignment) error: ' + err.message);
         } finally {
             setButtonBusy(btn, false);
         }
@@ -938,7 +2320,7 @@
     async function suggestClipKitMode() {
         const fd = getInputForStep('clipkitFileInput', 'clipkitInputPath', pipelineData.alignment);
         if (!fd) {
-            alert('Please provide an alignment file first');
+            notifyPipeline('warning', 'Please provide an alignment file first');
             return;
         }
         try {
@@ -946,29 +2328,40 @@
             const result = await parseJsonResponse(res);
             if (result.success) {
                 document.getElementById('clipkitMode').value = result.suggested_mode;
-                alert('推荐模式: ' + result.suggested_mode + '\n原因: ' + result.reason);
+                notifyPipeline('info', `推荐模式: ${result.suggested_mode} | 原因: ${result.reason}`, { duration: 7000 });
             }
         } catch (err) {
-            alert('错误: ' + err.message);
+            notifyPipeline('danger', '错误: ' + err.message);
         }
     }
 
     document.getElementById('clipkitForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const btn = document.querySelector('#clipkitForm button[type="submit"]');
+        setInterpretation('clipkitInterpretation', []);
+        const clipkitValidation = validateClipkitFormBeforeSubmit();
+        if (!clipkitValidation.ok) {
+            notifyPipeline('warning', clipkitValidation.error || 'ClipKIT 参数无效');
+            return;
+        }
         const fd = getInputForStep('clipkitFileInput', 'clipkitInputPath', pipelineData.alignment);
         if (!fd) {
-            alert('Please provide an alignment file');
+            notifyPipeline('warning', 'Please provide an alignment file');
             return;
         }
         fd.append('mode', document.getElementById('clipkitMode').value);
-        fd.append('gaps', document.getElementById('clipkitGaps').value);
+        if (!document.getElementById('clipkitGaps').disabled) {
+            fd.append('gaps', document.getElementById('clipkitGaps').value);
+        }
 
         try {
             setButtonBusy(btn, true, 'ClipKIT 运行中...');
             const res = await fetch('/phylo/clipkit-trim', { method: 'POST', body: fd });
             const result = await parseJsonResponse(res);
             if (result.success) {
+                if (Array.isArray(result.warnings) && result.warnings.length) {
+                    notifyPipeline('warning', result.warnings.join(' '), { duration: 7000 });
+                }
                 pipelineData.trimmedAlignment = result.output_file;
                 pipelineData.clipkitLog = result.log_file;
                 const iqtreeInput = document.getElementById('iqtreeInputPath');
@@ -980,12 +2373,19 @@
                     <button class="btn btn-sm btn-info" onclick="checkSites()">检查特定位点</button>
                     ${renderCommand(result.command)}
                 `;
+                setInterpretation('clipkitInterpretation', buildClipkitInterpretationItems(result.stats || {}, val('clipkitMode')));
                 document.getElementById('result5').classList.add('show');
+                document.getElementById('result5').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                const nextBtn = document.querySelector('#result5 button.btn-success');
+                if (nextBtn) {
+                    nextBtn.onclick = () => nextStep(6, result);
+                }
             } else {
-                alert('ClipKIT 失败: ' + result.error);
+                notifyPipeline('danger', 'Step 5 (ClipKIT) failed: ' + result.error);
             }
         } catch (err) {
-            alert('错误: ' + err.message);
+            notifyPipeline('danger', 'Step 5 (ClipKIT) error: ' + err.message);
         } finally {
             setButtonBusy(btn, false);
         }
@@ -1029,10 +2429,10 @@
                 report += '</tbody></table>';
                 document.getElementById('clipkitResults').innerHTML += report;
             } else {
-                alert('检查失败: ' + result.error);
+                notifyPipeline('danger', '检查失败: ' + result.error);
             }
         } catch (err) {
-            alert('错误: ' + err.message);
+            notifyPipeline('danger', '错误: ' + err.message);
         }
     }
 
@@ -1040,7 +2440,7 @@
     async function runModelFinder() {
         const fd = getInputForStep('iqtreeFileInput', 'iqtreeInputPath', pipelineData.trimmedAlignment);
         if (!fd) {
-            alert('请提供比对文件');
+            notifyPipeline('warning', '请提供比对文件');
             return;
         }
         try {
@@ -1050,12 +2450,19 @@
             const result = await parseJsonResponse(res);
             if (result.success) {
                 document.getElementById('iqtreeModel').value = result.best_model;
-                alert('最佳模型: ' + result.best_model);
+                const summaryBits = [];
+                if (result.input_stats?.sequence_type) {
+                    summaryBits.push(`${formatIqtreeSequenceType(result.input_stats.sequence_type)} alignment`);
+                }
+                if (result.best_model) {
+                    summaryBits.push('最佳模型: ' + result.best_model);
+                }
+                notifyPipeline('success', summaryBits.join(' | ') || ('最佳模型: ' + result.best_model), { duration: 7000 });
             } else {
-                alert('ModelFinder 失败: ' + result.error);
+                notifyPipeline('danger', 'ModelFinder 失败: ' + result.error);
             }
         } catch (err) {
-            alert('错误: ' + err.message);
+            notifyPipeline('danger', '错误: ' + err.message);
         } finally {
             const btn = document.querySelector('#iqtreeForm button.btn-secondary');
             setButtonBusy(btn, false);
@@ -1065,16 +2472,27 @@
     document.getElementById('iqtreeForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const btn = document.querySelector('#iqtreeForm button.btn-primary');
+        setInterpretation('iqtreeInterpretation', []);
+        const iqValidation = validateIqtreeFormBeforeSubmit();
+        if (!iqValidation.ok) {
+            notifyPipeline('warning', iqValidation.error || 'IQ-TREE 参数无效');
+            return;
+        }
         const fd = getInputForStep('iqtreeFileInput', 'iqtreeInputPath', pipelineData.trimmedAlignment);
         if (!fd) {
-            alert('Please provide an alignment file');
+            notifyPipeline('warning', 'Please provide an alignment file');
             return;
         }
         fd.append('model', document.getElementById('iqtreeModel').value);
         fd.append('bootstrap', document.getElementById('iqtreeBootstrap').value);
         fd.append('bootstrap_type', document.getElementById('iqtreeBootstrapType').value);
         fd.append('alrt', document.getElementById('iqtreeAlrt').checked ? 'true' : 'false');
+        fd.append('alrt_replicates', document.getElementById('iqtreeAlrtReps').value);
         fd.append('bnni', document.getElementById('iqtreeBnni').checked ? 'true' : 'false');
+        fd.append('threads', document.getElementById('iqtreeThreads').value || 'AUTO');
+        if (document.getElementById('iqtreeSeed').value) {
+            fd.append('seed', document.getElementById('iqtreeSeed').value);
+        }
 
         // Assume prefix
         let inputPath = fd.get('file_path') || fd.get('input_path');
@@ -1082,16 +2500,28 @@
             inputPath = fd.get('file').name;
         }
         if (!inputPath) {
-            alert('无法获取输入文件路径，请先运行 ClipKIT 或上传文件');
+            notifyPipeline('warning', '无法获取输入文件路径，请先运行 ClipKIT 或上传文件');
             return;
         }
         window.iqtreePrefix = inputPath.replace(/\.(fasta|faa|aln|phy)$/i, '');
+        const bsType = fd.get('bootstrap_type');
+        let bsCmd = '';
+        if (fd.get('bootstrap') && Number(fd.get('bootstrap')) > 0) {
+            if (bsType === 'boot') bsCmd = ` -b ${fd.get('bootstrap')}`;
+            else if (bsType === 'both') bsCmd = ` -bb ${fd.get('bootstrap')} -b ${fd.get('bootstrap')}`;
+            else bsCmd = ` -bb ${fd.get('bootstrap')}`;
+        }
+        const threadArg = fd.get('threads') || 'AUTO';
+        const alrtCmd = fd.get('alrt') === 'true'
+            ? ` -alrt ${fd.get('alrt_replicates') || 1000}`
+            : '';
+        const seedCmd = fd.get('seed') ? ` -seed ${fd.get('seed')}` : '';
 
         // Start log display
         document.getElementById('iqtreeResults').innerHTML = `
             <p>Building tree... <button class="btn btn-sm btn-secondary" onclick="stopIqtreeLog()">Stop Log View</button></p>
             <pre id="iqtreeLog" style="max-height: 400px; overflow-y: auto; background: #f8f9fa; padding: 10px; font-size: 12px;"></pre>
-            ${renderCommand('iqtree -s ' + inputPath + ' -m ' + fd.get('model') + ' -bb ' + fd.get('bootstrap') + ' -nt AUTO' + (fd.get('bnni') === 'true' ? ' -bnni' : '') + (fd.get('alrt') === 'true' ? ' -alrt 1000' : ''))}
+            ${renderCommand('iqtree -s ' + inputPath + ' -m ' + fd.get('model') + bsCmd + ' -nt ' + threadArg + (fd.get('bnni') === 'true' ? ' -bnni' : '') + alrtCmd + seedCmd)}
         `;
         document.getElementById('result6').classList.add('show');
 
@@ -1119,6 +2549,9 @@
             const result = await parseJsonResponse(res);
             if (result.success) {
                 window.iqtreePrefix = result.output_prefix;
+                if (Array.isArray(result.warnings) && result.warnings.length) {
+                    notifyPipeline('warning', result.warnings.join(' '), { duration: 7000 });
+                }
                 // Start polling for completion
                 window.iqtreeStatusInterval = setInterval(async () => {
                     try {
@@ -1129,18 +2562,49 @@
                             clearInterval(window.iqtreeLogInterval);
                             const treefile = statusData.output_files.treefile;
                             pipelineData.tree = treefile;
+                            const inputStats = statusData.input_stats || result.input_stats || null;
+                            const modelContext = statusData.model_context || result.model_context || null;
+                            const analysisInfo = statusData.analysis_info || null;
+                            const iqtreeSummary = [];
+                            if (inputStats?.sequence_type && inputStats?.sequence_count && inputStats?.alignment_length) {
+                                iqtreeSummary.push(`${formatIqtreeSequenceType(inputStats.sequence_type)} alignment, ${inputStats.sequence_count} seqs, ${inputStats.alignment_length} sites`);
+                            }
+                            if (analysisInfo?.model) {
+                                iqtreeSummary.push(`best-fit model: ${analysisInfo.model}`);
+                            } else if (modelContext?.requested_model) {
+                                iqtreeSummary.push(`requested model: ${modelContext.requested_model}`);
+                            }
+                            const treeViewerUrl = treefile ? `/tree/?tree_file=${encodeURIComponent(treefile)}` : '';
                             document.getElementById('iqtreeResults').innerHTML = `
                                 <p class="text-success"><i class="bi bi-check-circle"></i> Tree building completed</p>
-                                <p>Bootstrap 支持率均值: ${statusData.support_stats.mean_support || 'N/A'}%</p>
+                                ${iqtreeSummary.length ? `<p class="small text-muted mb-2">${iqtreeSummary.join(' | ')}</p>` : ''}
+                                <p>Support mean${statusData.support_stats.composite_support_labels ? ' (trailing metric)' : ''}: ${statusData.support_stats.mean ? Number(statusData.support_stats.mean).toFixed(1) : 'N/A'}%</p>
                                 ${treefile ? `<a class="btn btn-sm btn-outline-primary" href="${downloadLink(treefile)}">下载树文件</a>` : ''}
+                                ${treeViewerUrl ? `<a class="btn btn-sm btn-outline-secondary ms-2" href="${treeViewerUrl}">Open in Tree Viewer</a>` : ''}
                                 ${renderCommand(result.command)}
                             `;
+                            setInterpretation(
+                                'iqtreeInterpretation',
+                                buildIqtreeInterpretationItems(
+                                    statusData.support_stats,
+                                    statusData.bootstrap_type || val('iqtreeBootstrapType'),
+                                    inputStats,
+                                    modelContext,
+                                    analysisInfo
+                                )
+                            );
                             document.getElementById('result6').classList.add('show');
+                            document.getElementById('result6').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                            const nextBtn = document.querySelector('#result6 button.btn-success');
+                            if (nextBtn) {
+                                nextBtn.onclick = () => nextStep(7, statusData);
+                            }
                             setButtonBusy(btn, false);
                         } else if (statusData.status === 'failed') {
                             clearInterval(window.iqtreeStatusInterval);
                             clearInterval(window.iqtreeLogInterval);
-                            alert('IQ-TREE 失败: ' + statusData.error);
+                            notifyPipeline('danger', 'Step 6 (IQ-TREE) failed: ' + statusData.error);
                             setButtonBusy(btn, false);
                         }
                     } catch (e) {
@@ -1148,12 +2612,12 @@
                     }
                 }, 5000); // Poll every 5 seconds for status
             } else {
-                alert('IQ-TREE 启动失败: ' + result.error);
+                notifyPipeline('danger', 'IQ-TREE 启动失败: ' + result.error);
                 clearInterval(window.iqtreeLogInterval);
                 setButtonBusy(btn, false);
             }
         } catch (err) {
-            alert('错误: ' + err.message);
+            notifyPipeline('danger', '错误: ' + err.message);
             clearInterval(window.iqtreeLogInterval);
         } finally {
             setButtonBusy(btn, false);

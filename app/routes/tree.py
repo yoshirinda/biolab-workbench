@@ -2,6 +2,7 @@
 Tree visualization routes for BioLab Workbench.
 """
 import os
+import re
 from flask import Blueprint, render_template, request, jsonify, send_file
 import config
 from app.core.tree_visualizer import (
@@ -9,11 +10,63 @@ from app.core.tree_visualizer import (
     read_newick, get_default_colors, DEFAULT_COLORS, extract_clade
 )
 from app.utils.multiprocess_utils import run_in_process
-from app.utils.file_utils import save_uploaded_file
+from app.utils.file_utils import save_uploaded_file, write_result_manifest
 from app.utils.logger import get_app_logger
 
 tree_bp = Blueprint('tree', __name__)
 logger = get_app_logger()
+
+
+def _as_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def _parse_int(value, field_name, minimum=None, maximum=None, default=None):
+    if value in (None, ''):
+        return default
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"Invalid {field_name}: must be an integer")
+    if minimum is not None and parsed < minimum:
+        raise ValueError(f"Invalid {field_name}: must be >= {minimum}")
+    if maximum is not None and parsed > maximum:
+        raise ValueError(f"Invalid {field_name}: must be <= {maximum}")
+    return parsed
+
+
+def _parse_float(value, field_name, minimum=None, maximum=None, default=None):
+    if value in (None, ''):
+        return default
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"Invalid {field_name}: must be a number")
+    if minimum is not None and parsed < minimum:
+        raise ValueError(f"Invalid {field_name}: must be >= {minimum}")
+    if maximum is not None and parsed > maximum:
+        raise ValueError(f"Invalid {field_name}: must be <= {maximum}")
+    return parsed
+
+
+def _parse_hex_color(value, field_name, default='#d62828'):
+    if value in (None, ''):
+        return default
+    color = str(value).strip()
+    if not re.fullmatch(r'#[0-9a-fA-F]{6}', color):
+        raise ValueError(f"Invalid {field_name}: must be a hex color like #d62828")
+    return color
+
+
+def _parse_support_metric(value, default='trailing'):
+    metric = (value or default or 'trailing').strip().lower()
+    if metric not in {'leading', 'trailing'}:
+        raise ValueError('Invalid support_metric: must be "leading" or "trailing"')
+    return metric
 
 
 @tree_bp.route('/')
@@ -67,14 +120,31 @@ def visualize():
             return jsonify({'success': False, 'error': 'Tree file not found'})
 
         layout = data.get('layout', 'rectangular')
-        show_bootstrap = data.get('show_bootstrap', True)
-        if isinstance(show_bootstrap, str):
-            show_bootstrap = show_bootstrap.lower() == 'true'
+        if layout not in {'rectangular', 'circular'}:
+            return jsonify({'success': False, 'error': f'Invalid layout: {layout}'}), 400
+        show_bootstrap = _as_bool(data.get('show_bootstrap', True), default=True)
 
-        font_size = int(data.get('font_size', 10))
-        v_scale = float(data.get('v_scale', 1.0))
+        try:
+            font_size = _parse_int(data.get('font_size', 10), 'font_size', minimum=6, maximum=72, default=10)
+            v_scale = _parse_float(data.get('v_scale', 1.0), 'v_scale', minimum=0.1, maximum=20.0, default=1.0)
+            support_metric = _parse_support_metric(data.get('support_metric', 'trailing'))
+            radius_edges = _parse_int(data.get('radius_edges', 3), 'radius_edges', minimum=1, maximum=1000, default=3)
+            low_bootstrap_threshold = _parse_float(
+                data.get('low_bootstrap_threshold'),
+                'low_bootstrap_threshold',
+                minimum=0,
+                maximum=100,
+                default=None
+            )
+            low_bootstrap_color = _parse_hex_color(
+                data.get('low_bootstrap_color'),
+                'low_bootstrap_color',
+                default='#d62828'
+            )
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': str(exc)}), 400
+
         center_gene = (data.get('center_gene') or '').strip() or None
-        radius_edges = int(data.get('radius_edges', 3))
 
         # Parse colored species
         colored_species = {}
@@ -83,7 +153,10 @@ def visualize():
                 colored_species = data.get('colored_species')
             else:
                 import json
-                colored_species = json.loads(data.get('colored_species'))
+                try:
+                    colored_species = json.loads(data.get('colored_species'))
+                except json.JSONDecodeError:
+                    return jsonify({'success': False, 'error': 'Invalid colored_species JSON'}), 400
 
         # Parse highlighted genes
         highlighted_genes = []
@@ -101,7 +174,9 @@ def visualize():
             else:
                 highlight_species = [s.strip() for s in data.get('highlight_species').split(',') if s.strip()]
 
-        success, result_dir, output_file, message = run_in_process(
+        fixed_branch_length = _as_bool(data.get('fixed_branch_length', False), default=False)
+
+        success, result_dir, output_file, message, support_stats = run_in_process(
             visualize_tree,
             tree_file=tree_file,
             layout=layout,
@@ -113,15 +188,49 @@ def visualize():
             center_gene=center_gene,
             radius_edges=radius_edges,
             highlight_species=highlight_species,
-            fixed_branch_length=data.get('fixed_branch_length', False)
+            fixed_branch_length=fixed_branch_length,
+            low_bootstrap_threshold=low_bootstrap_threshold,
+            support_metric=support_metric,
+            low_bootstrap_color=low_bootstrap_color
         )
 
         if success:
+            manifest_output_file = output_file
+            if manifest_output_file and not os.path.isabs(manifest_output_file):
+                manifest_output_file = os.path.join(config.RESULTS_DIR, manifest_output_file)
+            try:
+                write_result_manifest(
+                    result_dir=result_dir,
+                    domain='tree',
+                    action='visualize',
+                    input_files={'tree_file': tree_file},
+                    output_files={'visualization': manifest_output_file},
+                    params={
+                        'layout': layout,
+                        'show_bootstrap': show_bootstrap,
+                        'font_size': font_size,
+                        'v_scale': v_scale,
+                        'center_gene': center_gene,
+                        'radius_edges': radius_edges,
+                        'fixed_branch_length': fixed_branch_length,
+                        'low_bootstrap_threshold': low_bootstrap_threshold,
+                        'support_metric': support_metric,
+                        'low_bootstrap_color': low_bootstrap_color,
+                        'highlight_species': highlight_species,
+                        'highlighted_genes': highlighted_genes
+                    },
+                    commands=[],
+                    tools=['ete3']
+                )
+            except Exception as manifest_error:
+                logger.warning(f"Failed to write tree visualize manifest: {manifest_error}")
+
             return jsonify({
                 'success': True,
                 'result_dir': result_dir,
                 'output_file': output_file,
-                'message': message
+                'message': message,
+                'support_stats': support_stats
             })
         else:
             return jsonify({'success': False, 'error': message})
@@ -145,15 +254,34 @@ def extract_clade_route():
         if not target_gene:
             return jsonify({'success': False, 'error': 'Target gene required'})
 
-        levels_up = int(data.get('levels_up', 2))
+        try:
+            levels_up = _parse_int(data.get('levels_up', 2), 'levels_up', minimum=0, maximum=1000, default=2)
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': str(exc)}), 400
         layout = data.get('layout', 'rectangular')
-        show_bootstrap = data.get('show_bootstrap', True)
-        if isinstance(show_bootstrap, str):
-            show_bootstrap = show_bootstrap.lower() == 'true'
-        font_size = int(data.get('font_size', 10))
+        if layout not in {'rectangular', 'circular'}:
+            return jsonify({'success': False, 'error': f'Invalid layout: {layout}'}), 400
+        show_bootstrap = _as_bool(data.get('show_bootstrap', True), default=True)
+        try:
+            font_size = _parse_int(data.get('font_size', 10), 'font_size', minimum=6, maximum=72, default=10)
+            v_scale = _parse_float(data.get('v_scale', 1.0), 'v_scale', minimum=0.1, maximum=20.0, default=1.0)
+            support_metric = _parse_support_metric(data.get('support_metric', 'trailing'))
+            low_bootstrap_threshold = _parse_float(
+                data.get('low_bootstrap_threshold'),
+                'low_bootstrap_threshold',
+                minimum=0,
+                maximum=100,
+                default=None
+            )
+            low_bootstrap_color = _parse_hex_color(
+                data.get('low_bootstrap_color'),
+                'low_bootstrap_color',
+                default='#d62828'
+            )
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': str(exc)}), 400
         fixed_branch = data.get('fixed_branch_length', False)
-        if isinstance(fixed_branch, str):
-            fixed_branch = fixed_branch.lower() == 'true'
+        fixed_branch = _as_bool(fixed_branch, default=False)
 
         colored_species = {}
         if data.get('colored_species'):
@@ -161,7 +289,10 @@ def extract_clade_route():
             if isinstance(data.get('colored_species'), dict):
                 colored_species = data.get('colored_species')
             else:
-                colored_species = json.loads(data.get('colored_species'))
+                try:
+                    colored_species = json.loads(data.get('colored_species'))
+                except json.JSONDecodeError:
+                    return jsonify({'success': False, 'error': 'Invalid colored_species JSON'}), 400
 
         # Parse highlight species
         highlight_species = []
@@ -180,17 +311,51 @@ def extract_clade_route():
             colored_species=colored_species,
             show_bootstrap=show_bootstrap,
             font_size=font_size,
+            v_scale=v_scale,
             fixed_branch_length=fixed_branch,
-            highlight_species=highlight_species
+            highlight_species=highlight_species,
+            low_bootstrap_threshold=low_bootstrap_threshold,
+            support_metric=support_metric,
+            low_bootstrap_color=low_bootstrap_color
         )
 
         if success:
+            manifest_output_file = output_file
+            if manifest_output_file and not os.path.isabs(manifest_output_file):
+                manifest_output_file = os.path.join(config.RESULTS_DIR, manifest_output_file)
+            try:
+                write_result_manifest(
+                    result_dir=result_dir,
+                    domain='tree',
+                    action='extract-clade',
+                    input_files={'tree_file': tree_file},
+                    output_files={'clade_visualization': manifest_output_file},
+                    params={
+                        'target_gene': target_gene,
+                        'levels_up': levels_up,
+                        'layout': layout,
+                        'show_bootstrap': show_bootstrap,
+                        'font_size': font_size,
+                        'v_scale': v_scale,
+                        'fixed_branch_length': fixed_branch,
+                        'low_bootstrap_threshold': low_bootstrap_threshold,
+                        'support_metric': support_metric,
+                        'low_bootstrap_color': low_bootstrap_color,
+                        'highlight_species': highlight_species
+                    },
+                    commands=[],
+                    tools=['ete3']
+                )
+            except Exception as manifest_error:
+                logger.warning(f"Failed to write tree clade manifest: {manifest_error}")
+
             return jsonify({
                 'success': True,
                 'result_dir': result_dir,
                 'output_file': output_file,
                 'message': message,
-                'clade_info': clade_info
+                'clade_info': clade_info,
+                'support_stats': (clade_info or {}).get('support_stats')
             })
         else:
             return jsonify({'success': False, 'error': message})

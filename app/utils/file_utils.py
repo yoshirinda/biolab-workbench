@@ -3,8 +3,14 @@ File utilities for BioLab Workbench.
 """
 import os
 import json
+import sys
+import shlex
+import socket
+import hashlib
+import platform
+import subprocess
 from datetime import datetime
-from flask import request
+from flask import request, has_request_context
 import config
 from app.utils.path_utils import ensure_dir, safe_filename
 
@@ -12,13 +18,270 @@ from app.utils.path_utils import ensure_dir, safe_filename
 def create_result_dir(tool_name, task_name):
     """
     Create a result directory for a task.
-    Format: {tool}_{task}_{YYYYMMDD_HHMMSS}/
+    Format: {tool}_{task}_{YYYYMMDD_HHMMSS_ffffff}/
+    Falls back to an incremented suffix if a collision still occurs.
     """
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    dir_name = f"{safe_filename(tool_name)}_{safe_filename(task_name)}_{timestamp}"
-    result_path = os.path.join(config.RESULTS_DIR, dir_name)
-    ensure_dir(result_path)
-    return result_path
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+    base_name = f"{safe_filename(tool_name)}_{safe_filename(task_name)}_{timestamp}"
+    result_path = os.path.join(config.RESULTS_DIR, base_name)
+
+    if not os.path.exists(result_path):
+        ensure_dir(result_path)
+        return result_path
+
+    # Extremely rare collision fallback.
+    idx = 1
+    while True:
+        candidate = os.path.join(config.RESULTS_DIR, f"{base_name}_{idx}")
+        if not os.path.exists(candidate):
+            ensure_dir(candidate)
+            return candidate
+        idx += 1
+
+
+def _run_version_command(binary_name):
+    """Best-effort tool version detection."""
+    probes = [
+        [binary_name, '--version'],
+        [binary_name, '-version'],
+        [binary_name, '-v'],
+    ]
+    for cmd in probes:
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=6,
+                check=False
+            )
+            output = (proc.stdout or proc.stderr or '').strip()
+            if output:
+                line = output.splitlines()[0].strip()
+                return line[:200]
+        except Exception:
+            continue
+    return None
+
+
+def detect_tool_versions(tool_names):
+    """
+    Resolve tool versions for a list of binary names.
+    Returns dict: {tool_name: version_or_none}
+    """
+    versions = {}
+    for name in (tool_names or []):
+        if not name:
+            continue
+        binary = os.path.basename(str(name)).strip()
+        if binary and binary not in versions:
+            versions[binary] = _run_version_command(binary)
+    return versions
+
+
+def sha256_of_file(filepath, max_bytes=256 * 1024 * 1024):
+    """
+    Compute SHA256 for a file.
+    Returns (sha256_hex_or_none, skipped_reason_or_none)
+    """
+    if not os.path.isfile(filepath):
+        return None, 'not_a_file'
+    size = os.path.getsize(filepath)
+    if size > max_bytes:
+        return None, f'skipped_large_file>{max_bytes}'
+
+    digest = hashlib.sha256()
+    with open(filepath, 'rb') as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest(), None
+
+
+def _normalize_path_entries(entries):
+    """
+    Convert various path container shapes into a list of:
+    {'label': <optional>, 'path': <str>}
+    """
+    normalized = []
+    if not entries:
+        return normalized
+
+    if isinstance(entries, str):
+        return [{'path': entries}]
+
+    if isinstance(entries, dict):
+        for label, path in entries.items():
+            if isinstance(path, str):
+                normalized.append({'label': str(label), 'path': path})
+            elif isinstance(path, (list, tuple, set)):
+                for idx, value in enumerate(path):
+                    if isinstance(value, str):
+                        normalized.append({'label': f"{label}[{idx}]", 'path': value})
+        return normalized
+
+    if isinstance(entries, (list, tuple, set)):
+        for item in entries:
+            if isinstance(item, str):
+                normalized.append({'path': item})
+            elif isinstance(item, dict) and isinstance(item.get('path'), str):
+                record = {'path': item['path']}
+                if item.get('label'):
+                    record['label'] = str(item['label'])
+                normalized.append(record)
+        return normalized
+
+    return normalized
+
+
+def _file_record(path_entry):
+    path = path_entry.get('path')
+    label = path_entry.get('label')
+    absolute = os.path.abspath(path) if path else None
+    exists = bool(absolute and os.path.exists(absolute))
+    is_file = bool(absolute and os.path.isfile(absolute))
+
+    item = {
+        'path': absolute or path,
+        'exists': exists,
+        'is_file': is_file,
+    }
+    if label:
+        item['label'] = label
+
+    if exists:
+        try:
+            stat = os.stat(absolute)
+            item['size'] = stat.st_size
+            item['modified'] = datetime.fromtimestamp(stat.st_mtime).isoformat()
+        except Exception:
+            pass
+
+    if is_file:
+        digest, skipped_reason = sha256_of_file(absolute)
+        item['sha256'] = digest
+        if skipped_reason:
+            item['sha256_note'] = skipped_reason
+
+    return item
+
+
+def _normalize_commands(commands):
+    if not commands:
+        return []
+    if isinstance(commands, str):
+        return [commands]
+    if isinstance(commands, (list, tuple, set)):
+        result = []
+        for cmd in commands:
+            if isinstance(cmd, str) and cmd.strip():
+                result.append(cmd)
+        return result
+    return []
+
+
+def _extract_tools_from_commands(commands):
+    """
+    Best-effort extraction of main tool binaries from command strings.
+    """
+    tools = []
+    wrappers = {'conda', 'bash', 'sh', 'zsh'}
+    for command in _normalize_commands(commands):
+        try:
+            tokens = shlex.split(command)
+        except Exception:
+            tokens = command.strip().split()
+        if not tokens:
+            continue
+
+        tool = None
+        if tokens[0] == 'conda':
+            # Common pattern: conda run -n <env> <tool> ...
+            if '--' in tokens:
+                idx = tokens.index('--')
+                if idx + 1 < len(tokens):
+                    tool = tokens[idx + 1]
+            else:
+                for idx, token in enumerate(tokens):
+                    if token in {'run', '-n', '--name', '-p', '--prefix'}:
+                        continue
+                    if idx > 0 and tokens[idx - 1] in {'-n', '--name', '-p', '--prefix'}:
+                        continue
+                    if token.startswith('-'):
+                        continue
+                    if token not in wrappers:
+                        tool = token
+                        break
+        else:
+            tool = tokens[0]
+
+        if tool:
+            bin_name = os.path.basename(tool)
+            if bin_name and bin_name not in tools:
+                tools.append(bin_name)
+    return tools
+
+
+def write_result_manifest(
+    result_dir,
+    domain,
+    action,
+    input_files=None,
+    output_files=None,
+    params=None,
+    commands=None,
+    tools=None,
+    notes=None
+):
+    """
+    Emit manifest.json inside result_dir for reproducibility/audit.
+    """
+    ensure_dir(result_dir)
+    now = datetime.now().isoformat()
+
+    normalized_inputs = [_file_record(item) for item in _normalize_path_entries(input_files)]
+    normalized_outputs = [_file_record(item) for item in _normalize_path_entries(output_files)]
+    command_list = _normalize_commands(commands)
+
+    inferred_tools = list(tools or [])
+    if not inferred_tools:
+        inferred_tools = _extract_tools_from_commands(command_list)
+    tool_versions = detect_tool_versions(inferred_tools)
+
+    request_info = None
+    if has_request_context():
+        request_info = {
+            'method': request.method,
+            'path': request.path,
+            'remote_addr': request.remote_addr,
+            'user_agent': request.user_agent.string if request.user_agent else None,
+        }
+
+    manifest = {
+        'schema_version': '1.0',
+        'created_at': now,
+        'domain': domain,
+        'action': action,
+        'result_dir': os.path.abspath(result_dir),
+        'inputs': normalized_inputs,
+        'outputs': normalized_outputs,
+        'params': params or {},
+        'commands': command_list,
+        'tool_versions': tool_versions,
+        'runtime': {
+            'python_version': sys.version.split()[0],
+            'platform': platform.platform(),
+            'hostname': socket.gethostname(),
+        }
+    }
+    if request_info:
+        manifest['request'] = request_info
+    if notes:
+        manifest['notes'] = notes
+
+    manifest_path = os.path.join(result_dir, 'manifest.json')
+    with open(manifest_path, 'w', encoding='utf-8') as f:
+        json.dump(manifest, f, indent=2, ensure_ascii=False)
+    return manifest_path
 
 
 def save_params(result_dir, params):

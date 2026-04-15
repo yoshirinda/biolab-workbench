@@ -75,8 +75,18 @@ def filter_length():
         except ValueError as e:
             return jsonify({'success': False, 'error': str(e)})
 
-        min_len = int(request.form.get('min_length', 0))
-        max_len = int(request.form.get('max_length', 10000000))
+        try:
+            min_len = int(request.form.get('min_length', 0))
+            max_raw = request.form.get('max_length')
+            max_len = int(max_raw) if max_raw not in (None, '') else None
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'min_length/max_length must be integers'}), 400
+        if min_len < 0:
+            return jsonify({'success': False, 'error': 'min_length must be >= 0'}), 400
+        if max_len is not None and max_len < 1:
+            return jsonify({'success': False, 'error': 'max_length must be >= 1'}), 400
+        if max_len is not None and max_len < min_len:
+            return jsonify({'success': False, 'error': 'max_length must be >= min_length'}), 400
 
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         result_dir = os.path.join(config.RESULTS_DIR, f'filter_len_{timestamp}')
@@ -85,7 +95,7 @@ def filter_length():
         # Use the enhanced phylo_pipeline function for detailed statistics
         from app.core.phylo_pipeline import step2_8_length_filter
         success, output_file, message, stats = step2_8_length_filter(
-            fasta_path, result_dir, min_len
+            fasta_path, result_dir, min_len, max_length=max_len
         )
 
         if not success:

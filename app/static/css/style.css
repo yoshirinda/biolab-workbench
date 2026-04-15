@@ -31,6 +31,9 @@ main {
 .navbar-brand {
     font-weight: 600;
 }
+.navbar .nav-link.active {
+    color: var(--primary-color) !important;
+}
 
 /* Cards */
 .card {
@@ -43,6 +46,27 @@ main {
 .module-card:hover {
     transform: translateY(-5px);
     box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1) !important;
+}
+.starter-card {
+    border: 1px solid #e6ecf5;
+    background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+}
+.runtime-list li {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin-bottom: 0.7rem;
+}
+.runtime-list li:last-child {
+    margin-bottom: 0;
+}
+.runtime-label {
+    color: #667085;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+.runtime-list code {
+    overflow-wrap: anywhere;
 }
 .icon-box {
     width: 60px;
@@ -151,6 +175,9 @@ main {
     .icon-box {
         width: 50px;
         height: 50px;
+    }
+    .display-5 {
+        font-size: 2rem;
     }
     .alignment-viewer {
         font-size: 10px;

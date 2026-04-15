@@ -2,6 +2,7 @@
 UniProt API client for BioLab Workbench.
 """
 import re
+import csv
 import requests
 from urllib.parse import urlencode
 import time
@@ -169,12 +170,12 @@ def get_sequence(entry):
 
 
 def download_sequences(query, taxonomy_id=None, database_type='all', limit=500,
-                       header_format='gene_species_id'):
+                       header_format='gene_species_id', deduplicate_genespecies=False):
     """
     Search UniProt and download sequences as FASTA.
 
     Returns:
-        (success, result_dir, fasta_file, count)
+        (success, result_dir, fasta_file, count_or_error, dedup_info)
     """
     result_dir = create_result_dir('uniprot', 'search')
 
@@ -185,6 +186,7 @@ def download_sequences(query, taxonomy_id=None, database_type='all', limit=500,
         'database_type': database_type,
         'limit': limit,
         'header_format': header_format,
+        'deduplicate_genespecies': bool(deduplicate_genespecies),
         'timestamp': datetime.now().isoformat()
     }
     save_params(result_dir, params)
@@ -193,10 +195,50 @@ def download_sequences(query, taxonomy_id=None, database_type='all', limit=500,
     success, results, message = search_uniprot(query, taxonomy_id, database_type, limit)
 
     if not success:
-        return False, result_dir, None, message
+        return False, result_dir, None, message, None
 
     if not results:
-        return True, result_dir, None, "No results found"
+        return True, result_dir, None, "No results found", {
+            'enabled': bool(deduplicate_genespecies),
+            'input_count': 0,
+            'output_count': 0,
+            'removed_count': 0,
+            'report_file': None
+        }
+
+    input_count = len(results)
+    dropped_rows = []
+
+    if deduplicate_genespecies:
+        deduped_results = []
+        seen = set()
+        kept_by_key = {}
+        for entry in results:
+            accession = (entry.get('primaryAccession') or '').strip()
+            if not accession:
+                continue
+            genes = entry.get('genes') or []
+            gene = None
+            if genes and isinstance(genes, list):
+                gene = ((genes[0] or {}).get('geneName') or {}).get('value')
+            species = (entry.get('organism') or {}).get('scientificName')
+            dedup_key = _dedup_key_from_metadata(gene, species, accession)
+            if dedup_key in seen:
+                dropped_rows.append({
+                    'dropped_accession': accession,
+                    'kept_accession': kept_by_key.get(dedup_key, ''),
+                    'gene': gene or '',
+                    'species': species or '',
+                    'dedup_key': dedup_key
+                })
+                continue
+            seen.add(dedup_key)
+            kept_by_key[dedup_key] = accession
+            deduped_results.append(entry)
+        logger.info(
+            f"UniProt deduplicate_genespecies enabled: kept {len(deduped_results)} of {len(results)} entries"
+        )
+        results = deduped_results
 
     # Write FASTA file
     fasta_file = os.path.join(result_dir, 'sequences.fasta')
@@ -213,7 +255,15 @@ def download_sequences(query, taxonomy_id=None, database_type='all', limit=500,
     
     relative_path = os.path.relpath(fasta_file, config.RESULTS_DIR)
     logger.info(f"Downloaded {len(results)} sequences to {fasta_file}")
-    return True, result_dir, relative_path, len(results)
+    dedup_report_file = _write_dedup_report(result_dir, dropped_rows, mode='search') if deduplicate_genespecies else None
+    dedup_info = {
+        'enabled': bool(deduplicate_genespecies),
+        'input_count': input_count,
+        'output_count': len(results),
+        'removed_count': max(0, input_count - len(results)),
+        'report_file': dedup_report_file
+    }
+    return True, result_dir, relative_path, len(results), dedup_info
 
 
 def get_entry(accession):
@@ -320,6 +370,44 @@ def _build_curated_header(metadata, header_format):
     return metadata.get('original_header') or metadata.get('accession', '')
 
 
+def _dedup_key_from_metadata(gene, species, accession):
+    """
+    Build a deduplication key by gene+species when meaningful.
+    Falls back to accession key if gene/species are not reliable.
+    """
+    acc = (accession or '').strip()
+    gene_norm = _clean_gene_name(gene, acc).strip().lower()
+    species_norm = _clean_species_name(species).strip().lower()
+    if gene_norm and species_norm and gene_norm != acc.lower():
+        return f"{gene_norm}::{species_norm}"
+    return f"acc::{acc.lower()}"
+
+
+def _write_dedup_report(result_dir, dropped_rows, mode='search'):
+    """
+    Write dropped records from deduplication into a TSV report.
+    Returns report path relative to RESULTS_DIR.
+    """
+    if not dropped_rows:
+        return None
+
+    report_file = os.path.join(result_dir, f'dedup_report_{mode}.tsv')
+    with open(report_file, 'w', newline='', encoding='utf-8') as handle:
+        writer = csv.writer(handle, delimiter='\t')
+        writer.writerow(['dropped_accession', 'kept_accession', 'gene', 'species', 'dedup_key', 'mode'])
+        for row in dropped_rows:
+            writer.writerow([
+                row.get('dropped_accession', ''),
+                row.get('kept_accession', ''),
+                row.get('gene', ''),
+                row.get('species', ''),
+                row.get('dedup_key', ''),
+                mode
+            ])
+
+    return os.path.relpath(report_file, config.RESULTS_DIR)
+
+
 def fetch_curated_sequences(accessions, header_format='gene_species_id', batch_size=100):
     if not accessions:
         return []
@@ -353,7 +441,9 @@ def fetch_curated_sequences(accessions, header_format='gene_species_id', batch_s
             collected[accession] = {
                 'accession': accession,
                 'header': _build_curated_header(metadata, header_format),
-                'sequence': sequence
+                'sequence': sequence,
+                'gene': metadata.get('gene'),
+                'species': metadata.get('species')
             }
 
         if len(accessions) > batch_size:
@@ -363,16 +453,17 @@ def fetch_curated_sequences(accessions, header_format='gene_species_id', batch_s
     return ordered_records
 
 
-def download_selected_sequences(accessions, header_format='gene_species_id'):
+def download_selected_sequences(accessions, header_format='gene_species_id', deduplicate_genespecies=False):
     """Download curated sequences for a list of accessions."""
     if not accessions:
-        return False, None, None, "No selected accessions provided"
+        return False, None, None, "No selected accessions provided", None
 
     result_dir = create_result_dir('uniprot', 'curated')
     params = {
         'selected_ids': accessions,
         'count': len(accessions),
         'header_format': header_format,
+        'deduplicate_genespecies': bool(deduplicate_genespecies),
         'timestamp': datetime.now().isoformat()
     }
     save_params(result_dir, params)
@@ -380,10 +471,49 @@ def download_selected_sequences(accessions, header_format='gene_species_id'):
     try:
         curated_records = fetch_curated_sequences(accessions, header_format=header_format)
     except requests.RequestException as exc:
-        return False, result_dir, None, str(exc)
+        return False, result_dir, None, str(exc), None
 
     if not curated_records:
-        return False, result_dir, None, "No sequences retrieved for selected accessions"
+        return False, result_dir, None, "No sequences retrieved for selected accessions", {
+            'enabled': bool(deduplicate_genespecies),
+            'input_count': 0,
+            'output_count': 0,
+            'removed_count': 0,
+            'report_file': None
+        }
+
+    input_count = len(curated_records)
+    dropped_rows = []
+
+    if deduplicate_genespecies:
+        deduped_records = []
+        seen = set()
+        kept_by_key = {}
+        for record in curated_records:
+            accession = (record.get('accession') or '').strip()
+            if not accession:
+                continue
+            dedup_key = _dedup_key_from_metadata(
+                record.get('gene'),
+                record.get('species'),
+                accession
+            )
+            if dedup_key in seen:
+                dropped_rows.append({
+                    'dropped_accession': accession,
+                    'kept_accession': kept_by_key.get(dedup_key, ''),
+                    'gene': record.get('gene') or '',
+                    'species': record.get('species') or '',
+                    'dedup_key': dedup_key
+                })
+                continue
+            seen.add(dedup_key)
+            kept_by_key[dedup_key] = accession
+            deduped_records.append(record)
+        logger.info(
+            f"UniProt selected deduplicate_genespecies enabled: kept {len(deduped_records)} of {len(curated_records)} records"
+        )
+        curated_records = deduped_records
 
     fasta_file = os.path.join(result_dir, 'curated_sequences.fasta')
     with open(fasta_file, 'w') as handle:
@@ -397,4 +527,12 @@ def download_selected_sequences(accessions, header_format='gene_species_id'):
     
     relative_path = os.path.relpath(fasta_file, config.RESULTS_DIR)
     logger.info(f"Downloaded {len(curated_records)} curated sequences to {fasta_file}")
-    return True, result_dir, relative_path, len(curated_records)
+    dedup_report_file = _write_dedup_report(result_dir, dropped_rows, mode='selected') if deduplicate_genespecies else None
+    dedup_info = {
+        'enabled': bool(deduplicate_genespecies),
+        'input_count': input_count,
+        'output_count': len(curated_records),
+        'removed_count': max(0, input_count - len(curated_records)),
+        'report_file': dedup_report_file
+    }
+    return True, result_dir, relative_path, len(curated_records), dedup_info

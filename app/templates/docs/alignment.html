@@ -116,26 +116,42 @@
                                     </td>
                                 </tr>
                                 <tr>
-                                    <td><strong>Gap Open Penalty</strong></td>
-                                    <td><code>1.53</code></td>
-                                    <td>Penalty for opening a gap</td>
-                                    <td>Increase for fewer, longer gaps</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Gap Extension Penalty</strong></td>
-                                    <td><code>0.123</code></td>
-                                    <td>Penalty for extending a gap</td>
-                                    <td>Increase for shorter gaps</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>--auto</strong></td>
-                                    <td>Off</td>
+                                    <td><strong>Auto Mode</strong></td>
+                                    <td>On</td>
                                     <td>Automatic algorithm selection</td>
-                                    <td>Enable for unknown data characteristics</td>
+                                    <td>Recommended for mixed/unknown datasets; disable and choose fixed strategy for reproducibility studies.</td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-journal-check"></i> Scientific Decision Guide</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="mb-0">
+                        <li><strong>Small, divergent proteins (&lt;200 seq):</strong> Prefer MAFFT <code>L-INS-i</code> with high iterations.</li>
+                        <li><strong>Large datasets (&gt;500 seq):</strong> Start from MAFFT <code>auto</code> to balance speed/accuracy.</li>
+                        <li><strong>Nucleotide alignments in ClustalW:</strong> Use DNA matrices (<code>IUB</code> or <code>CLUSTALW</code>), not protein matrices.</li>
+                        <li><strong>Before phylogeny:</strong> inspect suspicious long-gap regions and trim with a method such as ClipKIT.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-shield-check"></i> Validity Checks Before Tree Building</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="mb-0">
+                        <li>Do not mix nucleotide and protein sequences in a single MSA run.</li>
+                        <li>Confirm stop-codon/frame issues are handled before protein alignment.</li>
+                        <li>For codon-aware analyses, align proteins first and map back to codons with a codon-aware workflow.</li>
+                        <li>Record aligner, algorithm, and iteration settings in methods for reproducibility.</li>
+                    </ul>
                 </div>
             </div>
 

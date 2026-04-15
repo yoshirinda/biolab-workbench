@@ -92,14 +92,14 @@ cd biolab-workbench
 # 2. Create conda environment
 conda env create -f environment.yml
 
-# 3. Activate environment
-conda activate biolab
+# 3. Activate environment (depends on your local setup)
+conda activate bio || conda activate biolab
 
 # 4. Install Python dependencies
 pip install -r requirements.txt
 
 # 5. Run the application
-python run.py
+python3 run.py
 ```
 
 On first run, the setup wizard will help you configure the data directory.
@@ -110,7 +110,7 @@ You can also set the data directory using an environment variable:
 
 ```bash
 export BIOLAB_BASE_DIR=/path/to/your/data
-python run.py
+python3 run.py
 ```
 
 ## Usage 使用方法
@@ -119,10 +119,10 @@ python run.py
 
 ```bash
 # Activate the conda environment
-conda activate biolab
+conda activate bio || conda activate biolab
 
 # Run the application
-python run.py
+python3 run.py
 ```
 
 ### Accessing the Web Interface 访问 Web 界面
@@ -240,8 +240,8 @@ python run.py
 ```bash
 # Check what's using port 5000
 lsof -i :5000
-# Kill the process or use a different port
-export FLASK_RUN_PORT=5001
+# Stop previous BioLab process and restart on 5000
+pkill -f "python.*run.py"
 python run.py
 ```
 

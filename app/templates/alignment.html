@@ -18,6 +18,12 @@
                     <h5 class="mb-0"><i class="bi bi-gear"></i> Alignment Settings</h5>
                 </div>
                 <div class="card-body">
+                    {% if not has_any_tool %}
+                    <div class="alert alert-danger small">
+                        <div class="fw-semibold mb-1"><i class="bi bi-tools"></i> No alignment tool is available</div>
+                        <div>Install MAFFT/ClustalW/MUSCLE in the current conda env, then refresh this page with <code>?refresh=1</code>.</div>
+                    </div>
+                    {% endif %}
                     <form id="alignmentForm">
                         <div class="mb-3">
                             <label class="form-label">Input Method:</label>
@@ -43,15 +49,19 @@
                         <div class="mb-3">
                             <label for="alignTool" class="form-label">Alignment Tool:</label>
                             <select class="form-select" id="alignTool">
-                                <option value="mafft" {% if available_tools.get('mafft') %}selected{% endif %}>
+                                {% if not has_any_tool %}
+                                <option value="" selected>No tool available</option>
+                                {% else %}
+                                <option value="mafft" data-available="{{ '1' if available_tools.get('mafft') else '0' }}" {% if available_tools.get('mafft') %}selected{% endif %} {% if not available_tools.get('mafft') %}disabled{% endif %}>
                                     MAFFT {% if not available_tools.get('mafft') %}(not available){% endif %}
                                 </option>
-                                <option value="clustalw" {% if not available_tools.get('mafft') and available_tools.get('clustalw') %}selected{% endif %}>
+                                <option value="clustalw" data-available="{{ '1' if available_tools.get('clustalw') else '0' }}" {% if not available_tools.get('mafft') and available_tools.get('clustalw') %}selected{% endif %} {% if not available_tools.get('clustalw') %}disabled{% endif %}>
                                     ClustalW {% if not available_tools.get('clustalw') %}(not available){% endif %}
                                 </option>
-                                <option value="muscle" {% if not available_tools.get('mafft') and not available_tools.get('clustalw') and available_tools.get('muscle') %}selected{% endif %}>
+                                <option value="muscle" data-available="{{ '1' if available_tools.get('muscle') else '0' }}" {% if not available_tools.get('mafft') and not available_tools.get('clustalw') and available_tools.get('muscle') %}selected{% endif %} {% if not available_tools.get('muscle') %}disabled{% endif %}>
                                     MUSCLE {% if not available_tools.get('muscle') %}(not available){% endif %}
                                 </option>
+                                {% endif %}
                             </select>
                         </div>
 
@@ -69,7 +79,13 @@
                                         <option value="auto">Auto (recommended)</option>
                                         <option value="linsi">L-INS-i (most accurate)</option>
                                         <option value="ginsi">G-INS-i (global alignment)</option>
+                                        <option value="einsi">E-INS-i (multiple conserved blocks)</option>
                                     </select>
+                                </div>
+                                <div class="mb-2">
+                                    <label for="mafftMaxiterate" class="form-label small">Max Iterate</label>
+                                    <input type="number" class="form-control form-control-sm" id="mafftMaxiterate" min="0" value="1000" placeholder="1000">
+                                    <div class="form-text">MAFFT high-accuracy modes commonly use 1000 iterations; Auto usually does not need manual tuning.</div>
                                 </div>
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="autoMode">
@@ -79,19 +95,27 @@
                                 </div>
                             </div>
                         </div>
+                        <div id="alignmentScientificHints" class="mb-3"></div>
 
                         <!-- ClustalW Options -->
                         <div id="clustalwOptions" class="tool-options d-none">
                             <div class="alert alert-light border">
                                 <h6 class="mb-2"><i class="bi bi-sliders"></i> ClustalW Parameters</h6>
                                 <div class="mb-2">
-                                    <label for="clustalwMatrix" class="form-label small">
+                                    <label for="clustalwMatrix" class="form-label small" id="clustalwMatrixLabel">
                                         Scoring Matrix:
                                     </label>
                                     <select class="form-select form-select-sm" id="clustalwMatrix">
                                         <option value="BLOSUM">BLOSUM (recommended)</option>
                                         <option value="PAM">PAM</option>
+                                        <option value="GONNET">GONNET</option>
+                                        <option value="ID">Identity</option>
+                                        <option value="IUB">IUB (DNA)</option>
+                                        <option value="CLUSTALW">CLUSTALW (DNA)</option>
                                     </select>
+                                    <div class="form-text" id="clustalwMatrixHint">
+                                        Protein inputs use protein matrices; nucleotide inputs use DNA matrices. Upload mode is checked again on the server before execution.
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -117,7 +141,7 @@
                             </select>
                         </div>
 
-                        <button type="submit" class="btn btn-warning w-100 mt-3" id="runAlignBtn">
+                        <button type="submit" class="btn btn-warning w-100 mt-3" id="runAlignBtn" {% if not has_any_tool %}disabled title="Install at least one alignment tool first"{% endif %}>
                             <i class="bi bi-play-fill"></i> Run Alignment
                         </button>
                     </form>
@@ -198,6 +222,13 @@
                     </div>
                 </div>
             </div>
+
+            <div class="card shadow-sm mt-4 d-none" id="alignmentInterpretationCard">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0"><i class="bi bi-journal-medical"></i> Result Interpretation</h6>
+                </div>
+                <div class="card-body" id="alignmentInterpretation"></div>
+            </div>
         </div>
     </div>
 </div>
@@ -210,11 +241,370 @@
         run: '{{ url_for("alignment.run") }}',
         download: '{{ url_for("alignment.download") }}'
     };
+    const CLUSTALW_MATRIX_SETS = {
+        protein: [
+            ['BLOSUM', 'BLOSUM'],
+            ['PAM', 'PAM'],
+            ['GONNET', 'GONNET'],
+            ['ID', 'Identity']
+        ],
+        nucleotide: [
+            ['IUB', 'IUB'],
+            ['CLUSTALW', 'CLUSTALW']
+        ]
+    };
+
+    function syncColorModeOptions(stats) {
+        const select = document.getElementById('colorMode');
+        if (!select) return;
+        const chemistryOption = Array.from(select.options).find((option) => option.value === 'chemistry');
+        const inputType = document.querySelector('input[name="inputType"]:checked')?.value;
+        const sequenceType = stats?.sequenceType || 'unknown';
+        if (!chemistryOption) return;
+
+        const chemistryAllowed = !(inputType === 'text' && sequenceType === 'nucleotide');
+        chemistryOption.disabled = !chemistryAllowed;
+        chemistryOption.text = chemistryAllowed
+            ? 'Chemistry (氨基酸化学性质)'
+            : 'Chemistry (protein only)';
+        if (!chemistryAllowed && select.value === 'chemistry') {
+            select.value = 'conservation';
+        }
+    }
+
+    function getActionHints(message) {
+        if (typeof window.getActionableHints === 'function') {
+            return window.getActionableHints(message);
+        }
+        return [];
+    }
+
+    function renderAlignmentError(message) {
+        const hints = getActionHints(message).slice(0, 3);
+        const hintHtml = hints.length
+            ? `<div class="small mt-1">Next steps:<ul class="mb-0 mt-1">${hints.map((h) => `<li>${String(h).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</li>`).join('')}</ul></div>`
+            : '';
+        document.getElementById('alignmentResult').classList.remove('d-none');
+        document.getElementById('alignmentResult').innerHTML = `
+            <div class="alert alert-danger">
+                <div class="fw-semibold">${String(message).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                ${hintHtml}
+            </div>
+        `;
+        document.getElementById('alignmentInterpretationCard')?.classList.add('d-none');
+    }
+
+    function parseFastaInputStats() {
+        const inputType = document.querySelector('input[name="inputType"]:checked')?.value;
+        if (inputType !== 'text') return null;
+        const text = String(document.getElementById('sequenceText')?.value || '');
+        const entries = [];
+        const types = [];
+        let currentSeq = [];
+        let sawHeader = false;
+
+        function detectSequenceTypeClient(sequence) {
+            const cleaned = String(sequence || '')
+                .toUpperCase()
+                .replace(/\s+/g, '')
+                .replace(/[XNBZ-]/g, '');
+            if (!cleaned) return 'unknown';
+            return /[EFILPQ]/.test(cleaned) ? 'protein' : 'nucleotide';
+        }
+
+        text.split('\n').forEach((line) => {
+            const trimmed = line.trim();
+            if (!trimmed) return;
+            if (trimmed.startsWith('>')) {
+                if (sawHeader) {
+                    const seq = currentSeq.join('').replace(/\s+/g, '');
+                    entries.push(seq);
+                    if (seq) types.push(detectSequenceTypeClient(seq));
+                }
+                currentSeq = [];
+                sawHeader = true;
+                return;
+            }
+            if (sawHeader) currentSeq.push(trimmed);
+        });
+        if (sawHeader) {
+            const seq = currentSeq.join('').replace(/\s+/g, '');
+            entries.push(seq);
+            if (seq) types.push(detectSequenceTypeClient(seq));
+        }
+
+        const lengths = entries.map((seq) => seq.length).filter((len) => len > 0);
+        if (!lengths.length) {
+            return { sequenceCount: 0, maxLength: 0, sequenceType: 'unknown', typeCounts: { nucleotide: 0, protein: 0 } };
+        }
+        const typeCounts = {
+            nucleotide: types.filter((type) => type === 'nucleotide').length,
+            protein: types.filter((type) => type === 'protein').length
+        };
+        const sequenceType = typeCounts.nucleotide > 0 && typeCounts.protein > 0
+            ? 'mixed'
+            : typeCounts.protein > 0
+                ? 'protein'
+                : 'nucleotide';
+        return {
+            sequenceCount: lengths.length,
+            maxLength: Math.max(...lengths),
+            sequenceType,
+            typeCounts
+        };
+    }
+
+    function setSelectOptions(select, options, preferredValue, selectedValue) {
+        if (!select) return;
+        select.innerHTML = options.map(([value, label]) => `<option value="${value}">${label}</option>`).join('');
+        const optionValues = new Set(options.map(([value]) => value));
+        if (selectedValue && optionValues.has(selectedValue)) {
+            select.value = selectedValue;
+        } else if (preferredValue && optionValues.has(preferredValue)) {
+            select.value = preferredValue;
+        }
+    }
+
+    function syncClustalwMatrixOptions(stats) {
+        const select = document.getElementById('clustalwMatrix');
+        const label = document.getElementById('clustalwMatrixLabel');
+        const hint = document.getElementById('clustalwMatrixHint');
+        if (!select || !label || !hint) return;
+
+        const previousValue = select.value;
+        const inputType = document.querySelector('input[name="inputType"]:checked')?.value;
+        const sequenceType = stats?.sequenceType || 'unknown';
+
+        if (inputType !== 'text' || !stats || stats.sequenceCount === 0) {
+            setSelectOptions(
+                select,
+                [...CLUSTALW_MATRIX_SETS.protein, ...CLUSTALW_MATRIX_SETS.nucleotide],
+                'BLOSUM',
+                previousValue
+            );
+            label.textContent = 'Scoring Matrix:';
+            hint.textContent = 'Protein inputs use -MATRIX, nucleotide inputs use -DNAMATRIX. For uploaded FASTA files, the server validates the matrix against detected molecule type before running ClustalW.';
+            return;
+        }
+
+        if (sequenceType === 'nucleotide') {
+            setSelectOptions(select, CLUSTALW_MATRIX_SETS.nucleotide, 'IUB', previousValue);
+            label.textContent = 'DNA Matrix:';
+            hint.textContent = 'Detected nucleotide FASTA input. ClustalW will run with -TYPE=DNA and a DNA matrix such as IUB or CLUSTALW.';
+            return;
+        }
+
+        if (sequenceType === 'protein') {
+            setSelectOptions(select, CLUSTALW_MATRIX_SETS.protein, 'BLOSUM', previousValue);
+            label.textContent = 'Protein Matrix:';
+            hint.textContent = 'Detected protein FASTA input. ClustalW will run with -TYPE=PROTEIN and a protein matrix such as BLOSUM, PAM, GONNET, or ID.';
+            return;
+        }
+
+        setSelectOptions(
+            select,
+            [...CLUSTALW_MATRIX_SETS.protein, ...CLUSTALW_MATRIX_SETS.nucleotide],
+            'BLOSUM',
+            previousValue
+        );
+        label.textContent = 'Scoring Matrix:';
+        hint.textContent = 'Detected mixed molecule types in pasted input. Split nucleotide and protein sequences before alignment.';
+    }
+
+    function renderAlignmentScientificHints(items) {
+        const box = document.getElementById('alignmentScientificHints');
+        if (!box) return;
+        if (!items.length) {
+            box.innerHTML = '<div class="alert alert-light border py-2 px-3 mb-0 small">Scientific check: current alignment settings are within recommended ranges.</div>';
+            return;
+        }
+        box.innerHTML = items.map((item) => {
+            const cls = item.level === 'danger'
+                ? 'alert-danger'
+                : item.level === 'warning'
+                    ? 'alert-warning'
+                    : 'alert-info';
+            return `<div class="alert ${cls} py-2 px-3 mb-2 small">${item.text}</div>`;
+        }).join('');
+    }
+
+    function syncAlignmentScientificControls() {
+        const tool = document.getElementById('alignTool')?.value;
+        const algorithm = document.getElementById('mafftAlgorithm')?.value || 'auto';
+        const autoMode = document.getElementById('autoMode')?.checked;
+        const maxiterate = document.getElementById('mafftMaxiterate');
+        if (maxiterate) {
+            maxiterate.disabled = tool !== 'mafft' || autoMode || algorithm === 'auto';
+            maxiterate.title = maxiterate.disabled ? 'Max iterate is mainly used for MAFFT high-accuracy modes.' : '';
+        }
+    }
+
+    function updateAlignmentScientificHints() {
+        syncAlignmentScientificControls();
+        const hints = [];
+        const tool = document.getElementById('alignTool')?.value;
+        const algorithm = document.getElementById('mafftAlgorithm')?.value || 'auto';
+        const autoMode = document.getElementById('autoMode')?.checked;
+        const maxiterateRaw = String(document.getElementById('mafftMaxiterate')?.value || '').trim();
+        const stats = parseFastaInputStats();
+        syncClustalwMatrixOptions(stats);
+        syncColorModeOptions(stats);
+
+        if (stats && stats.sequenceCount < 2 && stats.sequenceCount > 0) {
+            hints.push({ level: 'danger', text: 'Multiple sequence alignment requires at least two FASTA sequences.' });
+        }
+        if (stats && stats.sequenceType === 'mixed') {
+            hints.push({ level: 'danger', text: 'Detected mixed nucleotide and protein sequences in the same FASTA text. Split them into separate alignment jobs.' });
+        }
+        if (tool === 'mafft') {
+            if (autoMode || algorithm === 'auto') {
+                hints.push({ level: 'info', text: 'MAFFT Auto is the safest default when dataset size or divergence is uncertain.' });
+            }
+            if (['linsi', 'ginsi', 'einsi'].includes(algorithm) && stats && (stats.sequenceCount > 200 || stats.maxLength > 2000)) {
+                hints.push({ level: 'warning', text: 'MAFFT high-accuracy strategies are recommended for roughly <=200 sequences and <=2000 residues; larger inputs should usually use Auto.' });
+            }
+            if (!autoMode && algorithm !== 'auto') {
+                const maxiterate = Number(maxiterateRaw);
+                if (!maxiterateRaw || !Number.isInteger(maxiterate) || maxiterate < 0) {
+                    hints.push({ level: 'danger', text: 'Max Iterate must be a non-negative integer.' });
+                } else if (maxiterate > 0 && maxiterate < 1000) {
+                    hints.push({ level: 'warning', text: 'For L-INS-i / G-INS-i / E-INS-i, MAFFT commonly uses 1000 iterations for high-accuracy runs.' });
+                }
+            }
+        } else if (tool === 'clustalw') {
+            const matrix = document.getElementById('clustalwMatrix')?.value;
+            if (stats && stats.sequenceCount > 500) {
+                hints.push({ level: 'warning', text: 'ClustalW is usually not the best default for large datasets; MAFFT Auto is more scalable.' });
+            }
+            if (!stats) {
+                hints.push({ level: 'info', text: 'Upload mode cannot inspect molecule type client-side. The server will reject DNA/protein matrix mismatches before execution.' });
+            } else if (stats.sequenceType === 'nucleotide') {
+                hints.push({ level: 'info', text: `Detected nucleotide input. ClustalW should use DNA matrices only; current choice ${matrix || 'IUB'} will map to -DNAMATRIX.` });
+            } else if (stats.sequenceType === 'protein') {
+                hints.push({ level: 'info', text: `Detected protein input. ClustalW should use protein matrices only; current choice ${matrix || 'BLOSUM'} will map to -MATRIX.` });
+            }
+        }
+        if (stats && stats.sequenceType === 'nucleotide') {
+            const colorMode = document.getElementById('colorMode')?.value;
+            if (colorMode === 'chemistry') {
+                hints.push({ level: 'warning', text: 'Chemistry color mode is amino-acid oriented and is not meaningful for nucleotide alignments. The viewer will use conservation colors instead.' });
+            }
+        }
+
+        renderAlignmentScientificHints(hints);
+        return hints;
+    }
+
+    function renderAlignmentInterpretation(data) {
+        const card = document.getElementById('alignmentInterpretationCard');
+        const box = document.getElementById('alignmentInterpretation');
+        if (!card || !box) return;
+
+        const stats = data?.stats || {};
+        const sequenceCount = Number(stats.num_sequences || data?.sequence_count || 0);
+        const alignmentLength = Number(stats.alignment_length || data?.alignment_length || 0);
+        const conserved = Number(stats.conserved_positions || 0);
+        const variable = Number(stats.variable_positions || 0);
+        const gapAffected = Number(stats.gap_affected_positions || 0);
+        const gapOnly = Number(stats.gap_only_positions || 0);
+        const meanGap = Number(stats.mean_gap_percentage || 0);
+        const inputStats = data?.input_stats || {};
+        const sequenceType = String(inputStats.sequence_type || 'unknown').trim();
+        const maxInputLength = Number(inputStats.max_length || 0);
+        const meanInputLength = Number(inputStats.mean_length || 0);
+        const tool = String(data?.tool || stats.tool || '').trim();
+        const parameters = data?.stats?.parameters || stats.parameters || {};
+        const requestedColorMode = String(data?.requested_color_mode || '').trim();
+        const effectiveColorMode = String(data?.effective_color_mode || requestedColorMode || 'conservation').trim();
+        const items = [];
+
+        if (sequenceType === 'nucleotide') {
+            items.push('Input molecules were detected as nucleotide sequences. Use nucleotide-aware downstream models and interpret chemistry-style residue groupings cautiously.');
+        } else if (sequenceType === 'protein') {
+            items.push('Input molecules were detected as protein sequences. Residue substitution patterns, domain architecture, and gap structure are usually more informative than raw percent identity alone.');
+        }
+
+        if (tool === 'mafft') {
+            const algorithm = String(parameters.algorithm || 'auto').trim().toLowerCase();
+            if (algorithm === 'linsi') {
+                items.push('MAFFT L-INS-i emphasizes local homology and iterative refinement, which is usually appropriate when proteins share conserved motifs but not necessarily one clean end-to-end alignment.');
+            } else if (algorithm === 'ginsi') {
+                items.push('MAFFT G-INS-i assumes more global homology across sequence length, so it is best suited to full-length homologs with broadly shared architecture.');
+            } else if (algorithm === 'einsi') {
+                items.push('MAFFT E-INS-i is designed for alignments with long internal gaps or multiple conserved blocks, which is often useful for domain-rich or insertion-heavy proteins.');
+            } else {
+                items.push('MAFFT Auto selected a default strategy, which is usually the safest first pass when divergence or dataset scale is uncertain.');
+            }
+        } else if (tool === 'clustalw') {
+            const matrix = String(parameters.matrix || '').trim();
+            if (sequenceType === 'nucleotide') {
+                items.push(`ClustalW ran in DNA mode with the ${matrix || 'IUB'} matrix. This is acceptable for moderate nucleotide similarity, but highly divergent datasets often align more robustly with MAFFT.`);
+            } else if (sequenceType === 'protein') {
+                items.push(`ClustalW ran in protein mode with the ${matrix || 'BLOSUM'} matrix. Check that the matrix matches the evolutionary distance you expect for this family.`);
+            }
+        } else if (tool === 'muscle') {
+            items.push('MUSCLE ran with default settings. This is a reasonable general-purpose baseline, but difficult datasets may still benefit from a MAFFT high-accuracy rerun.');
+        }
+
+        if (effectiveColorMode) {
+            if (requestedColorMode && requestedColorMode !== effectiveColorMode) {
+                items.push(`Visualization used ${effectiveColorMode} coloring instead of requested ${requestedColorMode}, because chemistry coloring is protein-oriented and not appropriate for the detected input type.`);
+            } else {
+                items.push(`Result viewer is using ${effectiveColorMode} coloring. Treat this as a visual aid, not as a substitute for alignment statistics or model choice.`);
+            }
+        }
+
+        if (sequenceCount > 0) {
+            items.push(`This alignment contains ${sequenceCount} sequences across ${alignmentLength} aligned positions. Treat downstream phylogeny cautiously if taxon sampling is very small.`);
+        }
+        if (sequenceCount > 0 && sequenceCount < 5) {
+            items.push('With fewer than five sequences, the alignment is useful for motif comparison, but tree topology will be sensitive to sampling.');
+        }
+        if (alignmentLength > 0 && conserved / alignmentLength >= 0.7) {
+            items.push('A large fraction of columns are fully conserved and gap-free, which suggests a strong shared core region.');
+        } else if (alignmentLength > 0 && variable / alignmentLength >= 0.4) {
+            items.push('Many columns contain true residue variation, which can add phylogenetic signal but also increases the need for careful trimming and model choice.');
+        }
+        if (alignmentLength > 0 && gapAffected / alignmentLength >= 0.3) {
+            items.push('Gap-bearing columns are common, which is consistent with indels, incomplete sequences, or difficult-to-align regions rather than simple residue substitution alone.');
+        }
+        if (meanGap >= 20) {
+            items.push('Average gap burden is high. Consider checking sequence completeness and trimming gap-rich regions before tree inference.');
+        }
+        if (gapOnly > 0) {
+            items.push('Gap-only columns were detected. These columns usually add no biological signal and are good trimming targets.');
+        }
+        if (alignmentLength > 0 && maxInputLength > 0 && alignmentLength > maxInputLength * 1.5 && meanGap >= 15) {
+            items.push('The aligned length is much larger than the longest raw sequence, which suggests substantial gap insertion across the alignment. Inspect for partial or mis-oriented sequences before tree building.');
+        }
+        if (meanInputLength > 0 && maxInputLength > 0 && maxInputLength / Math.max(meanInputLength, 1) >= 2) {
+            items.push('Input sequence lengths are heterogeneous. Family members may include fragments, fusions, or mixed domain architectures, so length-aware filtering can improve downstream interpretation.');
+        }
+        if (variable === 0 && alignmentLength > 0) {
+            items.push('No variable columns were detected. These sequences are extremely similar, so tree support may be uninformative even if the alignment looks clean.');
+        }
+        if (tool === 'mafft' && sequenceCount > 0 && sequenceCount <= 200 && maxInputLength > 0 && maxInputLength <= 2000) {
+            items.push('This dataset size is compatible with MAFFT high-accuracy strategies if you need to rerun for publication-grade refinement.');
+        }
+        if (Array.isArray(data?.warnings) && data.warnings.length) {
+            items.push('Runtime warnings were reported for this alignment strategy. Review them before reusing the alignment for phylogeny or motif analysis.');
+        }
+
+        card.classList.remove('d-none');
+        box.innerHTML = `
+            <div class="alert alert-light border mb-0">
+                <ul class="mb-0 small">
+                    ${items.map((item) => `<li>${String(item).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    }
 
     document.querySelectorAll('input[name="inputType"]').forEach(radio => {
         radio.addEventListener('change', function() {
             document.getElementById('textInputDiv').classList.toggle('d-none', this.value !== 'text');
             document.getElementById('fileInputDiv').classList.toggle('d-none', this.value !== 'file');
+            updateAlignmentScientificHints();
         });
     });
 
@@ -226,22 +616,58 @@
         if (optionsEl) {
             optionsEl.classList.remove('d-none');
         }
+        updateAlignmentScientificHints();
     });
+    ['sequenceText', 'mafftAlgorithm', 'mafftMaxiterate', 'autoMode', 'clustalwMatrix', 'colorMode'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('input', updateAlignmentScientificHints);
+        el.addEventListener('change', updateAlignmentScientificHints);
+    });
+    updateAlignmentScientificHints();
 
     document.getElementById('alignmentForm').addEventListener('submit', async function(e) {
         e.preventDefault();
+        const scientificHints = updateAlignmentScientificHints();
+        const blockingHint = scientificHints.find((item) => item.level === 'danger');
+        if (blockingHint) {
+            showAlert('danger', blockingHint.text);
+            return;
+        }
 
         const formData = new FormData();
 
         const inputType = document.querySelector('input[name="inputType"]:checked').value;
         if (inputType === 'text') {
-            formData.append('sequences', document.getElementById('sequenceText').value);
+            const rawText = String(document.getElementById('sequenceText').value || '').trim();
+            const sequenceLength = rawText
+                .split('\n')
+                .filter((line) => {
+                    const t = line.trim();
+                    return t && !t.startsWith('>');
+                })
+                .join('')
+                .replace(/\s+/g, '')
+                .length;
+            if (!rawText || sequenceLength === 0) {
+                showAlert('warning', 'Please paste FASTA sequences before running alignment.');
+                return;
+            }
+            formData.append('sequences', rawText);
         } else {
             const file = document.getElementById('sequenceFile').files[0];
-            if (file) formData.append('file', file);
+            if (!file) {
+                showAlert('warning', 'Please upload a FASTA file before running alignment.');
+                return;
+            }
+            formData.append('file', file);
         }
 
         const tool = document.getElementById('alignTool').value;
+        if (!tool) {
+            showAlert('warning', 'No alignment tool is available. Install MAFFT/ClustalW/MUSCLE and refresh.');
+            return;
+        }
         formData.append('tool', tool);
         
         // Add color mode
@@ -253,6 +679,7 @@
             if (document.getElementById('autoMode').checked) {
                 formData.append('auto', '1');
             }
+            formData.append('maxiterate', document.getElementById('mafftMaxiterate').value);
         } else if (tool === 'clustalw') {
             formData.append('matrix', document.getElementById('clustalwMatrix').value);
         } else if (tool === 'muscle') {
@@ -263,6 +690,7 @@
         document.getElementById('alignmentResult').classList.add('d-none');
         document.getElementById('alignmentViewer').classList.add('d-none');
         document.getElementById('alignmentStatsCard').classList.add('d-none');
+        document.getElementById('alignmentInterpretationCard').classList.add('d-none');
         document.getElementById('runAlignBtn').disabled = true;
 
         try {
@@ -281,6 +709,9 @@
             }
 
             if (data.success) {
+                if (Array.isArray(data.warnings) && data.warnings.length) {
+                    showAlert('warning', data.warnings.join(' '), 7000);
+                }
                 document.getElementById('alignmentViewer').classList.remove('d-none');
                 // Display alignment HTML
                 displayAlignmentViewer(data);
@@ -321,17 +752,20 @@
                 }
 
                 // Show alignment statistics
-                displayAlignmentStats(data.stats || data);
+                displayAlignmentStats(data);
+                renderAlignmentInterpretation(data);
 
                 showAlert('success', 'Alignment completed');
             } else {
-                document.getElementById('alignmentResult').classList.remove('d-none');
-                document.getElementById('alignmentResult').innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                renderAlignmentError(data.error || 'Alignment failed');
+                showAlert('danger', data.error || 'Alignment failed');
             }
         } catch (error) {
             document.getElementById('loadingSpinner').classList.add('d-none');
             document.getElementById('runAlignBtn').disabled = false;
-            showAlert('danger', 'Alignment failed: ' + error.message);
+            const message = 'Alignment failed: ' + error.message;
+            renderAlignmentError(message);
+            showAlert('danger', message);
         }
     });
 
@@ -348,28 +782,73 @@
         }
     }
 
-    function displayAlignmentStats(stats) {
+    function displayAlignmentStats(data) {
+        const stats = data?.stats || data;
+        const inputStats = data?.input_stats || {};
+        const parameters = stats?.parameters || {};
+        const sequenceType = String(inputStats.sequence_type || 'unknown').trim();
+        let strategyLabel = 'Default';
+        if (stats?.tool === 'mafft') {
+            strategyLabel = String(parameters.algorithm || 'auto').toUpperCase();
+        } else if (stats?.tool === 'clustalw') {
+            strategyLabel = String(parameters.matrix || 'default');
+        } else if (stats?.tool === 'muscle') {
+            strategyLabel = 'Default';
+        }
         if (stats && stats.num_sequences && stats.alignment_length) {
             const statsCard = document.getElementById('alignmentStatsCard');
             const statsDiv = document.getElementById('alignmentStats');
+            const conserved = Number(stats.conserved_positions || 0);
+            const variable = Number(stats.variable_positions || 0);
+            const gapAffected = Number(stats.gap_affected_positions || 0);
 
             statsDiv.innerHTML = `
-                <div class="col-md-4">
+                <div class="col-md-4 col-6">
                     <div class="text-center p-3 bg-light rounded">
                         <h4 class="text-primary">${stats.num_sequences}</h4>
                         <small class="text-muted">Sequences</small>
                     </div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-4 col-6">
                     <div class="text-center p-3 bg-light rounded">
                         <h4 class="text-success">${stats.alignment_length}</h4>
                         <small class="text-muted">Alignment Positions</small>
                     </div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-4 col-6 mt-3 mt-md-0">
                     <div class="text-center p-3 bg-light rounded">
                         <h4 class="text-info">${stats.tool || 'N/A'}</h4>
                         <small class="text-muted">Tool Used</small>
+                    </div>
+                </div>
+                <div class="col-md-4 col-6 mt-3">
+                    <div class="text-center p-3 bg-light rounded">
+                        <h4 class="text-success">${conserved}</h4>
+                        <small class="text-muted">Fully Conserved</small>
+                    </div>
+                </div>
+                <div class="col-md-4 col-6 mt-3">
+                    <div class="text-center p-3 bg-light rounded">
+                        <h4 class="text-warning">${variable}</h4>
+                        <small class="text-muted">Residue-Variable</small>
+                    </div>
+                </div>
+                <div class="col-md-4 col-6 mt-3">
+                    <div class="text-center p-3 bg-light rounded">
+                        <h4 class="text-secondary">${gapAffected}</h4>
+                        <small class="text-muted">Gap-Affected</small>
+                    </div>
+                </div>
+                <div class="col-md-4 col-6 mt-3">
+                    <div class="text-center p-3 bg-light rounded">
+                        <h4 class="text-dark text-capitalize">${sequenceType || 'unknown'}</h4>
+                        <small class="text-muted">Molecule Type</small>
+                    </div>
+                </div>
+                <div class="col-md-4 col-6 mt-3">
+                    <div class="text-center p-3 bg-light rounded">
+                        <h4 class="text-primary">${String(strategyLabel || 'Default').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</h4>
+                        <small class="text-muted">Strategy / Matrix</small>
                     </div>
                 </div>
             `;

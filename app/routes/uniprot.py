@@ -14,6 +14,38 @@ from app.utils.logger import get_app_logger
 uniprot_bp = Blueprint('uniprot', __name__)
 logger = get_app_logger()
 
+
+def _as_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def _parse_int(value, field_name, minimum=None, maximum=None, default=None):
+    if value in (None, ''):
+        return default
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"Invalid {field_name}: must be an integer")
+    if minimum is not None and parsed < minimum:
+        raise ValueError(f"Invalid {field_name}: must be >= {minimum}")
+    if maximum is not None and parsed > maximum:
+        raise ValueError(f"Invalid {field_name}: must be <= {maximum}")
+    return parsed
+
+
+def _parse_database_type(value, default='all'):
+    if value in (None, ''):
+        return default
+    normalized = str(value).strip().lower()
+    allowed = {'all', 'reviewed', 'unreviewed'}
+    if normalized not in allowed:
+        raise ValueError("Invalid database_type: must be one of all/reviewed/unreviewed")
+    return normalized
+
 @uniprot_bp.route('/')
 def uniprot_page():
     """Render the UniProt search page."""
@@ -87,15 +119,12 @@ def search():
         if not query:
             return jsonify({'success': False, 'error': 'No query provided'})
 
-        taxonomy_id = data.get('taxonomy_id')
-        if taxonomy_id:
-            try:
-                taxonomy_id = int(taxonomy_id)
-            except (ValueError, TypeError):
-                taxonomy_id = None
-
-        database_type = data.get('database_type', 'all')
-        limit = int(data.get('limit', 500))
+        try:
+            taxonomy_id = _parse_int(data.get('taxonomy_id'), 'taxonomy_id', minimum=1, default=None)
+            database_type = _parse_database_type(data.get('database_type', 'all'), default='all')
+            limit = _parse_int(data.get('limit', 500), 'limit', minimum=1, maximum=5000, default=500)
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': str(exc)}), 400
 
         success, results, message = search_uniprot(query, taxonomy_id, database_type, limit)
 
@@ -145,6 +174,7 @@ def download():
         data = request.get_json() or request.form
 
         header_format = data.get('header_format', 'gene_species_id')
+        deduplicate_genespecies = _as_bool(data.get('deduplicate_genespecies', False), default=False)
         
         # Normalize selected IDs payload
         raw_selected_ids = data.get('selected_ids')
@@ -167,8 +197,10 @@ def download():
             # Download only selected sequences using batch API
             logger.info(f"Downloading {len(selected_ids)} selected sequences")
             
-            success, result_dir, fasta_file, count = download_selected_sequences(
-                selected_ids, header_format
+            success, result_dir, fasta_file, count, dedup_info = download_selected_sequences(
+                selected_ids,
+                header_format,
+                deduplicate_genespecies=deduplicate_genespecies
             )
         else:
             # Fall back to query-based download
@@ -176,15 +208,20 @@ def download():
             if not query:
                 return jsonify({'success': False, 'error': 'No query or selection provided'})
 
-            taxonomy_id = data.get('taxonomy_id')
-            if taxonomy_id:
-                taxonomy_id = int(taxonomy_id)
+            try:
+                taxonomy_id = _parse_int(data.get('taxonomy_id'), 'taxonomy_id', minimum=1, default=None)
+                database_type = _parse_database_type(data.get('database_type', 'all'), default='all')
+                limit = _parse_int(data.get('limit', 500), 'limit', minimum=1, maximum=5000, default=500)
+            except ValueError as exc:
+                return jsonify({'success': False, 'error': str(exc)}), 400
 
-            database_type = data.get('database_type', 'all')
-            limit = int(data.get('limit', 500))
-
-            success, result_dir, fasta_file, count = download_sequences(
-                query, taxonomy_id, database_type, limit, header_format
+            success, result_dir, fasta_file, count, dedup_info = download_sequences(
+                query,
+                taxonomy_id,
+                database_type,
+                limit,
+                header_format,
+                deduplicate_genespecies=deduplicate_genespecies
             )
 
         if success and fasta_file:
@@ -192,7 +229,8 @@ def download():
                 'success': True,
                 'result_dir': result_dir,
                 'fasta_file': fasta_file,
-                'count': count
+                'count': count,
+                'dedup_info': dedup_info
             })
         else:
             return jsonify({
