@@ -2,6 +2,7 @@
 BioLab Workbench Configuration
 All paths and settings are centralized here.
 """
+import base64
 import os
 import secrets
 
@@ -41,6 +42,22 @@ def is_first_run():
     return not os.path.exists(user_config) and not os.environ.get('BIOLAB_BASE_DIR')
 
 
+def get_password_hash():
+    """Load the password hash directly or from base64 to avoid shell '$' expansion issues."""
+    password_hash = os.environ.get('BIOLAB_PASSWORD_HASH', '')
+    if password_hash:
+        return password_hash
+
+    encoded = os.environ.get('BIOLAB_PASSWORD_HASH_B64', '')
+    if not encoded:
+        return ''
+
+    try:
+        return base64.b64decode(encoded).decode('utf-8')
+    except Exception:
+        return ''
+
+
 # Base directory - automatically detected
 BASE_DIR = get_base_dir()
 
@@ -68,7 +85,7 @@ SECRET_KEY = os.environ.get('BIOLAB_SECRET_KEY', secrets.token_hex(32))
 
 # Single-password authentication. Store only the Werkzeug hash in the environment.
 AUTH_ENABLED = os.environ.get('BIOLAB_AUTH_ENABLED', 'true').lower() not in {'0', 'false', 'no', 'off'}
-PASSWORD_HASH = os.environ.get('BIOLAB_PASSWORD_HASH', '')
+PASSWORD_HASH = get_password_hash()
 
 # Lightweight run index for reproducible workflow history.
 RUN_INDEX_DB = os.path.join(BASE_DIR, 'biolab.sqlite')
