@@ -8,7 +8,7 @@ import sys
 from datetime import datetime
 import config
 from app.utils.logger import get_tools_logger
-from app.utils.file_utils import create_result_dir, save_params
+from app.utils.file_utils import create_result_dir, save_params, write_result_manifest
 
 logger = get_tools_logger()
 
@@ -279,12 +279,28 @@ def visualize_tree(tree_file, output_file=None, layout='rectangular',
         # Render tree with adaptive width
         tree.render(output_file, tree_style=ts, w=adaptive_width, units='px')
 
+        write_result_manifest(
+            result_dir,
+            'tree_visualization',
+            params=params,
+            inputs=[tree_file],
+            outputs=[output_file],
+            notes=['Fixed branch length changes display readability only, not evolutionary distance.'] if fixed_branch_length else None,
+        )
         logger.info(f"Tree visualization saved to {output_file}")
         # Return relative path from results directory for proper web serving
         rel_path = os.path.relpath(output_file, config.RESULTS_DIR)
         return True, result_dir, rel_path, "Tree visualization completed"
 
     except Exception as e:
+        write_result_manifest(
+            result_dir,
+            'tree_visualization',
+            params=params,
+            inputs=[tree_file],
+            status='failed',
+            notes=[str(e)],
+        )
         logger.error(f"Tree visualization failed: {str(e)}")
         return False, result_dir, None, str(e)
 
@@ -385,6 +401,20 @@ def extract_clade(tree_file, target_gene, levels_up=2, output_file=None,
     if highlight_species is None:
         highlight_species = []
 
+    params = {
+        'tree_file': tree_file,
+        'target_gene': target_gene,
+        'levels_up': levels_up,
+        'layout': layout,
+        'colored_species': colored_species,
+        'show_bootstrap': show_bootstrap,
+        'font_size': font_size,
+        'fixed_branch_length': fixed_branch_length,
+        'highlight_species': highlight_species,
+        'timestamp': datetime.now().isoformat(),
+    }
+    save_params(result_dir, params)
+
     try:
         normalized_tree, error_message = normalize_tree_file(tree_file)
         if error_message:
@@ -481,10 +511,26 @@ def extract_clade(tree_file, target_gene, levels_up=2, output_file=None,
         # Render with adaptive width
         width = max(800, min(2400, len(clade_leaves) * 15))
         display_tree.render(output_file, tree_style=ts, w=width, units='px')
-        
+        write_result_manifest(
+            result_dir,
+            'tree_clade_extraction',
+            params={**params, 'clade_info': clade_info},
+            inputs=[tree_file],
+            outputs=[output_file],
+            notes=['Fixed branch length changes display readability only, not evolutionary distance.'] if fixed_branch_length else None,
+        )
+
         rel_path = os.path.relpath(output_file, config.RESULTS_DIR)
         return True, result_dir, rel_path, f"Clade extracted: {len(clade_leaves)} leaves", clade_info
-        
+
     except Exception as e:
+        write_result_manifest(
+            result_dir,
+            'tree_clade_extraction',
+            params=params,
+            inputs=[tree_file],
+            status='failed',
+            notes=[str(e)],
+        )
         logger.error(f"Clade extraction failed: {e}")
         return False, result_dir, None, str(e), None

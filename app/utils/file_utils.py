@@ -3,6 +3,7 @@ File utilities for BioLab Workbench.
 """
 import os
 import json
+import hashlib
 from datetime import datetime
 from flask import request
 import config
@@ -29,6 +30,73 @@ def save_params(result_dir, params):
     with open(params_file, 'w', encoding='utf-8') as f:
         json.dump(params, f, indent=2, ensure_ascii=False)
     return params_file
+
+
+def file_sha256(filepath):
+    """Return basic file metadata and SHA256 for an existing file."""
+    if not filepath or not os.path.isfile(filepath):
+        return None
+
+    digest = hashlib.sha256()
+    with open(filepath, 'rb') as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b''):
+            digest.update(chunk)
+
+    stat = os.stat(filepath)
+    return {
+        'path': filepath,
+        'name': os.path.basename(filepath),
+        'size': stat.st_size,
+        'sha256': digest.hexdigest(),
+    }
+
+
+def _as_list(value):
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return list(value)
+    return [value]
+
+
+def save_commands(result_dir, commands):
+    """Persist executed command strings to commands.json."""
+    normalized = []
+    for item in _as_list(commands):
+        if not item:
+            continue
+        if isinstance(item, dict):
+            normalized.append(item)
+        else:
+            normalized.append({'command': str(item)})
+
+    commands_file = os.path.join(result_dir, 'commands.json')
+    with open(commands_file, 'w', encoding='utf-8') as f:
+        json.dump(normalized, f, indent=2, ensure_ascii=False)
+    return commands_file
+
+
+def write_result_manifest(result_dir, workflow, params=None, inputs=None, outputs=None, commands=None, status='completed', notes=None):
+    """Write a lightweight reproducibility manifest for a workflow run."""
+    if commands:
+        save_commands(result_dir, commands)
+
+    manifest = {
+        'workflow': workflow,
+        'status': status,
+        'created_at': datetime.now().isoformat(),
+        'result_dir': result_dir,
+        'params': params or {},
+        'inputs': [item for item in (file_sha256(p) for p in _as_list(inputs)) if item],
+        'outputs': [item for item in (file_sha256(p) for p in _as_list(outputs)) if item],
+        'commands_file': 'commands.json' if commands else None,
+        'notes': notes or [],
+    }
+
+    manifest_file = os.path.join(result_dir, 'manifest.json')
+    with open(manifest_file, 'w', encoding='utf-8') as f:
+        json.dump(manifest, f, indent=2, ensure_ascii=False)
+    return manifest_file
 
 
 def save_uploaded_file(file_storage, filename=None):

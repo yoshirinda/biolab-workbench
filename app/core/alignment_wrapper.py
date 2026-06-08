@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Tuple, Dict, Optional, List
 from app import config
 from app.utils.fasta_utils import parse_fasta, write_fasta, get_fasta_stats
+from app.utils.file_utils import create_result_dir, save_params, write_result_manifest
 import logging
 
 logger = logging.getLogger(__name__)
@@ -36,10 +37,17 @@ def run_alignment(
     """
     try:
         # Create result directory
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        result_dir = os.path.join(config.RESULTS_DIR, f'alignment_{tool}_{timestamp}')
-        os.makedirs(result_dir, exist_ok=True)
-        
+        result_dir = create_result_dir('alignment', tool)
+        params = {
+            'input_file': input_file,
+            'tool': tool,
+            'output_format': output_format,
+            'threads': threads,
+            'extra_params': extra_params or {},
+            'timestamp': datetime.now().isoformat(),
+        }
+        save_params(result_dir, params)
+
         # Determine output file path
         ext_map = {
             'fasta': '.fasta',
@@ -61,14 +69,31 @@ def run_alignment(
             return False, result_dir, '', {'error': f'Unknown alignment tool: {tool}'}
         
         if not success:
+            write_result_manifest(
+                result_dir,
+                'alignment',
+                params=params,
+                inputs=[input_file],
+                commands=[{'name': f'{tool} alignment', 'command': command}] if command else None,
+                status='failed',
+                notes=[error_msg],
+            )
             return False, result_dir, '', {'error': error_msg}
-        
+
         # Calculate statistics
         stats = _calculate_alignment_stats(output_file)
         stats['tool'] = tool
         stats['parameters'] = extra_params or {}
         stats['command'] = command
-        
+        write_result_manifest(
+            result_dir,
+            'alignment',
+            params=params,
+            inputs=[input_file],
+            outputs=[output_file],
+            commands=[{'name': f'{tool} alignment', 'command': command}] if command else None,
+        )
+
         return True, result_dir, output_file, stats
         
     except Exception as e:

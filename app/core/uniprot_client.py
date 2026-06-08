@@ -9,7 +9,7 @@ from datetime import datetime
 import os
 import config
 from app.utils.logger import get_tools_logger
-from app.utils.file_utils import create_result_dir, save_params
+from app.utils.file_utils import create_result_dir, save_params, write_result_manifest
 
 logger = get_tools_logger()
 
@@ -193,9 +193,22 @@ def download_sequences(query, taxonomy_id=None, database_type='all', limit=500,
     success, results, message = search_uniprot(query, taxonomy_id, database_type, limit)
 
     if not success:
+        write_result_manifest(
+            result_dir,
+            'uniprot_search',
+            params=params,
+            status='failed',
+            notes=[message],
+        )
         return False, result_dir, None, message
 
     if not results:
+        write_result_manifest(
+            result_dir,
+            'uniprot_search',
+            params={**params, 'result_count': 0},
+            notes=['No results found'],
+        )
         return True, result_dir, None, "No results found"
 
     # Write FASTA file
@@ -211,6 +224,13 @@ def download_sequences(query, taxonomy_id=None, database_type='all', limit=500,
                 for i in range(0, len(sequence), 60):
                     f.write(sequence[i:i+60] + '\n')
     
+    write_result_manifest(
+        result_dir,
+        'uniprot_search',
+        params={**params, 'result_count': len(results)},
+        outputs=[fasta_file],
+        notes=['Exact UniProt query parameters are stored in params.json.'],
+    )
     relative_path = os.path.relpath(fasta_file, config.RESULTS_DIR)
     logger.info(f"Downloaded {len(results)} sequences to {fasta_file}")
     return True, result_dir, relative_path, len(results)
@@ -380,9 +400,23 @@ def download_selected_sequences(accessions, header_format='gene_species_id'):
     try:
         curated_records = fetch_curated_sequences(accessions, header_format=header_format)
     except requests.RequestException as exc:
+        write_result_manifest(
+            result_dir,
+            'uniprot_curated_export',
+            params=params,
+            status='failed',
+            notes=[str(exc)],
+        )
         return False, result_dir, None, str(exc)
 
     if not curated_records:
+        write_result_manifest(
+            result_dir,
+            'uniprot_curated_export',
+            params=params,
+            status='failed',
+            notes=['No sequences retrieved for selected accessions'],
+        )
         return False, result_dir, None, "No sequences retrieved for selected accessions"
 
     fasta_file = os.path.join(result_dir, 'curated_sequences.fasta')
@@ -395,6 +429,13 @@ def download_selected_sequences(accessions, header_format='gene_species_id'):
             for i in range(0, len(sequence), 60):
                 handle.write(sequence[i:i+60] + '\n')
     
+    write_result_manifest(
+        result_dir,
+        'uniprot_curated_export',
+        params={**params, 'retrieved_count': len(curated_records)},
+        outputs=[fasta_file],
+        notes=['Selected accession order and curated FASTA headers are stored for reproducibility.'],
+    )
     relative_path = os.path.relpath(fasta_file, config.RESULTS_DIR)
     logger.info(f"Downloaded {len(curated_records)} curated sequences to {fasta_file}")
     return True, result_dir, relative_path, len(curated_records)

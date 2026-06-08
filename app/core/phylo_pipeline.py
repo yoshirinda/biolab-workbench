@@ -9,7 +9,7 @@ from collections import Counter
 from datetime import datetime
 import config
 from app.utils.logger import get_tools_logger
-from app.utils.file_utils import create_result_dir, save_params, read_fasta_file, write_fasta_file
+from app.utils.file_utils import create_result_dir, save_params, read_fasta_file, write_fasta_file, write_result_manifest
 from app.utils.path_utils import windows_to_wsl
 from app.core.sequence_utils import clean_fasta_headers
 
@@ -781,11 +781,33 @@ def run_full_pipeline(input_file, hmm_files=None, gold_list_file=None, options=N
     params = {'input_file': input_file,'hmm_files': hmm_files_list,'gold_list_file': gold_list_file,'options': options,'timestamp': datetime.now().isoformat()}
     save_params(result_dir, params)
     results = {'result_dir': result_dir,'steps': {},'commands': []}
+
+    def _finish(status):
+        outputs = []
+        for step_info in results['steps'].values():
+            output = step_info.get('output')
+            if output:
+                outputs.append(output)
+            for key in ('raw_output', 'log_file'):
+                extra = step_info.get(key)
+                if extra:
+                    outputs.append(extra)
+        write_result_manifest(
+            result_dir,
+            'phylogenetic_pipeline',
+            params=params,
+            inputs=[input_file, *hmm_files_list, gold_list_file],
+            outputs=outputs,
+            commands=results.get('commands'),
+            status='completed' if status else 'failed',
+        )
+        return status, results
+
     current_file = input_file
 
     success, output, message = step1_clean_fasta(current_file, result_dir)
     results['steps']['step1'] = {'success': success, 'output': output, 'message': message}
-    if not success: return False, results
+    if not success: return _finish(False)
     current_file = output
 
     valid_hmm_files = [f for f in hmm_files_list if os.path.exists(f)]
@@ -798,13 +820,13 @@ def run_full_pipeline(input_file, hmm_files=None, gold_list_file=None, options=N
         if success:
             current_file = output
         else:
-            return False, results
+            return _finish(False)
 
     if gold_list_file and os.path.exists(gold_list_file):
         blast_db_path = (options.get('blast_db_path') or '').strip()
         if not blast_db_path:
             results['steps']['step2_5'] = {'success': False,'output': None,'message': 'BLAST database path is required for step 2.5','stats': None,'command': None,'raw_output': None,'log_file': None}
-            return False, results
+            return _finish(False)
         success, output, message, stats, command = step2_5_blast_filter(current_file,gold_list_file,result_dir,pident_threshold=options.get('pident', 30),qcovs_threshold=options.get('qcovs', 50),blast_db_path=blast_db_path,evalue=options.get('blast_evalue', 1e-5),max_target_seqs=options.get('blast_max_target_seqs', 5),threads=options.get('blast_threads', config.DEFAULT_THREADS))
         results['steps']['step2_5'] = {'success': success,'output': output,'message': message,'stats': stats,'command': command,'raw_output': stats.get('raw_output_file') if stats else None,'log_file': stats.get('log_file') if stats else None}
         if command:
@@ -812,7 +834,7 @@ def run_full_pipeline(input_file, hmm_files=None, gold_list_file=None, options=N
         if success:
             current_file = output
         else:
-            return False, results
+            return _finish(False)
 
     success, output, message = step2_7_length_stats(current_file, result_dir)
     results['steps']['step2_7'] = {'success': success, 'output': output, 'message': message}
@@ -826,14 +848,14 @@ def run_full_pipeline(input_file, hmm_files=None, gold_list_file=None, options=N
     results['steps']['step3'] = {'success': success, 'output': output, 'message': message, 'command': command}
     if command:
         results['commands'].append({'step': 'step3', 'name': 'MAFFT Alignment', 'command': command})
-    if not success: return False, results
+    if not success: return _finish(False)
     current_file = output
 
     success, output, message, command = step4_clipkit(current_file, result_dir,mode=options.get('clipkit_mode', 'kpic-gappy'))
     results['steps']['step4'] = {'success': success, 'output': output, 'message': message, 'command': command}
     if command:
         results['commands'].append({'step': 'step4', 'name': 'ClipKIT Trim', 'command': command})
-    if not success: return False, results
+    if not success: return _finish(False)
     current_file = output
 
     success, output, message, command = step5_iqtree(current_file, result_dir,model=options.get('model', 'MFP'),bootstrap=options.get('bootstrap', 1000),threads=options.get('threads', config.DEFAULT_THREADS),bnni=options.get('bnni', True))
@@ -841,4 +863,4 @@ def run_full_pipeline(input_file, hmm_files=None, gold_list_file=None, options=N
     if command:
         results['commands'].append({'step': 'step5', 'name': 'IQ-Tree', 'command': command})
 
-    return success, results
+    return _finish(success)

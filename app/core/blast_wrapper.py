@@ -9,7 +9,7 @@ import re
 from datetime import datetime
 import config
 from app.utils.logger import get_tools_logger
-from app.utils.file_utils import create_result_dir, save_params
+from app.utils.file_utils import create_result_dir, save_params, write_result_manifest
 from app.core.sequence_utils import detect_sequence_type, normalize_gene_id
 
 logger = get_tools_logger()
@@ -518,9 +518,26 @@ def run_blast(query_file, database, output_format='tsv', evalue=1e-5,
     if success:
         # Add header to TSV output files
         add_tsv_header(output_file, output_format)
+        write_result_manifest(
+            result_dir,
+            'blast_search',
+            params=params,
+            inputs=[query_file, database],
+            outputs=[output_file],
+            commands=[{'name': 'BLAST search', 'command': full_command}],
+        )
         logger.info(f"BLAST search completed: {output_file}")
         return True, result_dir, {'main': output_file}, full_command
     else:
+        write_result_manifest(
+            result_dir,
+            'blast_search',
+            params=params,
+            inputs=[query_file, database],
+            commands=[{'name': 'BLAST search', 'command': full_command}],
+            status='failed',
+            notes=[stderr or 'BLAST failed'],
+        )
         logger.error(f"BLAST search failed: {stderr}")
         return False, stderr, None, full_command
 
