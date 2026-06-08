@@ -63,10 +63,12 @@
                             <div class="col-6 mb-3">
                                 <label for="evalue" class="form-label">E-value:</label>
                                 <input type="text" class="form-control" id="evalue" value="1e-5">
+                                <small class="text-muted">Recommended screen: 1e-5. Lower is stricter; use with identity/coverage, not alone.</small>
                             </div>
                             <div class="col-6 mb-3">
                                 <label for="maxHits" class="form-label">Max Hits:</label>
                                 <input type="number" class="form-control" id="maxHits" value="500" min="1">
+                                <small class="text-muted">Keep enough candidates for curation; downstream extraction remains manual.</small>
                             </div>
                         </div>
 
@@ -83,6 +85,20 @@
                             <i class="bi bi-play-fill"></i> Run BLAST
                         </button>
                     </form>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mt-4">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0"><i class="bi bi-info-circle"></i> Scientific interpretation</h6>
+                </div>
+                <div class="card-body small text-muted">
+                    <ul class="mb-0 ps-3">
+                        <li><strong>E-value</strong> estimates random-match expectation; 1e-5 is a practical discovery default, while 1e-20+ is stronger evidence.</li>
+                        <li><strong>Identity</strong> alone can mislead on short alignments; judge together with alignment length, query coverage, bit score, and biological domain context.</li>
+                        <li><strong>Program</strong> should match molecule types: blastn DNA-DNA, blastp protein-protein, blastx translated DNA to protein DB, tblastn protein to translated DNA DB.</li>
+                        <li><strong>Database provenance</strong> matters: prefer curated local FASTA/UniProt sets with stable names and recorded source dates.</li>
+                    </ul>
                 </div>
             </div>
 

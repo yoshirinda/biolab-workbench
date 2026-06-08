@@ -53,6 +53,7 @@
                         <div class="form-check mb-3">
                             <input class="form-check-input" type="checkbox" id="cutGa" checked>
                             <label class="form-check-label" for="cutGa">Use --cut_ga threshold</label>
+                            <small class="text-muted d-block">Recommended when profiles provide curated gathering cutoffs; it is usually more defensible than an arbitrary E-value for known HMM families.</small>
                         </div>
 
                         <hr>
@@ -70,10 +71,12 @@
                             <div class="col-6 mb-3">
                                 <label for="pident" class="form-label">Min Identity (%):</label>
                                 <input type="number" class="form-control" id="pident" value="30" min="0" max="100">
+                                <small class="text-muted">30% is a permissive homology screen; raise it for close ortholog sets.</small>
                             </div>
                             <div class="col-6 mb-3">
                                 <label for="qcovs" class="form-label">Min Coverage (%):</label>
                                 <input type="number" class="form-control" id="qcovs" value="50" min="0" max="100">
+                                <small class="text-muted">50% keeps partial candidates visible but flags weak domain coverage for curation.</small>
                             </div>
                         </div>
                         <div class="mb-3">
@@ -101,13 +104,15 @@
                         <div class="mb-3">
                             <label for="minLength" class="form-label">Min Sequence Length:</label>
                             <input type="number" class="form-control" id="minLength" value="50" min="1">
+                            <small class="text-muted">Use length statistics first. A hard cutoff removes fragments, but can also remove real short homologs; inspect outliers instead of blindly filtering.</small>
                         </div>
 
                         <hr>
                         <h6>Step 3: MAFFT Alignment</h6>
                         <div class="mb-3">
                             <label for="maxiterate" class="form-label">Max Iterations:</label>
-                            <input type="number" class="form-control" id="maxiterate" value="1000" min="1">
+                            <input type="number" class="form-control" id="maxiterate" value="0" min="0">
+                            <small class="text-muted">0 follows the original fast MAFFT auto-style default. Use 1000 for smaller difficult protein families when refinement is worth the cost.</small>
                         </div>
 
                         <hr>
@@ -119,6 +124,7 @@
                                 <option value="gappy">gappy</option>
                                 <option value="kpic">kpic</option>
                             </select>
+                            <small class="text-muted">kpic-gappy balances phylogenetically informative sites and gap-rich columns. Always review the site-retention report before trusting the final topology.</small>
                         </div>
 
                         <hr>
@@ -127,16 +133,19 @@
                             <div class="col-6 mb-3">
                                 <label for="model" class="form-label">Model:</label>
                                 <input type="text" class="form-control" id="model" value="MFP">
+                                <small class="text-muted">MFP lets IQ-TREE select a substitution model instead of assuming one.</small>
                             </div>
                             <div class="col-6 mb-3">
                                 <label for="bootstrap" class="form-label">Bootstrap:</label>
                                 <input type="number" class="form-control" id="bootstrap" value="1000" min="100">
+                                <small class="text-muted">1000 ultrafast replicates is the standard screening default; interpret weak support conservatively.</small>
                             </div>
                         </div>
                         <div class="row">
                             <div class="col-6 mb-3">
                                 <label for="threads" class="form-label">Threads:</label>
-                                <input type="number" class="form-control" id="threads" value="4" min="1">
+                                <input type="text" class="form-control" id="threads" value="AUTO">
+                                <small class="text-muted">AUTO lets IQ-TREE choose CPU use; set a number to reserve resources.</small>
                             </div>
                             <div class="col-6 mb-3">
                                 <div class="form-check mt-4">
@@ -144,6 +153,10 @@
                                     <label class="form-check-label" for="bnni">Use -bnni</label>
                                 </div>
                             </div>
+                        </div>
+
+                        <div class="alert alert-light border small text-muted">
+                            <strong>Reproducibility:</strong> this workflow preserves stable intermediates from the original script: cleaned FASTA, HMM hits, BLAST raw/filter logs, length-filtered FASTA, MAFFT alignment, ClipKIT output/log, and IQ-TREE result files.
                         </div>
 
                         <button type="submit" class="btn btn-info w-100" id="runFullBtn">

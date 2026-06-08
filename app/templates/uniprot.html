@@ -130,6 +130,10 @@
                             </select>
                         </div>
 
+                        <div class="alert alert-light border small text-muted">
+                            <strong>Wet-lab default:</strong> start with reviewed Swiss-Prot and a defined taxonomy scope when building references for phylogeny. Use TrEMBL/all only when reviewed coverage is too sparse, then curate accessions manually before export.
+                        </div>
+
                         <div class="d-grid gap-2">
                             <button type="submit" class="btn btn-danger" id="searchBtn">
                                 <i class="bi bi-search"></i> Search
@@ -169,7 +173,7 @@
                                     <div class="fw-semibold">
                                         <i class="bi bi-check2-square"></i> Curated Selection
                                     </div>
-                                    <div class="text-muted small">Selections persist as you filter results.</div>
+                                    <div class="text-muted small">Selections persist as you filter results. Export only sequences you can justify biologically; excluded accessions are part of the curation decision.</div>
                                     <div class="mt-2">
                                         <span class="badge bg-danger me-1" id="selectedCount">0</span>
                                         <span class="text-muted">selected out of <span id="totalCount">0</span></span>
