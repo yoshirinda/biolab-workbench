@@ -111,6 +111,40 @@ def phylo_page():
                            gold_files=gold_files,
                            blast_databases=blast_databases)
 
+
+@phylo_bp.route('/run-full', methods=['POST'])
+def run_full():
+    """Run the original full phylogenetic pipeline."""
+    try:
+        input_file = resolve_input_file(request)
+        hmm_names = request.form.getlist('hmm_files[]')
+        hmm_files = [os.path.join(config.HMM_PROFILES_DIR, name) for name in hmm_names if name]
+        gold_name = request.form.get('gold_list_file', '').strip()
+        gold_file = os.path.join(config.GOLD_LISTS_DIR, gold_name) if gold_name else None
+
+        options = {
+            'cut_ga': request.form.get('cut_ga', 'true').lower() == 'true',
+            'blast_db_path': request.form.get('blast_db_path', '').strip(),
+            'blast_evalue': request.form.get('blast_evalue', '1e-5'),
+            'blast_max_target_seqs': int(request.form.get('blast_max_target_seqs') or 5),
+            'blast_threads': int(request.form.get('blast_threads') or config.DEFAULT_THREADS),
+            'pident': float(request.form.get('pident') or 30),
+            'qcovs': float(request.form.get('qcovs') or 50),
+            'min_length': int(request.form.get('min_length') or 50),
+            'maxiterate': int(request.form.get('maxiterate') or 0),
+            'clipkit_mode': request.form.get('clipkit_mode', 'kpic-gappy'),
+            'model': request.form.get('model', 'MFP'),
+            'bootstrap': int(request.form.get('bootstrap') or 1000),
+            'threads': request.form.get('threads', 'AUTO'),
+            'bnni': request.form.get('bnni', 'true').lower() == 'true',
+        }
+        success, results = run_full_pipeline(input_file, hmm_files, gold_file, options)
+        return jsonify({'success': success, 'results': results})
+    except Exception as exc:
+        logger.error(f"Full phylo pipeline failed: {exc}")
+        return jsonify({'success': False, 'error': str(exc)}), 500
+
+
 @phylo_bp.route('/run-step/<step>', methods=['POST'])
 def run_step(step):
     """Run a single pipeline step."""
