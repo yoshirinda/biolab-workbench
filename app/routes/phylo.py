@@ -106,7 +106,7 @@ def phylo_page():
     hmm_files = list_files_in_dir(config.HMM_PROFILES_DIR, ['.hmm'])
     gold_files = list_files_in_dir(config.GOLD_LISTS_DIR, ['.txt'])
     blast_databases = list_blast_databases()
-    return render_template('pipeline.html',
+    return render_template('phylo.html',
                            hmm_files=hmm_files,
                            gold_files=gold_files,
                            blast_databases=blast_databases)

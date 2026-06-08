@@ -28,7 +28,7 @@
                         <a class="nav-link" href="{{ url_for('main.index') }}"><i class="bi bi-house"></i> Home</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('sequence.sequence_v3_page') }}"><i class="bi bi-file-earmark-text"></i> Sequence</a>
+                        <a class="nav-link" href="{{ url_for('uniprot.uniprot_page') }}"><i class="bi bi-cloud-download"></i> Reference Miner</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('blast.blast_page') }}"><i class="bi bi-search"></i> BLAST</a>
@@ -40,14 +40,13 @@
                         <a class="nav-link" href="{{ url_for('alignment.alignment_page') }}"><i class="bi bi-text-left"></i> Alignment</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('uniprot.uniprot_page') }}"><i class="bi bi-cloud-download"></i> UniProt</a>
-                    </li>
-                    <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('tree.tree_page') }}"><i class="bi bi-tree"></i> Tree</a>
                     </li>
+                    {% if session.get('authenticated') %}
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('docs.docs_index') }}"><i class="bi bi-book"></i> Docs</a>
+                        <a class="nav-link" href="{{ url_for('auth.logout') }}"><i class="bi bi-box-arrow-right"></i> Logout</a>
                     </li>
+                    {% endif %}
                 </ul>
             </div>
         </div>

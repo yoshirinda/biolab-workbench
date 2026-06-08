@@ -63,8 +63,15 @@ USE_CONDA = os.environ.get('BIOLAB_USE_CONDA', 'true').lower() == 'true'
 # 默认参数
 DEFAULT_THREADS = int(os.environ.get('BIOLAB_THREADS', 4))
 
-# Flask 配置 - Secret key from environment or generated randomly
+# Flask configuration. Set BIOLAB_SECRET_KEY explicitly on persistent deployments.
 SECRET_KEY = os.environ.get('BIOLAB_SECRET_KEY', secrets.token_hex(32))
+
+# Single-password authentication. Store only the Werkzeug hash in the environment.
+AUTH_ENABLED = os.environ.get('BIOLAB_AUTH_ENABLED', 'true').lower() not in {'0', 'false', 'no', 'off'}
+PASSWORD_HASH = os.environ.get('BIOLAB_PASSWORD_HASH', '')
+
+# Lightweight run index for reproducible workflow history.
+RUN_INDEX_DB = os.path.join(BASE_DIR, 'biolab.sqlite')
 
 # 上传大小上限（默认 100MB）。若需更大可设置环境变量 BIOLAB_MAX_CONTENT_MB。
 MAX_CONTENT_LENGTH = int(float(os.environ.get('BIOLAB_MAX_CONTENT_MB', 100)) * 1024 * 1024)

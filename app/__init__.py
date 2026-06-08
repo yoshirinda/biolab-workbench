@@ -31,35 +31,28 @@ def create_app():
     app.config['MAX_CONTENT_LENGTH'] = config.MAX_CONTENT_LENGTH
     app.config['UPLOADS_DIR'] = config.UPLOADS_DIR
     app.config['RESULTS_DIR'] = config.RESULTS_DIR
+    app.config['AUTH_ENABLED'] = config.AUTH_ENABLED
+    app.config['PASSWORD_HASH'] = config.PASSWORD_HASH
+    app.config['RUN_INDEX_DB'] = config.RUN_INDEX_DB
 
-    # Register blueprints
+    # Register blueprints for the five-script scientific workbench.
+    from app.routes.auth import auth_bp
     from app.routes.main import main_bp
-    from app.routes.sequence import sequence_bp
     from app.routes.blast import blast_bp
     from app.routes.phylo import phylo_bp
     from app.routes.alignment import alignment_bp
     from app.routes.uniprot import uniprot_bp
     from app.routes.tree import tree_bp
-    from app.routes.docs import docs_bp
-    from app.routes.pipeline import pipeline_bp
     from app.routes.database import database_bp
-    
-    # Register new API blueprints (优化后的API)
-    from app.api import api_bp
 
+    app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
-    app.register_blueprint(sequence_bp, url_prefix='/sequence')
     app.register_blueprint(blast_bp, url_prefix='/blast')
     app.register_blueprint(phylo_bp, url_prefix='/phylo')
     app.register_blueprint(alignment_bp, url_prefix='/alignment')
     app.register_blueprint(uniprot_bp, url_prefix='/uniprot')
     app.register_blueprint(tree_bp, url_prefix='/tree')
-    app.register_blueprint(docs_bp, url_prefix='/docs')
-    app.register_blueprint(pipeline_bp, url_prefix='/pipeline')
     app.register_blueprint(database_bp, url_prefix='/database')
-    
-    # 注册新的优化API
-    app.register_blueprint(api_bp)
 
     # Return JSON for API-style requests to avoid HTML breaking fetch()
     @app.errorhandler(Exception)
@@ -71,7 +64,7 @@ def create_app():
         wants_json = (
             request.accept_mimetypes.best == 'application/json' or
             request.headers.get('X-Requested-With') == 'XMLHttpRequest' or
-            request.path.startswith(('/phylo', '/blast', '/pipeline', '/alignment', '/tree'))
+            request.path.startswith(('/phylo', '/blast', '/alignment', '/tree', '/uniprot', '/database'))
         )
 
         if wants_json:
